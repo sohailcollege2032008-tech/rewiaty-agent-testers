@@ -7,12 +7,12 @@
 | M0 Sample | ✅ اتدمج (#2) | #2 |
 | M-QA infra | ✅ rewiaty-agent-testers شغال (demo: 14 finding، $0، Go allowance) | github.com/sohailcollege2032008-tech/rewiaty-agent-testers |
 | M2 Shell | ✅ اتدمج (#4). وfollow-up #5 | #4 |
-| M3 Settings | 🟡 Hydrogen (sohailcollege) | subagent M3 |
+| M3 Settings | ✅ مدموج #6 (64d4566) | Hydrogen + إصلاحات deepseek، Codex approve |
 | M4 Release+QA | ⏳ | |
 | Book Lab (أمواج PDF → bundle، تجربة pipeline المرحلة 4) | 🟡 Neon (sohailcollege) + deepseek | ثريد Book Lab · ~/workspace/rewiaty-book-lab |
 
 ## الخطة لحد التسليم (قرار سهيل 2026-11-25: «خلّص السيستم كله من غير ما حاجة توقفك»)
-1. M3: إصلاحات Codex (deepseek) ← gates ← تأكيد Codex ← دمج.
+1. ✅ M3 اتدمج (#6). المرحلة 1: 81% بنود، 46% بوابات.
 2. **Design (0.5، اتعمل متأخر):** design-explorer على Neon بيطلّع 3 اتجاهات. **الاتجاه الموصى بيه هو اللي هيتطبّق** (سهيل يقدر يغيّره من صفحة المقارنة)، وبعدها مهمة redesign تطبّق الـ tokens والشكل (Hydrogen).
 3. M4: Release APK (`mobile-run`)، وMaestro flows على Redroid (`app-flow`) للـ 5 رحلات، و`proof check`.
 4. QA wave: global-qa، وnovice-ux-qa، وvisual-qa (deepseek، جولة جديدة لكل واحد) + mobile-agent-testers (layla وgrace) ← issues.

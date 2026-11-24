@@ -53,15 +53,15 @@
 - بوابات: [x] كود · [x] اختبار · [x] مراجعة · [ ] جهاز · [ ] QA
 
 ### F5 «فتح بواسطة روايتي» من تيليجرام ومدير الملفات (V2) ⚑
-- [ ] Android intent filter (md / txt / octet-stream)
-- [ ] Import + فتح مباشر
-- بوابات: [ ] كود · [ ] اختبار · [ ] مراجعة · [ ] جهاز · [ ] QA
+- [x] Android intent filter (md / txt / octet-stream)
+- [x] Import + فتح مباشر
+- بوابات: [x] كود · [x] اختبار · [x] مراجعة · [ ] جهاز · [ ] QA
 
 ### F6 المكتبة (V3)
 - [x] كروت فيها العنوان والمؤلف ونسبة التقدم
 - [x] آخر كتاب مقري أول حاجة
 - [x] حذف كتاب (مع تأكيد)
-- [ ] أغلفة مولّدة من hash العنوان (لوحة ألوان + زخرفة + تايبوجرافي عربي على شكل كعب كتاب)
+- [x] أغلفة مولّدة من hash العنوان (لوحة ألوان + زخرفة + تايبوجرافي عربي على شكل كعب كتاب)
 - بوابات: [x] كود · [x] اختبار · [x] مراجعة · [ ] جهاز · [ ] QA
 
 ### F7 الرواية التجريبية (V4)
@@ -89,23 +89,23 @@
 
 ### F11 إعدادات القراية live (V10)
 - [x] المحرك بيطبّق الإعدادات بـ CSS variables من غير reload
-- [ ] Bottom sheet بياخد 35% والصفحة باينة فوقه
-- [ ] 8 خطوط offline (Amiri، وNoto Naskh، وScheherazade New، وIBM Plex Sans Arabic، وReadex Pro، وLiterata، وMerriweather، وInter)
-- [ ] الحجم 14–36
-- [ ] Line height (عربي 1.95 افتراضي، من 1.5 لـ 2.6)، والتشكيل ميتقصّش
-- [ ] Word spacing، ومفيش letter-spacing على العربي
-- [ ] Paragraph spacing
-- [ ] الوزن 300–600
-- [ ] المحاذاة start/justify
-- [ ] Indent كلاسيكي/Block
-- [ ] الهوامش وعرض السطر (45–85ch)
-- [ ] تغيير الاتجاه يدوي (override لـ RTL/LTR)
-- بوابات: [ ] كود · [ ] اختبار · [ ] مراجعة · [ ] جهاز · [ ] QA
+- [x] Bottom sheet بياخد 35% والصفحة باينة فوقه
+- [x] 8 خطوط offline (Amiri، وNoto Naskh، وScheherazade New، وIBM Plex Sans Arabic، وReadex Pro، وLiterata، وMerriweather، وInter)
+- [x] الحجم 14–36
+- [x] Line height (عربي 1.95 افتراضي، من 1.5 لـ 2.6)، والتشكيل ميتقصّش
+- [x] Word spacing، ومفيش letter-spacing على العربي
+- [x] Paragraph spacing
+- [x] الوزن 300–600
+- [x] المحاذاة start/justify
+- [x] Indent كلاسيكي/Block
+- [x] الهوامش وعرض السطر (45–85ch)
+- [x] تغيير الاتجاه يدوي (override لـ RTL/LTR)
+- بوابات: [x] كود · [x] اختبار · [x] مراجعة · [ ] جهاز · [ ] QA
 
 ### F12 الثيمات (V11)
-- [ ] Warm Paper، وSepia، وCharcoal، وOLED Night
-- [ ] الإعدادات بتتحفظ
-- بوابات: [ ] كود · [ ] اختبار · [ ] مراجعة · [ ] جهاز · [ ] QA
+- [x] Warm Paper، وSepia، وCharcoal، وOLED Night
+- [x] الإعدادات بتتحفظ
+- بوابات: [x] كود · [x] اختبار · [x] مراجعة · [ ] جهاز · [ ] QA
 
 ### F13 الشاشة متطفيش (V12)
 - [x] expo-keep-awake في شاشة القراية
