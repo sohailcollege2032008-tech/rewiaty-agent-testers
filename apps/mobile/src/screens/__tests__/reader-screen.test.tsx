@@ -1,5 +1,6 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { useKeepAwake } from 'expo-keep-awake';
+import { Linking, Platform } from 'react-native';
 
 import { ReaderScreen } from '@/screens/reader-screen';
 import { readAssetText, readBookBundle, saveBookReaderState } from '@/storage/bundle';
@@ -16,6 +17,7 @@ const mockBack = jest.fn();
 const postedToWebView: string[] = [];
 let capturedOnLoadEnd: (() => void) | undefined;
 let capturedOnMessage: ((event: { nativeEvent: { data: string } }) => void) | undefined;
+let capturedWebViewProps: Record<string, unknown> | undefined;
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ back: mockBack }),
@@ -35,11 +37,13 @@ jest.mock('react-native-webview', () => {
         testID?: string;
         onLoadEnd?: () => void;
         onMessage?: (event: { nativeEvent: { data: string } }) => void;
+        [key: string]: unknown;
       },
       ref: React.Ref<{ postMessage: (msg: string) => void }>,
     ) => {
       capturedOnLoadEnd = props.onLoadEnd;
       capturedOnMessage = props.onMessage;
+      capturedWebViewProps = props as Record<string, unknown>;
       React.useImperativeHandle(ref, () => ({
         postMessage: (msg: string) => {
           postedToWebView.push(msg);
@@ -86,6 +90,7 @@ describe('ReaderScreen', () => {
     postedToWebView.length = 0;
     capturedOnLoadEnd = undefined;
     capturedOnMessage = undefined;
+    capturedWebViewProps = undefined;
 
     (readAssetText as jest.Mock).mockResolvedValue('<html><body>reader</body></html>');
     (touchBookOpened as jest.Mock).mockResolvedValue(undefined);
@@ -143,6 +148,33 @@ describe('ReaderScreen', () => {
       nativeEvent: { data: JSON.stringify(payload) },
     });
   }
+
+  it('hardens the reader WebView: local-only origins, no file-URL JS surface, outbound links leave the app', async () => {
+    await renderLoadedReader();
+
+    const props = capturedWebViewProps!;
+    expect(props.allowFileAccessFromFileURLs).toBeUndefined();
+    expect(props.allowUniversalAccessFromFileURLs).toBeUndefined();
+    expect(props.originWhitelist).toEqual(['file://*', 'about:blank']);
+    expect(props.originWhitelist).not.toContain('*');
+    expect(props.allowFileAccess === true).toBe(Platform.OS === 'android');
+    expect(props.allowingReadAccessToURL).toBe('file:///mock/cache/rewiaty-fonts/');
+
+    const canStart = props.onShouldStartLoadWithRequest as (request: {
+      url: string;
+    }) => boolean;
+    expect(canStart({ url: 'about:blank' })).toBe(true);
+    expect(canStart({ url: 'file:///mock/cache/rewiaty-fonts/' })).toBe(true);
+    expect(canStart({ url: 'file:///etc/passwd' })).toBe(false);
+    expect(canStart({ url: 'file:///mock/document/books/other/book.md' })).toBe(false);
+
+    const openUrl = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
+    expect(canStart({ url: 'https://example.com/article' })).toBe(false);
+    expect(openUrl).toHaveBeenCalledWith('https://example.com/article');
+    expect(canStart({ url: 'javascript:alert(1)' })).toBe(false);
+    expect(openUrl).toHaveBeenCalledTimes(1);
+    openUrl.mockRestore();
+  });
 
   it('loads book with saved anchor and posts load payload to WebView', async () => {
     await renderLoadedReader();

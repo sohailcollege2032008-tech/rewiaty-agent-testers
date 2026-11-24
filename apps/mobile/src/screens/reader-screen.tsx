@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
+  Linking,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -12,7 +14,7 @@ import { useKeepAwake } from 'expo-keep-awake';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import WebView, { type WebViewMessageEvent } from 'react-native-webview';
+import WebView, { type WebViewMessageEvent, type WebViewNavigation } from 'react-native-webview';
 
 import { ReaderHud } from '@/components/reader-hud';
 import { ReaderSettingsSheet } from '@/components/reader-settings-sheet';
@@ -38,6 +40,18 @@ import type {
 import { debounce } from '@/utils/debounce';
 
 const POSITION_SAVE_DEBOUNCE_MS = 500;
+/** The reader document is local-only: no remote origins may be navigated to. */
+const READER_ORIGIN_WHITELIST: string[] = ['file://*', 'about:blank'];
+/** Used when the offline fonts folder is unavailable; needs no whitelist entry. */
+const READER_FALLBACK_BASE_URL = 'about:blank';
+
+function isReaderDocumentUrl(url: string, baseUrl: string): boolean {
+  if (!url) return false;
+  // Android loads an `html` source through a data URL and reports that back.
+  if (url === 'about:blank' || url === 'about:srcdoc') return true;
+  if (url.startsWith('data:text/html')) return true;
+  return url === baseUrl;
+}
 
 export function ReaderScreen() {
   useKeepAwake();
@@ -60,6 +74,10 @@ export function ReaderScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [webLoaded, setWebLoaded] = useState(false);
   const [engineReady, setEngineReady] = useState(false);
+
+  const readerBaseUrl = fontBaseUrl ?? READER_FALLBACK_BASE_URL;
+  const readerBaseUrlRef = useRef(readerBaseUrl);
+  readerBaseUrlRef.current = readerBaseUrl;
 
   const [hudVisible, setHudVisible] = useState(false);
   const [tocVisible, setTocVisible] = useState(false);
@@ -231,6 +249,18 @@ export function ReaderScreen() {
     router.back();
   }, [debouncedSave, router]);
 
+  const handleShouldStartLoadWithRequest = useCallback((request: WebViewNavigation) => {
+    const targetUrl = request.url ?? '';
+    if (isReaderDocumentUrl(targetUrl, readerBaseUrlRef.current)) return true;
+
+    // Any other navigation is an outbound link: http(s) leaves the app, everything
+    // else (file://, javascript:, intent://, ...) is refused outright.
+    if (/^https?:\/\//i.test(targetUrl)) {
+      void Linking.openURL(targetUrl).catch(() => undefined);
+    }
+    return false;
+  }, []);
+
   const handleSelectChapter = useCallback(
     (chapterId: string) => {
       postToEngine({ type: 'goto', chapterId });
@@ -312,13 +342,20 @@ export function ReaderScreen() {
         <WebView<Record<string, unknown>>
           ref={webViewRef}
           testID="reader-webview"
-          originWhitelist={['*']}
-          allowFileAccess
-          allowFileAccessFromFileURLs
-          allowingReadAccessToURL={fontBaseUrl ?? undefined}
+          originWhitelist={READER_ORIGIN_WHITELIST}
+          {...(Platform.OS === 'android'
+            ? // Why (tech): the engine renders the 8 bundled woff2 fonts as file://
+              // subresources, and Android WebView refuses file:// subresources unless
+              // file access is on. iOS reads them through allowingReadAccessToURL instead.
+              { allowFileAccess: true }
+            : {})}
+          // Why (tech): on iOS the reader only ever needs to read the fonts folder —
+          // never the whole cache directory — so read access stops there.
+          allowingReadAccessToURL={fontBaseUrl?.startsWith('file://') ? fontBaseUrl : undefined}
+          onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
           source={{
             html: readerHtml,
-            baseUrl: fontBaseUrl ?? 'https://rewiaty.local/',
+            baseUrl: readerBaseUrl,
           }}
           style={[
             styles.webview,

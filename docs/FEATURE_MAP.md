@@ -7,7 +7,8 @@
 - **Features:**
   - أول تشغيل: بذر الرواية العربية التجريبية (`sample-ar.md`) لمرة واحدة عبر `kv` (`sample_seeded_v1`).
   - عرض كروت الكتب مرتبة بآخر فتح (`lastOpenedAt DESC`) مع العنوان والمؤلف ونسبة التقدم وغلاف مولّد من `coverColor` أو hash العنوان ([`BookCard`](../apps/mobile/src/components/book-card.tsx)، [`BookCover`](../apps/mobile/src/components/book-cover.tsx)).
-  - استيراد كتاب `.md` أو `.txt` عبر `expo-document-picker` (`testID="import-book-button"`) مع توحيد الـ `id` بـ content hash.
+  - استيراد كتاب `.md` أو `.txt` عبر `expo-document-picker` (`testID="import-book-button"`) مع توحيد الـ `id` بـ content hash. أي ملف أكبر من 20MB، أو فيه بايت NUL في أول 8KB، أو مش UTF-8 صالح، بيترفض برسالة عربية واضحة ([`book-file.ts`](../apps/mobile/src/storage/book-file.ts)).
+  - فتح ملف من تطبيق تاني (Android Open With) عبر `content://`/`file://` ([`intent-import.ts`](../apps/mobile/src/storage/intent-import.ts)): الامتدادات المقبولة `.md`/`.markdown`/`.txt` بس، والاسم بيتاخد من مزود المحتوى أو آخر جزء من الـ URI من غير أي افتراض `.md`، وأي `/` أو `\` أو `..` بيترفض.
   - حذف كتاب بالضغط المطول (`longPress`) مع نافذة تأكيد (`Alert.alert`).
 
 ### 2. التخزين المحلي (Canonical Bundle + SQLite)
@@ -30,3 +31,5 @@
     - الهيدر: رجوع (`testID="reader-back-button"`), العنوان، الفهرس (`testID="reader-toc-button"`).
     - الفوتر: اسم الفصل، «صفحة X من Y»، وscrubber (`testID="reader-scrubber-track"`) يرسل `goto { page }`.
   - الفهرس ([`TocModal`](../apps/mobile/src/components/toc-modal.tsx)): يعرض الفصول من رسالة `toc` ويرسل `goto { chapterId }` عند اختيار فصل.
+  - حدود أمان الـ WebView: `originWhitelist=[file://*, about:blank]`، بلا `allowFileAccessFromFileURLs`/`allowUniversalAccessFromFileURLs`، `allowFileAccess` على Android بس (خطوط woff2 المحلية)، `allowingReadAccessToURL` على فولدر الخطوط بس، و`onShouldStartLoadWithRequest` بيرفض أي navigation خارج مستند القارئ (http/https يتفتح برّه).
+  - `packages/reader-engine/src/template.html` فيه CSP meta: `default-src 'none'` مع `script-src`/`style-src 'unsafe-inline'`، `font-src file: data:`، `img-src file: data: https:`، و`connect-src 'none'`.

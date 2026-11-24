@@ -1,11 +1,13 @@
 import { File } from 'expo-file-system';
 
+import { readBookTextFile } from './book-file';
 import { importBookContent } from './bundle';
 import type { DatabaseAdapter } from './database';
 import { isSupportedBookFileName } from './importer';
 import type { BookLibraryRecord } from '@/types/reader';
 
-const EXPLICIT_EXT_RE = /\.([a-z0-9]{1,10})$/i;
+const EXTENSION_RE = /\.([a-z0-9]{1,10})$/i;
+export const UNSUPPORTED_FORMAT_MESSAGE = 'صيغة الملف غير مدعومة. اختر ملف .md أو .txt.';
 
 export function isBookImportUri(uri: string | null | undefined): uri is string {
   if (!uri || typeof uri !== 'string') return false;
@@ -13,40 +15,76 @@ export function isBookImportUri(uri: string | null | undefined): uri is string {
   return trimmed.startsWith('content://') || trimmed.startsWith('file://');
 }
 
-export function resolveBookFileNameFromUri(uri: string, explicitName?: string | null): string {
-  const cleanedExplicit = explicitName?.trim();
-  if (cleanedExplicit) {
-    if (EXPLICIT_EXT_RE.test(cleanedExplicit)) {
-      if (!isSupportedBookFileName(cleanedExplicit)) {
-        throw new Error('صيغة الملف غير مدعومة. اختر ملف .md أو .txt.');
-      }
-      return cleanedExplicit;
-    }
-    return `${cleanedExplicit}.md`;
+function decodeUriPart(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+/**
+ * A file name is only usable if it is a plain base name with a supported
+ * extension. Anything else (path separators, traversal, unknown or missing
+ * extension) is rejected instead of guessing `.md`.
+ */
+function assertUsableBookFileName(name: string): string {
+  const trimmed = name.trim();
+  if (
+    !trimmed ||
+    trimmed === '.' ||
+    trimmed === '..' ||
+    trimmed.includes('/') ||
+    trimmed.includes('\\') ||
+    trimmed.includes('..')
+  ) {
+    throw new Error(UNSUPPORTED_FORMAT_MESSAGE);
+  }
+  if (!isSupportedBookFileName(trimmed)) {
+    throw new Error(UNSUPPORTED_FORMAT_MESSAGE);
+  }
+  return trimmed;
+}
+
+/** Name offered by the content provider, when it actually carries a usable extension. */
+function resolveProviderName(rawName: string): string | null {
+  const decoded = decodeUriPart(rawName.trim());
+  if (!decoded) return null;
+  if (decoded.includes('..')) {
+    throw new Error(UNSUPPORTED_FORMAT_MESSAGE);
+  }
+  // Providers often return a display label without an extension; then the URI decides.
+  if (!EXTENSION_RE.test(decoded)) return null;
+  return assertUsableBookFileName(decoded);
+}
+
+/** Last path segment of the URI, decoded once, without Android SAF decorations. */
+function resolveUriSegment(uri: string): string {
+  const withoutQuery = uri.split(/[?#]/)[0] ?? uri;
+  const segments = withoutQuery.split('/').filter(Boolean);
+  const lastSegment = segments.pop();
+  if (!lastSegment) {
+    throw new Error(UNSUPPORTED_FORMAT_MESSAGE);
   }
 
-  const withoutQuery = uri.split(/[?#]/)[0] ?? uri;
-  const lastSegmentRaw = withoutQuery.split('/').filter(Boolean).pop() ?? 'imported-book.md';
-  let decoded = lastSegmentRaw;
-  try {
-    decoded = decodeURIComponent(lastSegmentRaw);
-  } catch {
-    decoded = lastSegmentRaw;
+  const decoded = decodeUriPart(lastSegment);
+  if (decoded.includes('..')) {
+    throw new Error(UNSUPPORTED_FORMAT_MESSAGE);
   }
 
   // Handle Android SAF document segments like "primary:Download/novel.md"
-  const afterColon = decoded.includes(':') ? (decoded.split(':').pop() ?? decoded) : decoded;
-  const baseName = afterColon.split(/[\\/]/).filter(Boolean).pop() ?? 'imported-book.md';
+  const afterColon = decoded.includes(':') ? decoded.slice(decoded.indexOf(':') + 1) : decoded;
+  const baseName = afterColon.split(/[\\/]/).pop() ?? afterColon;
+  return assertUsableBookFileName(baseName);
+}
 
-  if (EXPLICIT_EXT_RE.test(baseName)) {
-    if (!isSupportedBookFileName(baseName)) {
-      throw new Error('صيغة الملف غير مدعومة. اختر ملف .md أو .txt.');
-    }
-    return baseName;
+export function resolveBookFileNameFromUri(uri: string, explicitName?: string | null): string {
+  const providerName = explicitName?.trim();
+  if (providerName) {
+    const resolved = resolveProviderName(providerName);
+    if (resolved) return resolved;
   }
-
-  // Some Android content:// URIs omit the extension (e.g. content://media/external/file/42)
-  return `${baseName || 'imported-book'}.md`;
+  return resolveUriSegment(uri);
 }
 
 export type ImportFromUriDeps = {
@@ -60,9 +98,8 @@ export type ImportFromUriDeps = {
 };
 
 async function defaultReadFile(uri: string): Promise<{ text: string; name?: string | null }> {
-  const file = new File(uri);
-  const text = await file.text();
-  return { text, name: file.name };
+  const read = await readBookTextFile(new File(uri));
+  return { text: read.text, name: read.name };
 }
 
 export async function importBookFromUri(
@@ -76,10 +113,8 @@ export async function importBookFromUri(
   const readFile = deps.readFile ?? defaultReadFile;
   const importContent = deps.importContent ?? importBookContent;
 
-  // Validate URI path extension early if an explicit unsupported extension is present
-  const preliminaryName = resolveBookFileNameFromUri(uri);
   const { text, name } = await readFile(uri);
-  const fileName = name ? resolveBookFileNameFromUri(uri, name) : preliminaryName;
+  const fileName = resolveBookFileNameFromUri(uri, name);
 
   if (!text || !text.trim()) {
     throw new Error('الملف فارغ ولا يحتوي على نص.');

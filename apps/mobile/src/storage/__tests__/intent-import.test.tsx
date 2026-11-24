@@ -58,7 +58,9 @@ describe('intent-import & Android Open With flow', () => {
     expect(
       resolveBookFileNameFromUri('content://com.android.externalstorage.documents/document/primary%3ADownload%2F%D8%B1%D9%88%D8%A7%D9%8A%D8%A9.md'),
     ).toBe('رواية.md');
-    expect(resolveBookFileNameFromUri('content://media/external/file/42')).toBe('42.md');
+    expect(() => resolveBookFileNameFromUri('content://media/external/file/42')).toThrow(
+      'صيغة الملف غير مدعومة',
+    );
     expect(() => resolveBookFileNameFromUri('file:///tmp/book.pdf')).toThrow(
       'صيغة الملف غير مدعومة',
     );
