@@ -13,8 +13,8 @@ echo "==> Installing APK..."
 adb install -r -g app.apk || adb install -r app.apk
 
 echo "==> Pushing sample MD files to /sdcard/Download/..."
-adb push rewiaty/samples/sample-ar.md /sdcard/Download/sample-ar.md
-adb push rewiaty/samples/edge-cases.md /sdcard/Download/edge-cases.md
+adb push app/samples/sample-ar.md /sdcard/Download/sample-ar.md
+adb push app/samples/edge-cases.md /sdcard/Download/edge-cases.md
 adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d "file:///storage/emulated/0/Download/sample-ar.md" >/dev/null 2>&1 || true
 adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d "file:///storage/emulated/0/Download/edge-cases.md" >/dev/null 2>&1 || true
 sleep 2
@@ -23,7 +23,7 @@ OVERALL_RC=0
 
 run_flow() {
   local flow_id="$1"
-  local flow_file="rewiaty/flows/${flow_id}.yaml"
+  local flow_file="app/apps/mobile/.maestro/${flow_id}.yaml"
   local junit_file="results/junit/${flow_id}.xml"
   local debug_dir="results/debug/${flow_id}"
   local shot_dir="results/screenshots/${flow_id}"

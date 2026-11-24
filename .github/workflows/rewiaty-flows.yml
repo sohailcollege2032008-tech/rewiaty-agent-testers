@@ -1,31 +1,73 @@
-name: Rewiaty Maestro Flows
+name: Rewiaty Build + Maestro Flows
+
+# Why (Sohail's decision): all Rewiaty builds and device tests run here on free public-repo GitHub Actions,
+# not on the server. The app source is pushed to a `src/<sha12>` branch of this repo; this run builds the
+# release APK from it, then runs the 5 user journeys on an emulator against that same APK.
 
 on:
   workflow_dispatch:
     inputs:
-      apk_url:
-        description: URL of the encrypted release APK asset
+      src_ref:
+        description: Branch holding the Rewiaty source snapshot (src/<sha12>)
         required: true
+        type: string
+      flow:
+        description: Flow id, or "all"
+        required: false
+        default: all
         type: string
 
 permissions:
   contents: read
 
 jobs:
-  flows:
+  build-and-flows:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download and decrypt APK
-        env:
-          APK_URL: ${{ inputs.apk_url }}
-          ARTIFACT_PASSPHRASE: ${{ secrets.ARTIFACT_PASSPHRASE }}
+      - name: Checkout Rewiaty source snapshot
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.src_ref }}
+          path: app
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('app/package-lock.json') }}
+
+      - name: Build release APK
+        working-directory: app
+        run: bash scripts/build-apk.sh
+
+      - name: Stage APK
         run: |
-          curl -fsSL -o app.apk.enc "$APK_URL"
-          openssl enc -d -aes-256-cbc -pbkdf2 -in app.apk.enc -out app.apk -pass env:ARTIFACT_PASSPHRASE
-          sha256sum app.apk
+          cp app/apps/mobile/android/app/build/outputs/apk/release/app-release.apk app.apk
+          sha256sum app.apk | tee apk.sha256
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rewiaty-apk
+          path: |
+            app.apk
+            apk.sha256
+          retention-days: 14
 
       - name: Install Maestro CLI
         run: |
@@ -37,8 +79,10 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
 
-      - name: Run 5 Maestro flows on Android API 34 x86_64
+      - name: Run Maestro flows on Android API 34 x86_64
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          FLOW: ${{ inputs.flow }}
         with:
           api-level: 34
           target: google_apis
