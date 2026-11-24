@@ -310,6 +310,7 @@ export function ReaderScreen() {
   if (loadError) {
     return (
       <View
+        testID="reader-error"
         style={[
           styles.centerState,
           {
@@ -379,6 +380,7 @@ export function ReaderScreen() {
 
       {!engineReady ? (
         <View
+          testID="reader-loading"
           style={[styles.loadingOverlay, { backgroundColor: themeTokens.bg }]}
           pointerEvents="none"
         >

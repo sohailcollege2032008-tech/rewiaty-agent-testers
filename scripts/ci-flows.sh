@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+FLOW_TARGET="${1:-}"
+VALID_FLOWS=("first-launch-sample" "import-md" "resume-position" "settings-live" "open-with-telegram")
+
+is_valid_target() {
+  local target="$1"
+  if [ "$target" = "all" ]; then
+    return 0
+  fi
+  for f in "${VALID_FLOWS[@]}"; do
+    if [ "$f" = "$target" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+if [ -z "$FLOW_TARGET" ] || ! is_valid_target "$FLOW_TARGET"; then
+  echo "Usage: bash scripts/ci-flows.sh <flow-id|all>" >&2
+  echo "Valid flow IDs: all ${VALID_FLOWS[*]}" >&2
+  exit 2
+fi
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+APK_PATH="$ROOT_DIR/apps/mobile/android/app/build/outputs/apk/release/app-release.apk"
+TESTERS_REPO="sohailcollege2032008-tech/rewiaty-agent-testers"
+WORKFLOW_NAME="rewiaty-flows.yml"
+PASSPHRASE_FILE="${REWIATY_APK_PASSPHRASE_FILE:-$HOME/.mobile-agent-testers/sohailcollege2032008-tech_rewiaty-agent-testers.apk-passphrase}"
+
+if [ ! -f "$APK_PATH" ]; then
+  echo "ERROR: Release APK not found at $APK_PATH" >&2
+  echo "Build it first with: mobile-run bash scripts/build-apk.sh" >&2
+  exit 1
+fi
+
+if [ -z "${ARTIFACT_PASSPHRASE:-}" ]; then
+  if [ ! -s "$PASSPHRASE_FILE" ]; then
+    echo "ERROR: Passphrase file missing or empty at $PASSPHRASE_FILE" >&2
+    exit 1
+  fi
+  ARTIFACT_PASSPHRASE="$(tr -d '\r\n' < "$PASSPHRASE_FILE")"
+  export ARTIFACT_PASSPHRASE
+fi
+
+SHA256="$(sha256sum "$APK_PATH" | awk '{print $1}')"
+SHA12="${SHA256:0:12}"
+TAG="apk-${SHA12}"
+ASSET_NAME="app-release-${SHA12}.apk.enc"
+APK_URL="https://github.com/$TESTERS_REPO/releases/download/$TAG/$ASSET_NAME"
+
+echo "==> APK sha256: $SHA256 (tag: $TAG)"
+
+if gh release view "$TAG" -R "$TESTERS_REPO" --json assets -q '.assets[].name' 2>/dev/null | grep -qx "$ASSET_NAME"; then
+  echo "==> Release asset $TAG/$ASSET_NAME already exists, skipping upload."
+else
+  TMP_DIR="$(mktemp -d)"
+  trap 'rm -rf "$TMP_DIR"' EXIT
+  ENC_PATH="$TMP_DIR/$ASSET_NAME"
+  echo "==> Encrypting APK..."
+  openssl enc -aes-256-cbc -pbkdf2 -salt -in "$APK_PATH" -out "$ENC_PATH" -pass env:ARTIFACT_PASSPHRASE
+
+  if ! gh release view "$TAG" -R "$TESTERS_REPO" >/dev/null 2>&1; then
+    echo "==> Creating release $TAG in $TESTERS_REPO..."
+    gh release create "$TAG" -R "$TESTERS_REPO" \
+      --title "Rewiaty APK $SHA12" \
+      --notes "Encrypted release APK for CI Maestro flows (sha256: $SHA256)" >/dev/null
+  fi
+
+  echo "==> Uploading $ASSET_NAME to release $TAG..."
+  gh release upload "$TAG" "$ENC_PATH" -R "$TESTERS_REPO" --clobber >/dev/null
+fi
+
+PREV_RUN_ID="$(gh run list -R "$TESTERS_REPO" --workflow "$WORKFLOW_NAME" -L 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || true)"
+
+echo "==> Dispatching $WORKFLOW_NAME on $TESTERS_REPO..."
+gh workflow run "$WORKFLOW_NAME" -R "$TESTERS_REPO" -f apk_url="$APK_URL"
+
+RUN_ID=""
+for _ in $(seq 1 30); do
+  CANDIDATE="$(gh run list -R "$TESTERS_REPO" --workflow "$WORKFLOW_NAME" -L 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || true)"
+  if [ -n "$CANDIDATE" ] && [ "$CANDIDATE" != "$PREV_RUN_ID" ]; then
+    RUN_ID="$CANDIDATE"
+    break
+  fi
+  sleep 2
+done
+
+if [ -z "$RUN_ID" ]; then
+  echo "ERROR: Could not locate triggered GitHub Actions run for $WORKFLOW_NAME." >&2
+  exit 1
+fi
+
+RUN_URL="https://github.com/$TESTERS_REPO/actions/runs/$RUN_ID"
+echo "==> Run started: $RUN_URL"
+
+WATCH_RC=0
+gh run watch "$RUN_ID" -R "$TESTERS_REPO" --exit-status || WATCH_RC=$?
+
+EVIDENCE_DIR="$ROOT_DIR/.factory/evidence/$SHA12"
+rm -rf "$EVIDENCE_DIR"
+mkdir -p "$EVIDENCE_DIR"
+
+echo "==> Downloading artifacts to .factory/evidence/$SHA12/..."
+gh run download "$RUN_ID" -R "$TESTERS_REPO" -n rewiaty-flows-results -D "$EVIDENCE_DIR" || true
+
+SUMMARY_PATH="$EVIDENCE_DIR/summary.md"
+TARGET_RC=0
+python3 - "$EVIDENCE_DIR" "$SUMMARY_PATH" "$RUN_ID" "$RUN_URL" "$SHA256" "$SHA12" "$FLOW_TARGET" "$WATCH_RC" <<'PY' || TARGET_RC=$?
+import os
+import sys
+import xml.etree.ElementTree as ET
+
+evidence_dir, summary_path, run_id, run_url, sha256, sha12, flow_target, watch_rc_str = sys.argv[1:9]
+watch_rc = int(watch_rc_str)
+
+flows = [
+    "first-launch-sample",
+    "import-md",
+    "resume-position",
+    "settings-live",
+    "open-with-telegram",
+]
+
+status_map = {}
+status_file = os.path.join(evidence_dir, "status.tsv")
+if os.path.isfile(status_file):
+    with open(status_file, encoding="utf-8") as fh:
+        for line in fh:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) >= 3:
+                fid, result, detail = parts[0], parts[1], parts[2]
+                status_map[fid] = (result, detail)
+
+junit_dir = os.path.join(evidence_dir, "junit")
+for fid in flows:
+    junit_path = os.path.join(junit_dir, f"{fid}.xml")
+    if fid not in status_map and os.path.isfile(junit_path):
+        try:
+            tree = ET.parse(junit_path)
+            root = tree.getroot()
+            failures = 0
+            errors = 0
+            for suite in ([root] if root.tag == "testsuite" else root.findall(".//testsuite")):
+                failures += int(suite.attrib.get("failures", 0))
+                errors += int(suite.attrib.get("errors", 0))
+            res = "PASS" if (failures == 0 and errors == 0) else "FAIL"
+            status_map[fid] = (res, f"junit failures={failures} errors={errors}")
+        except Exception as exc:
+            status_map[fid] = ("FAIL", f"junit parse error: {exc}")
+
+csp_status = "UNKNOWN"
+csp_file = os.path.join(evidence_dir, "logs", "csp-check.txt")
+if os.path.isfile(csp_file):
+    with open(csp_file, encoding="utf-8") as fh:
+        csp_status = fh.read().strip() or "UNKNOWN"
+
+lines = [
+    f"# Rewiaty Maestro Flows Summary (`{sha12}`)",
+    "",
+    f"- **Actions Run:** {run_url}",
+    f"- **Run ID:** `{run_id}`",
+    f"- **APK SHA256:** `{sha256}`",
+    f"- **Requested Target:** `{flow_target}`",
+    f"- **Workflow Exit Code:** `{watch_rc}`",
+    f"- **CSP / Amiri Font Check:** {csp_status}",
+    "",
+    "| Flow | Status | Details |",
+    "|---|---|---|",
+]
+
+for fid in flows:
+    res, detail = status_map.get(fid, ("MISSING", "no result recorded"))
+    lines.append(f"| `{fid}` | **{res}** | {detail} |")
+
+with open(summary_path, "w", encoding="utf-8") as out:
+    out.write("\n".join(lines) + "\n")
+
+if flow_target == "all":
+    ok = (watch_rc == 0) and all(status_map.get(f, ("MISSING", ""))[0] == "PASS" for f in flows)
+else:
+    ok = status_map.get(flow_target, ("MISSING", ""))[0] == "PASS"
+
+sys.exit(0 if ok else 1)
+PY
+
+echo "==> Summary written to $SUMMARY_PATH"
+cat "$SUMMARY_PATH"
+
+if [ "$TARGET_RC" -ne 0 ]; then
+  echo "ERROR: Flow verification failed for target '$FLOW_TARGET'." >&2
+  exit 1
+fi
+
+echo "==> Flow verification PASSED for target '$FLOW_TARGET'."

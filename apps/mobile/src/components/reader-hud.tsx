@@ -104,7 +104,11 @@ export function ReaderHud({
           <Text style={[styles.btnText, { color: palette.accent }]}>رجوع</Text>
         </Pressable>
 
-        <Text style={[styles.bookTitle, { color: palette.text }]} numberOfLines={1}>
+        <Text
+          testID="reader-book-title"
+          style={[styles.bookTitle, { color: palette.text }]}
+          numberOfLines={1}
+        >
           {bookTitle}
         </Text>
 
@@ -155,10 +159,17 @@ export function ReaderHud({
         ]}
       >
         <View style={styles.footerInfoRow}>
-          <Text style={[styles.chapterTitle, { color: palette.muted }]} numberOfLines={1}>
+          <Text
+            testID="reader-chapter-title"
+            style={[styles.chapterTitle, { color: palette.muted }]}
+            numberOfLines={1}
+          >
             {chapterTitle}
           </Text>
-          <Text style={[styles.pageCounter, { color: palette.text }]}>
+          <Text
+            testID="reader-page-counter"
+            style={[styles.pageCounter, { color: palette.text }]}
+          >
             {`صفحة ${page} من ${pageCount}`}
           </Text>
         </View>
