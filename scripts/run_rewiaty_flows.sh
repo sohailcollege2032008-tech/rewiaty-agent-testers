@@ -14,7 +14,6 @@ adb shell input keyevent 82 >/dev/null 2>&1 || true
 sleep 20
 close_system_dialogs() {
   adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true
-  adb shell input keyevent 4 >/dev/null 2>&1 || true
 }
 
 mkdir -p results/junit results/screenshots results/video results/logs results/debug
