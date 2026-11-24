@@ -5,6 +5,17 @@ export PATH="$HOME/.maestro/bin:$PATH"
 APP_ID="com.rewiaty.app"
 
 adb wait-for-device
+# Why (tech): let the emulator finish booting and settle before any flow, and keep system ANR dialogs
+# ("X isn't responding") from covering the app under test.
+until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; do sleep 2; done
+adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
+adb shell settings put secure anr_show_background 0 >/dev/null 2>&1 || true
+adb shell input keyevent 82 >/dev/null 2>&1 || true
+sleep 20
+close_system_dialogs() {
+  adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true
+  adb shell input keyevent 4 >/dev/null 2>&1 || true
+}
 
 mkdir -p results/junit results/screenshots results/video results/logs results/debug
 : > results/status.tsv
@@ -31,6 +42,7 @@ run_flow() {
   local flow_rc=0
 
   mkdir -p "$debug_dir" "$shot_dir"
+  close_system_dialogs
   adb logcat -c || true
 
   adb shell rm -f "/sdcard/rec_${flow_id}.mp4" >/dev/null 2>&1 || true
