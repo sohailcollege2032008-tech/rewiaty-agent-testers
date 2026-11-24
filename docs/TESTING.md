@@ -1,42 +1,19 @@
-# اختبار روايتي (Release APK + Maestro Flows)
+# الاختبار على الأجهزة (روايتي)
 
-كل اختبارات الأجهزة بتتعمل على **GitHub Actions** في الريبو البابليك `sohailcollege2032008-tech/rewiaty-agent-testers` على Android Emulator (API 34, x86_64, KVM). **ممنوع** استخدام Redroid أو `app-flow`.
-
-## 1. بناء نسخة الـ Release APK
-البناء بيتم محلياً عبر `mobile-run` (بيعمل `npm ci`، وبناء `reader-engine` و`assets`، و`expo prebuild`، و`assembleRelease` بـ debug keystore):
+**قرار سهيل:** الـ build والاختبار على الأجهزة بيتعملوا الاتنين على GitHub Actions في الريبو البابليك `sohailcollege2032008-tech/rewiaty-agent-testers` (دقايق ببلاش)، **مش على السيرفر**، ومش على Redroid.
 
 ```bash
-mobile-run bash scripts/build-apk.sh
+git commit ...                      # الـ CI بيبني الـ HEAD المتعمله commit
+bash scripts/ci-flows.sh all        # أو flow واحد: first-launch-sample | import-md | resume-position | settings-live | open-with-telegram
 ```
 
-الناتج:
-`apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
+السكربت بيعمل كده:
+1. بيعمل push للكود على فرع `src/<sha12>` في الريبو البابليك.
+2. بيشغّل workflow ‏`rewiaty-flows.yml`، وده بيبني الـ release APK بـ `scripts/build-apk.sh` (من غير `mobile-run`) وبعدين بيشغّل الخمس رحلات على emulator ‏API 34 x86_64.
+3. بينزّل النتايج في `.factory/evidence/<sha12>/`، والرابط `latest` بيشاور عليه:
+   - `summary.md` (ده الوحيد اللي بيدخل git)، و`junit/`، و`screenshots/`، و`video/`، و`logs/`.
+   - و`apk/app.apk` (ده الـ artifact اللي `proof` بيحسب الـ sha256 بتاعه).
 
-## 2. تشغيل رحلات Maestro الخمسة على GitHub Actions
-تقدر تشغّل كل الرحلات أو رحلة محددة:
+الرحلات في `apps/mobile/.maestro/`، والـ workflow بيقراها من نفس نسخة الكود، فمفيش حاجة تتزامن بإيدك.
 
-```bash
-bash scripts/ci-flows.sh all
-# أو رحلة بعينها:
-bash scripts/ci-flows.sh first-launch-sample
-bash scripts/ci-flows.sh import-md
-bash scripts/ci-flows.sh resume-position
-bash scripts/ci-flows.sh settings-live
-bash scripts/ci-flows.sh open-with-telegram
-```
-
-السكربت بيعمل التالي:
-1. بيشفّر الـ APK بـ `ARTIFACT_PASSPHRASE` ويرفعه كـ release asset على تاج `apk-<sha256 أول 12>` في الريبو البابليك (ويتخطى الرفع لو التاج والملف موجودين).
-2. بيشغّل workflow `rewiaty-flows.yml` ويتابعه بـ `gh run watch --exit-status`.
-3. بينزّل النتايج في `.factory/evidence/<sha12>/`.
-
-## 3. أماكن النتايج والأدلة
-- الملخص المتسجّل في git: `.factory/evidence/<sha12>/summary.md`
-- الملفات المحلية (ignored في git):
-  - `junit/*.xml`: تقارير JUnit للرحلات.
-  - `screenshots/<flow>/`: السكرينشوتس لكل رحلة.
-  - `video/<flow>.mp4`: تسجيل الشاشة لكل رحلة.
-  - `logcat.txt` و`logs/`: سجلات الـ WebView والـ CSP وفحص تحميل خط `Amiri`.
-
-## 4. تحديث الـ flows في الريبو البابليك
-ملفات Maestro (`apps/mobile/.maestro/*.yaml`) وملفات العينات (`samples/sample-ar.md`, `samples/edge-cases.md`) بتتنسخ للريبو البابليك `rewiaty-agent-testers` تحت `rewiaty/flows/` و`rewiaty/samples/` (من غير أي كود مصدري من روايتي).
+بيلد محلي للطوارئ بس: `mobile-run bash scripts/build-apk.sh` (عليه طابور مشترك مع مشاريع تانية).

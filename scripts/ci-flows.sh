@@ -24,58 +24,27 @@ if [ -z "$FLOW_TARGET" ] || ! is_valid_target "$FLOW_TARGET"; then
 fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APK_PATH="$ROOT_DIR/apps/mobile/android/app/build/outputs/apk/release/app-release.apk"
 TESTERS_REPO="sohailcollege2032008-tech/rewiaty-agent-testers"
 WORKFLOW_NAME="rewiaty-flows.yml"
-PASSPHRASE_FILE="${REWIATY_APK_PASSPHRASE_FILE:-$HOME/.mobile-agent-testers/sohailcollege2032008-tech_rewiaty-agent-testers.apk-passphrase}"
+cd "$ROOT_DIR"
 
-if [ ! -f "$APK_PATH" ]; then
-  echo "ERROR: Release APK not found at $APK_PATH" >&2
-  echo "Build it first with: mobile-run bash scripts/build-apk.sh" >&2
+# Why (Sohail's decision): the build AND the device tests run on the public repo's free GitHub Actions,
+# never on the server. We push the committed source as a src/<sha12> branch there; the workflow builds the
+# release APK from it and runs the journeys on that exact APK.
+if [ -n "$(git status --porcelain)" ]; then
+  echo "ERROR: commit your changes first (the CI builds the committed HEAD)." >&2
   exit 1
 fi
-
-if [ -z "${ARTIFACT_PASSPHRASE:-}" ]; then
-  if [ ! -s "$PASSPHRASE_FILE" ]; then
-    echo "ERROR: Passphrase file missing or empty at $PASSPHRASE_FILE" >&2
-    exit 1
-  fi
-  ARTIFACT_PASSPHRASE="$(tr -d '\r\n' < "$PASSPHRASE_FILE")"
-  export ARTIFACT_PASSPHRASE
-fi
-
-SHA256="$(sha256sum "$APK_PATH" | awk '{print $1}')"
-SHA12="${SHA256:0:12}"
-TAG="apk-${SHA12}"
-ASSET_NAME="app-release-${SHA12}.apk.enc"
-APK_URL="https://github.com/$TESTERS_REPO/releases/download/$TAG/$ASSET_NAME"
-
-echo "==> APK sha256: $SHA256 (tag: $TAG)"
-
-if gh release view "$TAG" -R "$TESTERS_REPO" --json assets -q '.assets[].name' 2>/dev/null | grep -qx "$ASSET_NAME"; then
-  echo "==> Release asset $TAG/$ASSET_NAME already exists, skipping upload."
-else
-  TMP_DIR="$(mktemp -d)"
-  trap 'rm -rf "$TMP_DIR"' EXIT
-  ENC_PATH="$TMP_DIR/$ASSET_NAME"
-  echo "==> Encrypting APK..."
-  openssl enc -aes-256-cbc -pbkdf2 -salt -in "$APK_PATH" -out "$ENC_PATH" -pass env:ARTIFACT_PASSPHRASE
-
-  if ! gh release view "$TAG" -R "$TESTERS_REPO" >/dev/null 2>&1; then
-    echo "==> Creating release $TAG in $TESTERS_REPO..."
-    gh release create "$TAG" -R "$TESTERS_REPO" \
-      --title "Rewiaty APK $SHA12" \
-      --notes "Encrypted release APK for CI Maestro flows (sha256: $SHA256)" >/dev/null
-  fi
-
-  echo "==> Uploading $ASSET_NAME to release $TAG..."
-  gh release upload "$TAG" "$ENC_PATH" -R "$TESTERS_REPO" --clobber >/dev/null
-fi
+SRC_SHA="$(git rev-parse HEAD)"
+SHA12="${SRC_SHA:0:12}"
+SRC_REF="src/${SHA12}"
+echo "==> Pushing source $SHA12 to $TESTERS_REPO as $SRC_REF"
+git push -q -f "https://github.com/${TESTERS_REPO}.git" "HEAD:refs/heads/${SRC_REF}"
 
 PREV_RUN_ID="$(gh run list -R "$TESTERS_REPO" --workflow "$WORKFLOW_NAME" -L 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || true)"
 
 echo "==> Dispatching $WORKFLOW_NAME on $TESTERS_REPO..."
-gh workflow run "$WORKFLOW_NAME" -R "$TESTERS_REPO" -f apk_url="$APK_URL"
+gh workflow run "$WORKFLOW_NAME" -R "$TESTERS_REPO" -f src_ref="$SRC_REF" -f flow="$FLOW_TARGET"
 
 RUN_ID=""
 for _ in $(seq 1 30); do
@@ -104,6 +73,9 @@ mkdir -p "$EVIDENCE_DIR"
 
 echo "==> Downloading artifacts to .factory/evidence/$SHA12/..."
 gh run download "$RUN_ID" -R "$TESTERS_REPO" -n rewiaty-flows-results -D "$EVIDENCE_DIR" || true
+gh run download "$RUN_ID" -R "$TESTERS_REPO" -n rewiaty-apk -D "$EVIDENCE_DIR/apk" || true
+ln -sfn "$SHA12" "$ROOT_DIR/.factory/evidence/latest"
+SHA256="$(cut -d' ' -f1 "$EVIDENCE_DIR/apk/apk.sha256" 2>/dev/null || echo unknown)"
 
 SUMMARY_PATH="$EVIDENCE_DIR/summary.md"
 TARGET_RC=0
