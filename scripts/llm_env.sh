@@ -15,7 +15,9 @@ if [ -n "${LLM_BASE_URL:-}" ]; then
       echo "llm_base_url is set: put the provider's model name in the model input, not '${MODEL:-}'" >&2
       return 1 ;;
   esac
-  export ANTHROPIC_BASE_URL="${LLM_BASE_URL%/}" ANTHROPIC_AUTH_TOKEN="$LLM_API_KEY" ANTHROPIC_API_KEY=""
+  # x-api-key (Anthropic's own header, what OpenCode Go checks) and Bearer for
+  # providers that expect ANTHROPIC_AUTH_TOKEN: send both, each ignores the other
+  export ANTHROPIC_BASE_URL="${LLM_BASE_URL%/}" ANTHROPIC_AUTH_TOKEN="$LLM_API_KEY" ANTHROPIC_API_KEY="$LLM_API_KEY"
   unset CLAUDE_CODE_OAUTH_TOKEN
   # Claude Code also sends small background requests (titles, summaries) to its
   # "haiku" slot: the provider only knows MODEL, so every slot uses it
@@ -24,6 +26,14 @@ if [ -n "${LLM_BASE_URL:-}" ]; then
     export "$v=$MODEL"
   done
   export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 API_TIMEOUT_MS="${API_TIMEOUT_MS:-600000}"
+  # OpenCode Go (https://opencode.ai/zen/go) refuses requests without a session
+  # id in this header; other Anthropic-compatible APIs ignore it.
+  _oc_session="${LLM_SESSION_ID:-testers-${GITHUB_RUN_ID:-local}-${PERSONA:-agent}}"
+  ANTHROPIC_CUSTOM_HEADERS="x-opencode-session: ${_oc_session}${ANTHROPIC_CUSTOM_HEADERS:+
+${ANTHROPIC_CUSTOM_HEADERS}}"
+  export ANTHROPIC_CUSTOM_HEADERS
+  unset _oc_session
+
   llm_host=${LLM_BASE_URL#*://}; llm_host=${llm_host%%/*}
   echo "Model $MODEL through ${llm_host##*@}"
 fi
