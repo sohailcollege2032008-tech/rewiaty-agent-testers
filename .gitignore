@@ -5,3 +5,6 @@ playwright-report/
 blob-report/
 .DS_Store
 samples/long-ar.md
+
+.factory/evidence/*/*
+!.factory/evidence/*/summary.md
