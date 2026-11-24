@@ -28,7 +28,19 @@ export type RenderedChapter = {
   index: number;
   chapter: Chapter;
   el: HTMLElement;
-  pageCount: number; // measured pages for mounted prefix
+  /**
+   * Real (content) pages of the mounted prefix — never includes the blank chapter pad.
+   * This is the only count exposed to RN (position + TOC), so the reader's page
+   * numbers always point at a page the user can actually see.
+   */
+  pageCount: number;
+  /**
+   * Real pages + blank pad pages. Track geometry only (offset of the next chapter,
+   * how many page turns the chapter owns). Never exposed.
+   */
+  layoutPageCount: number;
+  /** Blank pad pages appended at the end of this chapter (0 or 1, spread mode only). */
+  padPageCount: number;
   estimatedTotalPages: number; // extrapolated total pages until mountedBlockCount === chapter.blocks.length
   mountedBlockCount: number;
   mountedWordCount: number;
@@ -418,7 +430,7 @@ export class Paginator {
       this.currentChapterPage = this.alignToSpread(this.resolveAnchorPageInCurrentChapter(anchorBefore));
     } else {
       const curr = this.rendered.get(this.currentChapterIdx);
-      const maxPage = curr ? curr.pageCount - 1 : 0;
+      const maxPage = curr ? curr.layoutPageCount - 1 : 0;
       this.currentChapterPage = Math.max(0, Math.min(this.currentChapterPage, maxPage));
     }
 
@@ -496,7 +508,7 @@ export class Paginator {
       }
     }
 
-    if (this.currentChapterPage + step < curr.pageCount) {
+    if (this.currentChapterPage + step < curr.layoutPageCount) {
       this.currentChapterPage = this.alignToSpread(this.currentChapterPage + step);
       this.applyTrackTransform(!this.settings.disableAnimation);
       return true;
@@ -530,7 +542,7 @@ export class Paginator {
       // Going backwards to the end of the previous chapter requires all its blocks mounted
       this.syncActiveAndEvict(targetChapter.blocks.length);
       const curr = this.rendered.get(this.currentChapterIdx);
-      this.currentChapterPage = curr ? this.lastSpreadStart(curr.pageCount) : 0;
+      this.currentChapterPage = curr ? this.lastSpreadStart(curr.layoutPageCount) : 0;
       this.applyTrackTransform(false);
       this.scheduleBackgroundWork();
       return true;
@@ -607,7 +619,7 @@ export class Paginator {
         this.layoutVirtualizedChapterOffsets();
       }
 
-      const maxPage = curr ? curr.pageCount - 1 : 0;
+      const maxPage = curr ? curr.layoutPageCount - 1 : 0;
       this.currentChapterPage = this.alignToSpread(Math.min(maxPage, requestedZeroBased));
       this.applyTrackTransform(false);
       this.scheduleBackgroundWork();
@@ -644,7 +656,7 @@ export class Paginator {
         this.layoutVirtualizedChapterOffsets();
       }
 
-      const maxPage = curr ? curr.pageCount - 1 : 0;
+      const maxPage = curr ? curr.layoutPageCount - 1 : 0;
       this.currentChapterPage = this.alignToSpread(Math.min(maxPage, pageInChapter));
       this.applyTrackTransform(false);
       this.scheduleBackgroundWork();
@@ -660,34 +672,44 @@ export class Paginator {
     const curr = this.rendered.get(this.currentChapterIdx);
     if (!chapter || !curr) return null;
 
+    // Real pages only: `getChapterPageEstimates()` never returns pad pages, so the
+    // reported `page` / `pageCount` / `bookProgress` line up with what the reader sees.
     const counts = this.getChapterPageEstimates();
     let pagesBefore = 0;
     for (let i = 0; i < this.currentChapterIdx; i++) {
       pagesBefore += counts[i] ?? 1;
     }
-    const totalPages = counts.reduce((sum, c) => sum + c, 0);
-    const chapterPageCount = curr.isComplete ? curr.pageCount : curr.estimatedTotalPages;
-    const globalPage = pagesBefore + this.currentChapterPage + 1;
+    const totalPages = Math.max(1, counts.reduce((sum, c) => sum + c, 0));
+    const chapterPageCount = Math.max(1, curr.isComplete ? curr.pageCount : curr.estimatedTotalPages);
+    // A chapter can be parked on its final spread while a blank pad fills the facing
+    // page. Clamp back onto the last real page so no exposed number lands on padding.
+    const chapterPageIndex = Math.max(0, Math.min(this.currentChapterPage, chapterPageCount - 1));
+    const globalPage = pagesBefore + chapterPageIndex + 1;
     const bookProgress = totalPages <= 1 ? 1 : (globalPage - 1) / (totalPages - 1);
 
     return {
       anchor: this.captureCurrentAnchor(),
       chapterId: chapter.id,
       page: globalPage,
-      pageCount: Math.max(1, totalPages),
-      chapterPage: this.currentChapterPage + 1,
+      pageCount: totalPages,
+      chapterPage: chapterPageIndex + 1,
       chapterPageCount,
       bookProgress: Math.max(0, Math.min(1, Number(bookProgress.toFixed(6)))),
       spread: this.metrics.spread,
     };
   }
 
+  /**
+   * TOC entries in real page numbers. `startPage` is the 1-based real page the chapter
+   * begins on, so it can be sent back through `goto({ page })` and matches `position.page`.
+   * Blank spread pads are intentionally excluded.
+   */
   getTocEntries(): TocEntry[] {
     if (!this.book) return [];
     const counts = this.getChapterPageEstimates();
     let startPage = 1;
     return this.book.chapters.map((ch, idx) => {
-      const pageCount = counts[idx] ?? 1;
+      const pageCount = Math.max(1, counts[idx] ?? 1);
       const entry: TocEntry = {
         id: ch.id,
         title: ch.title,
@@ -788,7 +810,7 @@ export class Paginator {
 
     if (!rect) return 0;
     const col = getColumnForRect(rect, chRect, this.dir, this.metrics.pageWidth, 'start');
-    return Math.max(0, Math.min(curr.pageCount - 1, col));
+    return Math.max(0, Math.min(curr.layoutPageCount - 1, col));
   }
 
   private getFirstContentRect(el: HTMLElement): DOMRect | null {
@@ -1007,23 +1029,25 @@ export class Paginator {
       child = child.nextElementSibling as HTMLElement | null;
     }
 
-    const draftCount = this.measureChapterScrollPages(el);
+    // No draft measurement here: `applyChapterMeasurements` below reads the real
+    // (pad-aware) page counts in a single pass, which is what `ready` is timed on.
     const isComplete = count >= totalBlocks;
 
     const entry: RenderedChapter = {
       index,
       chapter,
       el,
-      pageCount: draftCount,
-      estimatedTotalPages: draftCount,
+      pageCount: 1,
+      layoutPageCount: 1,
+      padPageCount: 0,
+      estimatedTotalPages: 1,
       mountedBlockCount: count,
       mountedWordCount: wordsMounted,
       isComplete,
       blockEls,
       blockById,
     };
-    entry.pageCount = this.measureChapterPages(entry);
-    entry.estimatedTotalPages = this.computeEstimatedTotalPages(entry);
+    this.applyChapterMeasurements(entry);
     return entry;
   }
 
@@ -1095,25 +1119,27 @@ export class Paginator {
   }
 
   private remeasureChapter(entry: RenderedChapter): void {
-    entry.pageCount = this.measureChapterPages(entry);
-    entry.estimatedTotalPages = this.computeEstimatedTotalPages(entry);
+    this.applyChapterMeasurements(entry);
     if (entry.isComplete) {
       this.pageCache.set(this.cacheKey(entry.chapter), entry.pageCount);
     }
   }
 
   /**
-   * Page count of a chapter, padded in spread mode so the chapter always starts on the
-   * same side of the book (right page in RTL, left page in LTR). A real book pads a
-   * chapter that would otherwise end on a recto with one blank page.
+   * Split a chapter's measured pages into real content pages and blank pad pages.
+   *
+   * In spread mode a chapter that would end on a recto in RTL (odd page count) gets
+   * one blank page so the *next* chapter also opens on the right-hand page. That pad
+   * is pure layout: it is counted here for track geometry but never for `pageCount`,
+   * `page`, TOC `startPage` or progress — those stay on real pages.
    */
-  private measureChapterPages(entry: RenderedChapter): number {
+  private measureChapterPages(entry: RenderedChapter): { pages: number; padPages: number } {
     const existingPad = entry.el.querySelector<HTMLElement>(`.${CHAPTER_PAD_CLASS}`);
     if (existingPad) existingPad.remove();
 
-    const count = this.measureChapterScrollPages(entry.el);
-    if (!this.metrics.spread || !entry.isComplete || count % 2 === 0) {
-      return count;
+    const pages = this.measureChapterScrollPages(entry.el);
+    if (!this.metrics.spread || !entry.isComplete || pages % 2 === 0) {
+      return { pages, padPages: 0 };
     }
 
     const pad = document.createElement('div');
@@ -1122,11 +1148,19 @@ export class Paginator {
     entry.el.appendChild(pad);
 
     const padded = this.measureChapterScrollPages(entry.el);
-    if (padded > count) {
-      return padded;
+    if (padded > pages) {
+      return { pages, padPages: padded - pages };
     }
     pad.remove();
-    return count;
+    return { pages, padPages: 0 };
+  }
+
+  private applyChapterMeasurements(entry: RenderedChapter): void {
+    const { pages, padPages } = this.measureChapterPages(entry);
+    entry.pageCount = pages;
+    entry.padPageCount = padPages;
+    entry.layoutPageCount = pages + padPages;
+    entry.estimatedTotalPages = this.computeEstimatedTotalPages(entry);
   }
 
   /**
@@ -1161,13 +1195,13 @@ export class Paginator {
     }
 
     if (prev) {
-      const offsetPx = this.dir === 'rtl' ? prev.pageCount * pageW : -(prev.pageCount * pageW);
+      const offsetPx = this.dir === 'rtl' ? prev.layoutPageCount * pageW : -(prev.layoutPageCount * pageW);
       prev.el.style.transform = `translate3d(${offsetPx}px, 0, 0)`;
       prev.el.setAttribute('aria-hidden', 'true');
     }
 
     if (next && curr) {
-      const offsetPx = this.dir === 'rtl' ? -(curr.pageCount * pageW) : curr.pageCount * pageW;
+      const offsetPx = this.dir === 'rtl' ? -(curr.layoutPageCount * pageW) : curr.layoutPageCount * pageW;
       next.el.style.transform = `translate3d(${offsetPx}px, 0, 0)`;
       next.el.setAttribute('aria-hidden', 'true');
     }

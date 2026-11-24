@@ -45,3 +45,22 @@ ALL GATES PASSED
 ## ملاحظة
 
 الـ spread بيستخدم عمودين حقيقيين بحيث عرض الصفحة = نصف عرض الـ stage، و`padding-inline` = `gutter/2`، و`column-gap` = `gutter`، فالـ stride = عرض الصفحة بالظبط والكعب واقع على منتصف الـ stage. سقف عرض الكتاب في الـ spread بـ px مش ch (`measureChToPx(...) * 2 + 108`) عشان القياس يبقى مستقل عن الخط.
+
+## مراجعة Codex — التصليح (blocking)
+
+1. **أرقام الصفحات كانت بتحسب صفحة الحشو كأنها صفحة حقيقية.** `measureChapterPages` بقت ترجّع
+   `{ pages, padPages }`: `pages` = الصفحات الحقيقية بس، و`padPages` = صفحة/صفر الحشو.
+   و`RenderedChapter` بقى فيه `layoutPageCount` (حقيقي + حشو) للهندسة فقط، و`pageCount`
+   (حقيقي) هو اللي بيتبعت لـ RN.
+   - الهندسة (`layoutPageCount`): ترانسفورم الفصل السابق/التالي، عدد قلبات الفصل، آخر spread.
+   - اللي بيتبعت لـ RN (`pageCount`): `position.page` / `pageCount` / `chapterPage` /
+     `chapterPageCount` / `bookProgress`، و`toc.startPage` / `toc.pageCount`.
+   - وضع `single`: مفيش حشو خالص (`measureChapterPages` بترجع `padPages: 0` قبل أي pad)،
+     فالأرقام زي ما هي بالحرف قبل التعديل.
+2. **اختبارات جديدة**: `s8` (تغيير الحجم والخط في وضع الصفحتين والـ anchor باين)، `s9` (goto
+   لـ anchor في آخر فصل)، `s10` (ثبات الأرقام بعد ready والـ progressive mount وعبور الفصول
+   مع virtualization)، `s11` (الأرقام الحقيقية: فصل صفحة واحدة بياخد pad في الـ layout وبس،
+   والفهرس تصاعدي على الحقيقي، و`goto page=startPage` يوصّل لنفس الفصل — ومقارنة بنفس الكتاب
+   في `spread: 'single'` حيث مفيش pad خالص).
+3. **`s7` اتعدّل**: كان بيتأكد إن `startPage` فردي (وده كان بيعتمد على الحشو). بقى بيتأكد إن
+   الفهرس تصاعدي على الأرقام الحقيقية، وإن كل فصل لسه بيفتح على الصفحة اليمين في RTL.

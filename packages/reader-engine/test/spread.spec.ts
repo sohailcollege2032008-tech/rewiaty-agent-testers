@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
 import { parseBook, type Book } from '../../book-format/src/index.js';
-import type { RNToWebMessage, WebToRNMessage } from '../src/types.js';
+import type { RNToWebMessage, ReaderSettings, WebToRNMessage } from '../src/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const readerHtmlUrl = pathToFileURL(path.resolve(__dirname, '../dist/reader.html')).href;
@@ -37,6 +37,25 @@ function buildArabicBook(paragraphs: number, chapters: number): Book {
     }
   }
   return parseBook(lines.join('\n'), 'spread-ar.md');
+}
+
+/**
+ * A book with a deliberately tiny chapter (a single short paragraph): in spread mode
+ * that chapter is exactly 1 real page and must therefore get a blank verso pad.
+ * This is the deterministic probe for "pad is geometry, not a page number".
+ */
+function buildPadBook(): Book {
+  const lines: string[] = ['---', 'title: "كِتَابُ الْحَشْوِ"', 'lang: ar', 'dir: rtl', '---', ''];
+  const chapterSizes = [40, 1, 40, 20];
+  chapterSizes.forEach((paragraphs, c) => {
+    lines.push(`# الْفَصْلُ الْحَشْوِيُّ ${c + 1}`);
+    lines.push('');
+    for (let p = 1; p <= paragraphs; p++) {
+      lines.push(`${ARABIC_PARA} (${c + 1}.${p})`);
+      lines.push('');
+    }
+  });
+  return parseBook(lines.join('\n'), 'spread-pad.md');
 }
 
 function buildHugeChapterBook(): Book {
@@ -141,6 +160,57 @@ async function stageRect(page: Page) {
   return page.evaluate(() => {
     const r = document.getElementById('reader-stage')!.getBoundingClientRect();
     return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height };
+  });
+}
+
+type Toc = Extract<WebToRNMessage, { type: 'toc' }>;
+
+async function latestToc(page: Page): Promise<Toc | null> {
+  const msgs = await getMessages(page);
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    if (m?.type === 'toc') return m;
+  }
+  return null;
+}
+
+/** Wait until two consecutive TOC samples are identical — i.e. progressive mounting went idle. */
+async function stableToc(page: Page): Promise<Toc> {
+  let prev = JSON.stringify(await latestToc(page));
+  for (let i = 0; i < 60; i++) {
+    await page.waitForTimeout(250);
+    const current = JSON.stringify(await latestToc(page));
+    if (current === prev && prev !== 'null') {
+      const toc = JSON.parse(current) as Toc;
+      return toc;
+    }
+    prev = current;
+  }
+  throw new Error('TOC never stabilised');
+}
+
+/** Apply a settings change and wait for the engine to emit the new position/toc. */
+async function changeSettings(page: Page, partial: Partial<ReaderSettings>): Promise<void> {
+  const before = (await getMessages(page)).length;
+  await sendBridge(page, { type: 'settings', partial });
+  await expect.poll(async () => (await getMessages(page)).length).toBeGreaterThan(before);
+}
+
+/**
+ * Physical pages each mounted chapter occupies in the track, read straight from the DOM.
+ * This includes the blank chapter pad — it is the geometry, not the reader-facing count.
+ */
+async function chapterLayoutPages(
+  page: Page,
+): Promise<Array<{ id: string; layoutPages: number; padCount: number }>> {
+  return page.evaluate(() => {
+    const pw =
+      Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--page-width')) || 1;
+    return Array.from(document.querySelectorAll<HTMLElement>('.chapter')).map((el) => ({
+      id: el.getAttribute('data-chapter-id') ?? '',
+      layoutPages: Math.max(1, Math.ceil(el.scrollWidth / pw)),
+      padCount: el.querySelectorAll('.chapter-pad').length,
+    }));
   });
 }
 
@@ -388,11 +458,16 @@ test.describe('Rewiaty two-page spread (R2)', () => {
     expect(toc?.type).toBe('toc');
     if (toc?.type !== 'toc') return;
 
-    // RTL right-hand pages are the odd global pages.
+    // TOC numbers are real pages, so start pages are cumulative (no parity alignment).
+    let expectedStart = 1;
     for (const chapter of toc.chapters) {
-      expect(chapter.startPage % 2, `chapter ${chapter.id} start page`).toBe(1);
+      expect(chapter.startPage, `start page of ${chapter.id}`).toBe(expectedStart);
+      expect(chapter.pageCount).toBeGreaterThan(0);
+      expectedStart += chapter.pageCount;
     }
 
+    // The blank verso pad only moves the physical side, never the number: every
+    // chapter still opens on the right-hand page of a spread in an RTL book.
     for (const chapter of book.chapters) {
       await sendBridge(page, { type: 'goto', chapterId: chapter.id });
       await expect.poll(async () => (await getLatestPosition(page))?.chapterId).toBe(chapter.id);
@@ -409,5 +484,259 @@ test.describe('Rewiaty two-page spread (R2)', () => {
       }, chapter.id);
       expect(titleCenter).toBeGreaterThan(stage.left + stage.width / 2);
     }
+  });
+
+  test('(s8) font size/family changes in spread mode keep the anchor block on screen', async ({ page }) => {
+    await page.setViewportSize(LANDSCAPE);
+    await mountEngine(page);
+    const book = buildArabicBook(180, 6);
+
+    await sendBridge(page, { type: 'load', book, settings: { disableAnimation: true, fontSize: 20 } });
+    await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(1);
+
+    for (let i = 0; i < 4; i++) {
+      await sendBridge(page, { type: 'next' });
+    }
+    await expect.poll(async () => (await getLatestPosition(page))?.page ?? 0).toBeGreaterThan(1);
+
+    // Every settings change re-anchors on the block that was at the top of the page
+    // when the change was requested — so capture the anchor immediately before each one.
+    let anchorId = (await getLatestPosition(page))!.anchor.blockId;
+    expect((await getLatestPosition(page))!.spread).toBe(true);
+    expect(await isBlockVisible(page, anchorId)).toBe(true);
+
+    // Bigger type: the layout is rebuilt around the anchor, not reset to page 1.
+    await changeSettings(page, { fontSize: 28 });
+    expect((await getLatestPosition(page))?.spread).toBe(true);
+    expect(await isBlockVisible(page, anchorId), `anchor ${anchorId} lost after fontSize change`).toBe(true);
+
+    // Different face + size together.
+    anchorId = (await getLatestPosition(page))!.anchor.blockId;
+    await changeSettings(page, { fontFamily: 'Noto Naskh Arabic', fontSize: 22 });
+    expect((await getLatestPosition(page))?.spread).toBe(true);
+    expect(await isBlockVisible(page, anchorId), `anchor ${anchorId} lost after fontFamily change`).toBe(true);
+
+    // And back again — still on the block that was on screen before the change.
+    anchorId = (await getLatestPosition(page))!.anchor.blockId;
+    await changeSettings(page, { fontFamily: 'Amiri', fontSize: 20 });
+    expect(await isBlockVisible(page, anchorId), `anchor ${anchorId} lost on revert`).toBe(true);
+    expect((await getLatestPosition(page))?.spread).toBe(true);
+  });
+
+  test('(s9) goto an anchor near the end of the last chapter lands on it', async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(LANDSCAPE);
+    await mountEngine(page);
+    const book = buildArabicBook(240, 8);
+
+    await sendBridge(page, { type: 'load', book, settings: { disableAnimation: true, fontSize: 20 } });
+    await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(1);
+
+    const lastChapter = book.chapters[book.chapters.length - 1]!;
+    const target = lastChapter.blocks[lastChapter.blocks.length - 2]!;
+
+    await sendBridge(page, { type: 'goto', anchor: { blockId: target.id, charOffset: 0 } });
+    await expect.poll(async () => (await getLatestPosition(page))?.chapterId).toBe(lastChapter.id);
+
+    const pos = (await getLatestPosition(page))!;
+    expect(pos.spread).toBe(true);
+    expect(pos.chapterPageCount).toBeGreaterThan(1);
+    expect(pos.page).toBeLessThanOrEqual(pos.pageCount);
+    expect(await isBlockVisible(page, target.id), `anchor ${target.id} not visible`).toBe(true);
+
+    // The block must actually be inside the visible spread, not parked off-screen.
+    const stage = await stageRect(page);
+    const box = await page.evaluate((id) => {
+      const curr = document.querySelector<HTMLElement>('.chapter[aria-hidden="false"]')!;
+      const el = curr.querySelector<HTMLElement>(`[data-block-id="${id}"]`);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { left: r.left, right: r.right };
+    }, target.id);
+    expect(box).not.toBeNull();
+    expect(box!.right).toBeGreaterThan(stage.left);
+    expect(box!.left).toBeLessThan(stage.right);
+
+    // Turning backwards from there keeps real page numbers (never lands on a pad page).
+    await sendBridge(page, { type: 'prev' });
+    const back = (await getLatestPosition(page))!;
+    expect(back.page).toBeGreaterThanOrEqual(1);
+    expect(back.page).toBeLessThanOrEqual(pos.page);
+  });
+
+  test('(s10) page numbers hold through ready, progressive mount and chapter turns (virtualization)', async ({
+    page,
+  }) => {
+    test.setTimeout(150_000);
+    await page.setViewportSize(LANDSCAPE);
+    await mountEngine(page);
+    // 100 paragraphs per chapter ≈ 3,000 words — more than INITIAL_WORD_BUDGET, so the
+    // first chapter is still mounting (and turning pages) when `ready` fires.
+    const book = buildArabicBook(600, 6);
+
+    await sendBridge(page, { type: 'load', book, settings: { disableAnimation: true, fontSize: 20 } });
+    await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(1);
+    const atReady = (await getLatestPosition(page))!;
+    expect(atReady.spread).toBe(true);
+    expect(atReady.chapterPage).toBe(1);
+
+    // Progressive mount runs in the background; the reader must not shift a page.
+    // (`chapterPageCount` may refine from an estimate to the exact count — that is not
+    // a shift, and the exact value is asserted against the DOM below.)
+    const toc = await stableToc(page);
+    const afterMount = (await getLatestPosition(page))!;
+    expect(afterMount.page).toBe(atReady.page);
+    expect(afterMount.chapterPage).toBe(atReady.chapterPage);
+    expect(afterMount.chapterPageCount).toBeGreaterThan(0);
+
+    // Every position emitted for the first chapter since load stayed on its first page.
+    const firstChapter = book.chapters[0]!;
+    const msgs = await getMessages(page);
+    const emitted = msgs.filter(
+      (m): m is Extract<WebToRNMessage, { type: 'position' }> => m.type === 'position' && m.chapterId === firstChapter.id,
+    );
+    expect(emitted.length).toBeGreaterThanOrEqual(2);
+    for (const p of emitted) {
+      expect(p.page).toBe(1);
+      expect(p.chapterPage).toBe(1);
+    }
+
+    // Chapter 1 is fully measured now: its TOC count is exact, pad excluded.
+    const layout = await chapterLayoutPages(page);
+    const firstLayout = layout.find((c) => c.id === firstChapter.id)!;
+    expect(toc.chapters[0]!.pageCount).toBe(firstLayout.layoutPages - firstLayout.padCount);
+
+    // Turn spread by spread through the end of the chapter and into the next one.
+    let pos = (await getLatestPosition(page))!;
+    let lastPageOfFirst = pos.page;
+    let turns = 0;
+    while (pos.chapterId === firstChapter.id && turns < 60) {
+      const prevPage = pos.page;
+      await sendBridge(page, { type: 'next' });
+      await expect.poll(async () => (await getLatestPosition(page))?.page).toBeGreaterThan(prevPage);
+      pos = (await getLatestPosition(page))!;
+      turns++;
+      if (pos.chapterId === firstChapter.id) lastPageOfFirst = pos.page;
+      // Virtualization keeps only [curr - 1, curr, curr + 1] in the DOM.
+      const mounted = await page.evaluate(() => document.querySelectorAll('.chapter').length);
+      expect(mounted).toBeLessThanOrEqual(3);
+    }
+
+    expect(turns).toBeGreaterThan(0);
+    expect(pos.chapterId).toBe(book.chapters[1]!.id);
+    expect(pos.chapterPage).toBe(1);
+    // No blank pad page in between: the first page of chapter 2 is exactly the TOC start page.
+    expect(pos.page).toBe(toc.chapters[1]!.startPage);
+    // …and the last spread opened on the chapter's last real page pair (a spread reports its
+    // first page, so an even page count reports count - 1 — never `count` or a pad page).
+    expect(lastPageOfFirst).toBe(
+      toc.chapters[0]!.startPage + 2 * Math.floor((toc.chapters[0]!.pageCount - 1) / 2),
+    );
+    expect(lastPageOfFirst).toBeLessThan(toc.chapters[0]!.startPage + toc.chapters[0]!.pageCount);
+  });
+
+  test('(s11) page/pageCount/progress/TOC startPage are real pages; the pad is layout only', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(LANDSCAPE);
+    await mountEngine(page);
+    const book = buildPadBook();
+    expect(book.chapters.length).toBe(4);
+
+    // ---------- spread mode ----------
+    await sendBridge(page, { type: 'load', book, settings: { disableAnimation: true, fontSize: 20 } });
+    await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(1);
+    const spreadToc = await stableToc(page);
+    const spreadPos = (await getLatestPosition(page))!;
+    expect(spreadPos.spread).toBe(true);
+
+    // TOC is cumulative on real pages: startPage[i+1] = startPage[i] + pageCount[i].
+    let acc = 1;
+    for (const chapter of spreadToc.chapters) {
+      expect(chapter.startPage, `start page of ${chapter.id}`).toBe(acc);
+      expect(chapter.pageCount).toBeGreaterThan(0);
+      acc += chapter.pageCount;
+    }
+    const realTotal = acc - 1;
+    expect(spreadPos.pageCount).toBe(realTotal);
+    expect(spreadPos.bookProgress).toBeCloseTo((spreadPos.page - 1) / (realTotal - 1), 5);
+
+    // The one-paragraph chapter is exactly one real page, so the spread layout gives it a
+    // blank verso: 2 physical pages in the track, 1 exposed page in the numbers.
+    const tiny = book.chapters[1]!;
+    const tinyToc = spreadToc.chapters.find((c) => c.id === tiny.id)!;
+    expect(tinyToc.pageCount).toBe(1);
+
+    const layout = await chapterLayoutPages(page);
+    const tinyLayout = layout.find((c) => c.id === tiny.id)!;
+    expect(tinyLayout.padCount, 'tiny chapter must carry a blank verso').toBe(1);
+    expect(tinyLayout.layoutPages).toBe(2);
+
+    // For every mounted chapter: physical pages = real pages + its pads, and the pad is 0..1.
+    let mountedLayoutTotal = 0;
+    let mountedRealTotal = 0;
+    let pads = 0;
+    for (const entry of layout) {
+      const chapterToc = spreadToc.chapters.find((c) => c.id === entry.id)!;
+      expect(entry.layoutPages - entry.padCount).toBe(chapterToc.pageCount);
+      expect(entry.padCount).toBeLessThanOrEqual(1);
+      mountedLayoutTotal += entry.layoutPages;
+      mountedRealTotal += chapterToc.pageCount;
+      pads += entry.padCount;
+    }
+    expect(pads).toBeGreaterThanOrEqual(1);
+    expect(mountedLayoutTotal).toBe(mountedRealTotal + pads);
+
+    // Navigation proof: the 1-page chapter owns exactly one spread and one turn lands
+    // straight on the next chapter at exactly `startPage + 1` — no blank page counted.
+    await sendBridge(page, { type: 'goto', chapterId: tiny.id });
+    await expect.poll(async () => (await getLatestPosition(page))?.chapterId).toBe(tiny.id);
+    expect((await getLatestPosition(page))!.page).toBe(tinyToc.startPage);
+    expect((await getLatestPosition(page))!.chapterPage).toBe(1);
+
+    const afterTiny = book.chapters[2]!;
+    const afterTinyToc = spreadToc.chapters.find((c) => c.id === afterTiny.id)!;
+    await sendBridge(page, { type: 'next' });
+    await expect.poll(async () => (await getLatestPosition(page))?.chapterId).toBe(afterTiny.id);
+    const afterTinyPos = (await getLatestPosition(page))!;
+    expect(afterTinyPos.chapterPage).toBe(1);
+    expect(afterTinyPos.page).toBe(afterTinyToc.startPage);
+    expect(afterTinyPos.page).toBe(tinyToc.startPage + 1);
+
+    // goto by the TOC's real start page lands on that chapter as well.
+    const lastToc = spreadToc.chapters[spreadToc.chapters.length - 1]!;
+    await sendBridge(page, { type: 'goto', page: lastToc.startPage });
+    await expect.poll(async () => (await getLatestPosition(page))?.chapterId).toBe(lastToc.id);
+    expect((await getLatestPosition(page))!.page).toBe(lastToc.startPage);
+    expect((await getLatestPosition(page))!.chapterPage).toBe(1);
+
+    // ---------- single mode on the same book ----------
+    await sendBridge(page, {
+      type: 'load',
+      book,
+      settings: { disableAnimation: true, fontSize: 20, spread: 'single' },
+    });
+    await expect.poll(async () => (await getLatestPosition(page))?.spread).toBe(false);
+    const singleToc = await stableToc(page);
+    const singlePos = (await getLatestPosition(page))!;
+
+    let singleAcc = 1;
+    for (const chapter of singleToc.chapters) {
+      expect(chapter.startPage, `single start page of ${chapter.id}`).toBe(singleAcc);
+      singleAcc += chapter.pageCount;
+    }
+    expect(singlePos.pageCount).toBe(singleAcc - 1);
+    expect(singlePos.bookProgress).toBeCloseTo((singlePos.page - 1) / (singlePos.pageCount - 1), 5);
+
+    // No padding at all in single mode, and the numbers equal the pages the layout owns.
+    const singleLayout = await chapterLayoutPages(page);
+    expect(singleLayout.length).toBeGreaterThanOrEqual(2);
+    for (const entry of singleLayout) {
+      expect(entry.padCount, `single mode must not pad ${entry.id}`).toBe(0);
+    }
+    const singleTiny = singleLayout.find((c) => c.id === tiny.id)!;
+    expect(singleTiny.layoutPages).toBe(1);
+    expect(singleToc.chapters.find((c) => c.id === tiny.id)!.pageCount).toBe(1);
   });
 });
