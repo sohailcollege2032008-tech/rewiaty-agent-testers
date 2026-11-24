@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>روايتي — الوَرّاق: ٣ اقتراحات دارك مود + تجربة التابلت والكتاب المفتوح</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #13100E;
+      --surface: #1C1714;
+      --surface-alt: #251F1B;
+      --text: #EDE5DA;
+      --muted: #A79C8F;
+      --border: #322923;
+      --accent: #DF7863;
+      --accent-soft: rgba(223, 120, 99, 0.14);
+      --cta-bg: #A34131;
+      --cta-text: #FAF3EA;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      letter-spacing: 0 !important;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'IBM Plex Sans Arabic', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgba(19, 16, 14, 0.92);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 28px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .top-brand {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .top-title {
+      font-family: 'Amiri', serif;
+      font-size: 27px;
+      font-weight: 700;
+      line-height: 1.15;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .top-pill {
+      font-family: 'IBM Plex Sans Arabic', sans-serif;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--accent);
+      background: var(--accent-soft);
+      padding: 3px 10px;
+      border-radius: 999px;
+    }
+
+    .top-sub {
+      font-size: 13px;
+      color: var(--muted);
+      margin: 0;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .nav-link {
+      text-decoration: none;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 500;
+      padding: 7px 12px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      transition: border-color 150ms, color 150ms;
+    }
+
+    .nav-link:hover {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+
+    .main-wrap {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 30px 26px 80px;
+    }
+
+    .section-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .section-kicker {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 4px;
+    }
+
+    .section-title {
+      font-family: 'Amiri', serif;
+      font-size: 32px;
+      font-weight: 700;
+      margin: 0 0 6px;
+      line-height: 1.2;
+    }
+
+    .section-desc {
+      font-size: 14px;
+      color: var(--muted);
+      margin: 0;
+      max-width: 72ch;
+      line-height: 1.75;
+    }
+
+    .pill-bar {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 4px;
+      background: var(--surface);
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+
+    .ctrl-btn {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-family: 'IBM Plex Sans Arabic', sans-serif;
+      font-size: 12.5px;
+      font-weight: 500;
+      padding: 7px 13px;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: background 150ms, color 150ms;
+    }
+
+    .ctrl-btn:hover { color: var(--text); }
+
+    .ctrl-btn.active {
+      background: var(--cta-bg);
+      color: var(--cta-text);
+      font-weight: 600;
+    }
+
+    /* 3 Dark Proposals Grid */
+    .darks-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(390px, 1fr));
+      gap: 28px;
+      align-items: start;
+      overflow-x: auto;
+      padding-bottom: 12px;
+    }
+
+    @media (max-width: 1280px) {
+      .darks-grid {
+        grid-template-columns: repeat(auto-fit, minmax(390px, 1fr));
+      }
+    }
+
+    .dir-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .dir-card {
+      width: 390px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      padding: 17px 18px;
+    }
+
+    .dir-card.recommended {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(223, 120, 99, 0.45);
+    }
+
+    .dir-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .dir-name-wrap {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+
+    .dir-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background: var(--surface-alt);
+      color: var(--text);
+      font-weight: 700;
+      font-size: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .dir-card.recommended .dir-num {
+      background: var(--cta-bg);
+      color: var(--cta-text);
+    }
+
+    .dir-name {
+      font-family: 'Amiri', serif;
+      font-size: 24px;
+      font-weight: 700;
+      margin: 0;
+      line-height: 1.15;
+    }
+
+    .rec-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      white-space: nowrap;
+    }
+
+    .sub-badge {
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--surface-alt);
+      padding: 3px 8px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+
+    .dir-idea {
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--muted);
+      margin: 0 0 12px;
+    }
+
+    /* Palette + Contrast Strip */
+    .swatch-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    .sw-chip {
+      flex: 1;
+      height: 28px;
+      border-radius: 5px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: 2px;
+      font-size: 9px;
+      font-family: monospace;
+      color: rgba(255, 255, 255, 0.72);
+    }
+
+    .contrast-table {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      padding: 9px 10px;
+      background: var(--surface-alt);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      margin-bottom: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .cr-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .cr-label { font-size: 10.5px; color: var(--muted); }
+    .cr-val { font-size: 12.5px; font-weight: 700; color: var(--text); }
+    .cr-val.aaa { color: #8FD19E; }
+
+    .dir-links {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+    }
+
+    .dir-links a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .dir-links a:hover { text-decoration: underline; }
+
+    .phone-shell {
+      width: 390px;
+      height: 844px;
+      border-radius: 28px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+      background: #000;
+      flex-shrink: 0;
+    }
+
+    .phone-shell iframe {
+      width: 390px;
+      height: 844px;
+      border: none;
+      display: block;
+    }
+
+    .dir-notes {
+      width: 390px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 15px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .note-line { margin: 0; color: var(--muted); }
+    .note-line strong { color: var(--text); font-weight: 600; }
+
+    /* ===================== TABLET SHOWCASE SECTION ===================== */
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 56px 0 48px;
+    }
+
+    .tablet-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 20px;
+    }
+
+    .tablet-stage-outer {
+      width: 100%;
+      background: #0D0B0A;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+    }
+
+    .tablet-frame-slot {
+      position: relative;
+      overflow: hidden;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.65);
+      background: #181310;
+    }
+
+    .tablet-frame-slot iframe {
+      position: absolute;
+      top: 0;
+      left: 0;
+      border: none;
+      transform-origin: top left;
+    }
+
+    .tablet-caption {
+      font-size: 13px;
+      color: var(--muted);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      max-width: 1120px;
+      gap: 10px;
+    }
+
+    .tablet-caption a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    /* Key Tablet Feature Cards */
+    .tablet-highlights {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-top: 22px;
+    }
+
+    @media (max-width: 1024px) {
+      .tablet-highlights { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    .th-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      padding: 15px 16px;
+      cursor: pointer;
+      transition: border-color 150ms, transform 150ms;
+    }
+
+    .th-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+
+    .th-title {
+      font-family: 'Amiri', serif;
+      font-size: 20px;
+      font-weight: 700;
+      margin: 0 0 5px;
+      color: var(--text);
+    }
+
+    .th-desc {
+      font-size: 12.5px;
+      line-height: 1.7;
+      color: var(--muted);
+      margin: 0;
+    }
+
+    /* ===================== RECOMMENDATION BOX ===================== */
+    .recommendation-box {
+      margin-top: 52px;
+      background: linear-gradient(135deg, #211915 0%, #191411 100%);
+      border: 1px solid var(--border);
+      border-inline-start: 4px solid var(--accent);
+      border-radius: 14px;
+      padding: 28px 30px;
+    }
+
+    .rec-title {
+      font-family: 'Amiri', serif;
+      font-size: 29px;
+      font-weight: 700;
+      margin: 0 0 12px;
+      color: var(--text);
+    }
+
+    .rec-body {
+      font-size: 15px;
+      line-height: 1.9;
+      color: var(--text);
+      margin: 0 0 16px;
+    }
+
+    .rec-points {
+      margin: 0;
+      padding: 0 22px 0 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      font-size: 14px;
+      line-height: 1.85;
+      color: var(--muted);
+    }
+
+    .rec-points strong { color: var(--text); }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="top-brand">
+      <h1 class="top-title">
+        <span>روايتي — «الوَرّاق» الليلي والتابلت</span>
+        <span class="top-pill">الاتجاه المختار: أ — الوَرّاق</span>
+      </h1>
+      <p class="top-sub">٣ اقتراحات دارك مود بتباين ≥ ٧:١ (AAA) + تجربة التابلت (١٣٦٦×١٠٢٤ و١٠٢٤×١٣٦٦) بوضع الصفحتين جنب بعض · بدون letter-spacing على العربي</p>
+    </div>
+
+    <nav class="nav-links" aria-label="أقسام الصفحة">
+      <a class="nav-link" href="#darks-section">١. اقتراحات الدارك مود (٣)</a>
+      <a class="nav-link" href="#tablet-section">٢. التابلت والكتاب المفتوح</a>
+      <a class="nav-link" href="#recommendation-section">٣. التوصية النهائية</a>
+    </nav>
+  </header>
+
+  <main class="main-wrap">
+    <!-- SECTION 1: 3 DARK MODE PROPOSALS -->
+    <section id="darks-section" aria-label="٣ اقتراحات دارك مود للوَرّاق">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">أولاً · ٣ شخصيات ليلية مختلفة لنفس روح «الوَرّاق»</div>
+          <h2 class="section-title">الدارك مود: ورق محروق · حبر الليل · عتمة OLED</h2>
+          <p class="section-desc">
+            كل اقتراح يحافظ على كعب الكتاب العربي على اليمين، والشريطة الحريرية القرمزية، وخط <strong>Amiri</strong>، والمكتبة المفتوحة بلا كروت — مع تباين مريح للقراءة الليلية الطويلة (لا أبيض صريح على أسود صريح، وكلهم ≥ ٧:١ AAA). جرّب الشاشات الـ ٤ مباشرة داخل كل موبايل.
+          </p>
+        </div>
+
+        <div class="pill-bar" role="group" aria-label="تبديل الشاشة في الاقتراحات الثلاثة">
+          <button class="ctrl-btn active" data-dark-screen="library">١. المكتبة</button>
+          <button class="ctrl-btn" data-dark-screen="reader">٢. القراية</button>
+          <button class="ctrl-btn" data-dark-screen="hud">٣. الـ HUD</button>
+          <button class="ctrl-btn" data-dark-screen="settings">٤. الإعدادات ٣٥٪</button>
+        </div>
+      </div>
+
+      <div class="darks-grid">
+        <!-- Dark Proposal 1: Burnt Parchment -->
+        <div class="dir-col">
+          <div class="dir-card recommended">
+            <div class="dir-title-row">
+              <div class="dir-name-wrap">
+                <span class="dir-num">١</span>
+                <h3 class="dir-name">وَرَق مَحْروق</h3>
+              </div>
+              <span class="rec-badge">التوصية الأساسية ★</span>
+            </div>
+            <p class="dir-idea">بني إسبرسو دافئ (<code style="direction:ltr">#181310</code>) كغرفة مخطوطات تحت مصباح ليلي هادئ؛ أقل إجهاداً للعين قبل النوم وامتداد مباشر لدفء «الوَرّاق» الفاتح.</p>
+
+            <div class="swatch-row">
+              <span class="sw-chip" style="background:#181310;">#181310</span>
+              <span class="sw-chip" style="background:#221B17;">#221B17</span>
+              <span class="sw-chip" style="background:#DECFC0;color:#181310;">#DECFC0</span>
+              <span class="sw-chip" style="background:#DF7863;color:#181310;">#DF7863</span>
+              <span class="sw-chip" style="background:#B34636;">#B34636</span>
+            </div>
+
+            <div class="contrast-table">
+              <div class="cr-cell"><span class="cr-label">النص / الخلفية</span><span class="cr-val aaa">١٢.١:١ AAA</span></div>
+              <div class="cr-cell"><span class="cr-label">النص الثانوي</span><span class="cr-val">٦.٤:١ AA+</span></div>
+              <div class="cr-cell"><span class="cr-label">القرمزي / الزر</span><span class="cr-val">٦.٢ / ٥.٧:١</span></div>
+            </div>
+
+            <div class="dir-links">
+              <a href="./dark-1-burnt-paper/index.html" target="_blank">فتح منفرد ↗</a>
+              <a href="./dark-1-burnt-paper/tokens.json" target="_blank">tokens.json</a>
+            </div>
+          </div>
+
+          <div class="phone-shell">
+            <iframe id="frame-d1" src="./dark-1-burnt-paper/index.html?embed=1&screen=library&page=1" title="اقتراح ١: ورق محروق"></iframe>
+          </div>
+
+          <div class="dir-notes">
+            <p class="note-line"><strong>الروح:</strong> كأنك أطفأت نور الغرفة وأشعلت مصباح مكتب دافئ على نفس كتاب «الوَرّاق». ملمس الورق الخفيف (١.٨٪) والقرمزي القاني يبقيان الهوية الأدبية كاملة.</p>
+            <p class="note-line"><strong>يناسب:</strong> القراءة الليلية الطويلة على الموبايل والتابلت معاً (ظل الكعب في وضع الصفحتين يظهر فيه بواقعية عالية جداً).</p>
+          </div>
+        </div>
+
+        <!-- Dark Proposal 2: Night Ink -->
+        <div class="dir-col">
+          <div class="dir-card">
+            <div class="dir-title-row">
+              <div class="dir-name-wrap">
+                <span class="dir-num">٢</span>
+                <h3 class="dir-name">حِبْر اللَّيْل</h3>
+              </div>
+              <span class="sub-badge">كحلي ليلي · قرمزي باهت</span>
+            </div>
+            <p class="dir-idea">أزرق كحلي عميق (<code style="direction:ltr">#10151E</code>) مستوحى من الحبر الداكن والكتان الأزرق، مع شريطة قرمزية وردية باهتة (<code style="direction:ltr">#A8454E</code>) وحروف قطنية هادئة.</p>
+
+            <div class="swatch-row">
+              <span class="sw-chip" style="background:#10151E;">#10151E</span>
+              <span class="sw-chip" style="background:#171E2B;">#171E2B</span>
+              <span class="sw-chip" style="background:#D4D8DF;color:#10151E;">#D4D8DF</span>
+              <span class="sw-chip" style="background:#DB7B7C;color:#10151E;">#DB7B7C</span>
+              <span class="sw-chip" style="background:#A8454E;">#A8454E</span>
+            </div>
+
+            <div class="contrast-table">
+              <div class="cr-cell"><span class="cr-label">النص / الخلفية</span><span class="cr-val aaa">١٢.٨:١ AAA</span></div>
+              <div class="cr-cell"><span class="cr-label">النص الثانوي</span><span class="cr-val">٦.٧:١ AA+</span></div>
+              <div class="cr-cell"><span class="cr-label">القرمزي / الزر</span><span class="cr-val">٦.٢ / ٦.٢:١</span></div>
+            </div>
+
+            <div class="dir-links">
+              <a href="./dark-2-night-ink/index.html" target="_blank">فتح منفرد ↗</a>
+              <a href="./dark-2-night-ink/tokens.json" target="_blank">tokens.json</a>
+            </div>
+          </div>
+
+          <div class="phone-shell">
+            <iframe id="frame-d2" src="./dark-2-night-ink/index.html?embed=1&screen=library&page=1" title="اقتراح ٢: حبر الليل"></iframe>
+          </div>
+
+          <div class="dir-notes">
+            <p class="note-line"><strong>الروح:</strong> فخامة هادئة ومحايدة باردة؛ مثالي لمن يرى الدرجات البنية دافئة أكثر من اللازم ويفضّل صفاء الليل الكحلي مع لمسة قرمزية مخملية.</p>
+            <p class="note-line"><strong>الملاحظة:</strong> أبعد قليلاً في درجة الحرارة اللونية عن «الوَرّاق» الفاتح الدافئ، فيشعر القارئ بتحوّل أكبر عند التبديل التلقائي بين النهار والليل.</p>
+          </div>
+        </div>
+
+        <!-- Dark Proposal 3: OLED Crimson -->
+        <div class="dir-col">
+          <div class="dir-card">
+            <div class="dir-title-row">
+              <div class="dir-name-wrap">
+                <span class="dir-num">٣</span>
+                <h3 class="dir-name">عَتْمَة OLED</h3>
+              </div>
+              <span class="rec-badge">مكمّل للوضع الرابع</span>
+            </div>
+            <p class="dir-idea">سواد حقيقي (<code style="direction:ltr">#000000</code>) يطفئ بكسلات شاشات AMOLED في الغرفة المظلمة، بنص عاجي خافت (<code style="direction:ltr">#B9B2A7</code>) بلا هالة أو وهج، ولمسة قرمزية هادئة.</p>
+
+            <div class="swatch-row">
+              <span class="sw-chip" style="background:#000000;">#000000</span>
+              <span class="sw-chip" style="background:#0E0C0C;">#0E0C0C</span>
+              <span class="sw-chip" style="background:#B9B2A7;color:#000000;">#B9B2A7</span>
+              <span class="sw-chip" style="background:#D46A5A;color:#000000;">#D46A5A</span>
+              <span class="sw-chip" style="background:#B04233;">#B04233</span>
+            </div>
+
+            <div class="contrast-table">
+              <div class="cr-cell"><span class="cr-label">النص / الخلفية</span><span class="cr-val aaa">١٠.٠:١ AAA</span></div>
+              <div class="cr-cell"><span class="cr-label">النص الثانوي</span><span class="cr-val">٥.٤:١ AA</span></div>
+              <div class="cr-cell"><span class="cr-label">القرمزي / الزر</span><span class="cr-val">٦.٠ / ٦.١:١</span></div>
+            </div>
+
+            <div class="dir-links">
+              <a href="./dark-3-oled-crimson/index.html" target="_blank">فتح منفرد ↗</a>
+              <a href="./dark-3-oled-crimson/tokens.json" target="_blank">tokens.json</a>
+            </div>
+          </div>
+
+          <div class="phone-shell">
+            <iframe id="frame-d3" src="./dark-3-oled-crimson/index.html?embed=1&screen=library&page=1" title="اقتراح ٣: عتمة OLED"></iframe>
+          </div>
+
+          <div class="dir-notes">
+            <p class="note-line"><strong>الروح:</strong> صُمم خصيصاً للغرف المظلمة تماماً: ضبطنا النص على تباين ١٠:١ بدل ٢١:١ الصارخ، مع حواف دقيقة حول الأغلفة حتى لا تختفي في السواد.</p>
+            <p class="note-line"><strong>الملاحظة:</strong> ممتاز كخيار رابع اختياري (OLED Night في VISION.md)، لكنه أقل دفئاً في وضع الصفحتين على التابلت لأن ظل الكعب الوسطي لا يظهر فوق السواد الصرف.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- SECTION 2: TABLET SHOWCASE -->
+    <section id="tablet-section" aria-label="تجربة التابلت والكتاب المفتوح">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">ثانياً · تجربة التابلت (١٣٦٦×١٠٢٤ بالعرض · ١٠٢٤×١٣٦٦ بالطول)</div>
+          <h2 class="section-title">التابلت: كتاب مفتوح بصفحتين جنب بعض وإعدادات جانبية</h2>
+          <p class="section-desc">
+            في الوضع العرضي تتحول الشاشة لكتاب عربي مفتوح (الصفحة اليمين هي الأولى، وظل ناعم في النص مكان الكعب، وسُمك الصفحات على الطرفين يتغيّر مع التقدّم، والشريطة القرمزية تنسدل من أعلى الكعب، والتقليب يقلّب الصفحتين معاً). وفي الطول عمود قراءة مريح ≤ ٦٢ حرفاً بهوامش واسعة. والإعدادات Popover جانبي يبقي الكتاب ظاهراً تماماً.
+          </p>
+        </div>
+      </div>
+
+      <div class="tablet-toolbar">
+        <div class="pill-bar" role="group" aria-label="اتجاه التابلت">
+          <button class="ctrl-btn active" data-t-orient="landscape">بالعرض ١٣٦٦×١٠٢٤ (صفحتين)</button>
+          <button class="ctrl-btn" data-t-orient="portrait">بالطول ١٠٢٤×١٣٦٦ (صفحة واحدة)</button>
+        </div>
+
+        <div class="pill-bar" role="group" aria-label="شاشات التابلت">
+          <button class="ctrl-btn" data-t-screen="library">المكتبة (Grid + كمّل القراية)</button>
+          <button class="ctrl-btn active" data-t-screen="reader">القراية</button>
+          <button class="ctrl-btn" data-t-screen="hud">الـ HUD</button>
+          <button class="ctrl-btn" data-t-screen="settings">الإعدادات (Popover جانبي)</button>
+        </div>
+
+        <div class="pill-bar" role="group" aria-label="مظهر التابلت">
+          <button class="ctrl-btn active" data-t-theme="light">فاتح (الوَرّاق)</button>
+          <button class="ctrl-btn" data-t-theme="dark-burnt">ورق محروق ★</button>
+          <button class="ctrl-btn" data-t-theme="dark-ink">حبر الليل</button>
+          <button class="ctrl-btn" data-t-theme="dark-oled">عتمة OLED</button>
+        </div>
+      </div>
+
+      <div class="tablet-stage-outer" id="tabletStageOuter">
+        <div class="tablet-frame-slot" id="tabletSlot">
+          <iframe id="tabletFrame" src="./tablet/index.html?embed=1&orient=landscape&screen=reader&theme=light" title="معاينة تابلت الوَرّاق"></iframe>
+        </div>
+        <div class="tablet-caption">
+          <span><strong>جرّب التقليب المباشر:</strong> اضغط الطرف اليسار من الكتاب لتقليب الصفحتين معاً للأمام، والطرف اليمين للرجوع، والمنتصف لإظهار الـ HUD، واضغط الشريطة القرمزية في أعلى الكعب.</span>
+          <span style="display:flex;gap:14px;">
+            <a href="./tablet/index.html" target="_blank">فتح التابلت ملء الشاشة ↗</a>
+            <a href="./tablet/tokens.json" target="_blank">tablet/tokens.json</a>
+          </span>
+        </div>
+      </div>
+
+      <div class="tablet-highlights" aria-label="لقطات سريعة لأهم حالات التابلت">
+        <div class="th-card" data-preset="spread-light">
+          <h4 class="th-title">١. كتاب مفتوح — فاتح</h4>
+          <p class="th-desc">صفحتان متقابلتان ١٣٦٦×١٠٢٤ (اليمين أولاً)، ظل الكعب الوسطي، سُمك الورق المتغيّر، والشريطة في الكعب.</p>
+        </div>
+        <div class="th-card" data-preset="spread-dark">
+          <h4 class="th-title">٢. كتاب مفتوح — ورق محروق</h4>
+          <p class="th-desc">نفس الإحساس الورقي في الظلام الدافئ مع ظل الكعب العميق وتباين ١٢.١:١ مريح لساعات.</p>
+        </div>
+        <div class="th-card" data-preset="portrait-light">
+          <h4 class="th-title">٣. بالطول ١٠٢٤×١٣٦٦</h4>
+          <p class="th-desc">صفحة واحدة بعرض سطر مريح (≤ ٦٢ حرفاً) وهوامش واسعة مريحة للعين بدون تمدد سطور مزعج.</p>
+        </div>
+        <div class="th-card" data-preset="settings-dark">
+          <h4 class="th-title">٤. إعدادات Popover جانبي</h4>
+          <p class="th-desc">لوحة عائمة أنيقة بدل الـ bottom sheet، تبقي أكثر من ٧٥٪ من الصفحتين ظاهرين مع تعديل فوري.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 3: RECOMMENDATION -->
+    <section id="recommendation-section" class="recommendation-box" aria-label="التوصية النهائية">
+      <h2 class="rec-title">التوصية: اعتماد «وَرَق مَحْروق» كالدارك الأساسي للوَرّاق + «عَتْمَة OLED» كخيار رابع</h2>
+      <p class="rec-body">
+        لأن سهيل اختار <strong>«الوَرّاق»</strong> بسبب دفئه الأدبي وهوية الكتاب المطبوع العربي، فإن <strong>اقتراح ١ «وَرَق مَحْروق»</strong> هو الوحيد الذي ينقل نفس الروح بالضبط إلى الليل — دون أن يتحول التطبيق إلى واجهة تقنية باردة أو رمادية عادية — بينما يغطّي <strong>اقتراح ٣ «عَتْمَة OLED»</strong> احتياج القراءة في الغرف المظلمة تماماً على الموبايل، لنحقّق ثيمات <code>VISION.md</code> الأربعة بانسجام كامل (ورق دافئ · سيبيا · ورق محروق · عتمة OLED).
+      </p>
+      <ul class="rec-points">
+        <li><strong>استمرارية بصرية تامة مع النهار:</strong> الانتقال من <code>#FAF7F0</code> نهاراً إلى <code>#181310</code> ليلاً يحافظ على نفس درجة الدفء والهوية القرمزية وكعب الأغلفة، وكأنك أطفأت الشمس وأشعلت مصباح مكتب دافئ على نفس الكتاب.</li>
+        <li><strong>أريح للعين قبل النوم (١٢.١:١ AAA):</strong> يتجنّب الوهج الأزرق البارد وتباين الأبيض-على-الأسود الحارق، مع الحفاظ على وضوح فائق للتشكيل وحروف خط <strong>Amiri</strong>.</li>
+        <li><strong>الأجمل في وضع الصفحتين على التابلت:</strong> فوق الخلفية الإسبرسو الدافئة يظهر ظل الكعب الوسطي وسُمك حواف الصفحات بعمق واقعي يشبه كتاباً مجلّداً مفتوحاً، بخلاف الأسود الصرف الذي يبتلع ظلال الكعب.</li>
+        <li><strong>متى تختار «حبر الليل»؟</strong> لو تفضّل أن يكون الليل مختلفاً تماماً في حرارته عن النهار (بارد وهادئ بلمسة وردية قرمزية)، فـ«حبر الليل» بديل راقٍ جداً بتباين ١٢.٨:١ — ويمكن حتى إضافته مستقبلاً كثيم خامس لمن يحبّه.</li>
+      </ul>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      'use strict';
+
+      // Sync the 3 Dark Mobile prototypes
+      const darkFrames = ['frame-d1', 'frame-d2', 'frame-d3'].map(id => document.getElementById(id));
+      function broadcastDarks(msg) {
+        darkFrames.forEach(f => {
+          if (f && f.contentWindow) f.contentWindow.postMessage(msg, '*');
+        });
+      }
+
+      document.querySelectorAll('[data-dark-screen]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const screen = btn.getAttribute('data-dark-screen');
+          document.querySelectorAll('[data-dark-screen]').forEach(b => b.classList.toggle('active', b === btn));
+          broadcastDarks({ type: 'setScreen', screen });
+        });
+      });
+
+      // Tablet stage scaling & live controls
+      const tabletState = { orient: 'landscape', screen: 'reader', theme: 'light' };
+      const tabletSlot = document.getElementById('tabletSlot');
+      const tabletFrame = document.getElementById('tabletFrame');
+      const stageOuter = document.getElementById('tabletStageOuter');
+
+      function layoutTabletSlot() {
+        const tw = tabletState.orient === 'landscape' ? 1366 : 1024;
+        const th = tabletState.orient === 'landscape' ? 1024 : 1366;
+        const maxW = Math.min(1120, Math.max(320, stageOuter.clientWidth - 48));
+        const maxH = tabletState.orient === 'landscape' ? 840 : 880;
+        const scale = Math.min(maxW / tw, maxH / th, 1);
+
+        tabletSlot.style.width = Math.round(tw * scale) + 'px';
+        tabletSlot.style.height = Math.round(th * scale) + 'px';
+        tabletFrame.style.width = tw + 'px';
+        tabletFrame.style.height = th + 'px';
+        tabletFrame.style.transform = `scale(${scale.toFixed(5)})`;
+      }
+
+      function syncTablet(reload) {
+        layoutTabletSlot();
+        document.querySelectorAll('[data-t-orient]').forEach(b => b.classList.toggle('active', b.getAttribute('data-t-orient') === tabletState.orient));
+        document.querySelectorAll('[data-t-screen]').forEach(b => b.classList.toggle('active', b.getAttribute('data-t-screen') === tabletState.screen));
+        document.querySelectorAll('[data-t-theme]').forEach(b => b.classList.toggle('active', b.getAttribute('data-t-theme') === tabletState.theme));
+
+        if (reload) {
+          tabletFrame.src = `./tablet/index.html?embed=1&orient=${tabletState.orient}&screen=${tabletState.screen}&theme=${tabletState.theme}`;
+        } else if (tabletFrame.contentWindow) {
+          tabletFrame.contentWindow.postMessage({ type: 'setOrient', orient: tabletState.orient }, '*');
+          tabletFrame.contentWindow.postMessage({ type: 'setTheme', theme: tabletState.theme }, '*');
+          tabletFrame.contentWindow.postMessage({ type: 'setScreen', screen: tabletState.screen }, '*');
+        }
+      }
+
+      document.querySelectorAll('[data-t-orient]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          tabletState.orient = btn.getAttribute('data-t-orient');
+          syncTablet(false);
+        });
+      });
+
+      document.querySelectorAll('[data-t-screen]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          tabletState.screen = btn.getAttribute('data-t-screen');
+          syncTablet(false);
+        });
+      });
+
+      document.querySelectorAll('[data-t-theme]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          tabletState.theme = btn.getAttribute('data-t-theme');
+          syncTablet(false);
+        });
+      });
+
+      const PRESETS = {
+        'spread-light': { orient: 'landscape', screen: 'reader', theme: 'light' },
+        'spread-dark': { orient: 'landscape', screen: 'reader', theme: 'dark-burnt' },
+        'portrait-light': { orient: 'portrait', screen: 'reader', theme: 'light' },
+        'settings-dark': { orient: 'landscape', screen: 'settings', theme: 'dark-burnt' }
+      };
+
+      document.querySelectorAll('[data-preset]').forEach(card => {
+        card.addEventListener('click', () => {
+          const p = PRESETS[card.getAttribute('data-preset')];
+          if (!p) return;
+          Object.assign(tabletState, p);
+          syncTablet(false);
+          stageOuter.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+      });
+
+      window.addEventListener('resize', layoutTabletSlot);
+      layoutTabletSlot();
+    })();
+  </script>
+</body>
+</html>

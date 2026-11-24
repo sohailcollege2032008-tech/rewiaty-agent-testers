@@ -1,0 +1,2677 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light" data-orient="landscape">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>روايتي — الوَرّاق للتابلت (صفحتين جنب بعض)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=Literata:ital,opsz,wght@0,7..72,300..600;1,7..72,400&family=Merriweather:wght@300;400;700&family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Readex+Pro:wght@300;400;500;600;700&family=Scheherazade+New:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      /* Light: Al-Warraq Warm Paper */
+      --desk-bg: #EAE1D1;
+      --board-rim: #D7CBB7;
+      --bg: #FAF7F0;
+      --surface: #F3EDE2;
+      --surface-elevated: #FFFDF8;
+      --hud-bg: rgba(250, 247, 240, 0.95);
+      --panel-bg: rgba(253, 250, 244, 0.97);
+      --text: #231F1A;
+      --muted: #6E655A;
+      --border: #E3DACB;
+      --accent: #9E3E2F;
+      --accent-soft: rgba(158, 62, 47, 0.11);
+      --cta-bg: #9E3E2F;
+      --cta-text: #FFFBF7;
+      --quote-bg: rgba(35, 31, 26, 0.036);
+      --quote-border: #9E3E2F;
+      --page-edge: rgba(110, 96, 78, 0.30);
+      --page-edge-bg: #F1E9DC;
+      --ribbon: #A43E2F;
+      --ribbon-deep: #7B2B1F;
+      --ribbon-stitch: rgba(255, 250, 240, 0.32);
+      --spine-crease: rgba(54, 42, 28, 0.24);
+      --spine-inner: rgba(54, 42, 28, 0.11);
+      --spine-mid: rgba(54, 42, 28, 0.045);
+      --spine-sheen: rgba(255, 253, 248, 0.52);
+      --book-shadow: 0 18px 46px rgba(48, 38, 26, 0.14), 0 2px 8px rgba(48, 38, 26, 0.08);
+      --cover-rim: rgba(35, 31, 26, 0.10);
+      --cover-shadow: -4px 8px 18px rgba(35, 31, 26, 0.16), -1px 2px 4px rgba(35, 31, 26, 0.10);
+      --panel-shadow: 0 20px 50px rgba(35, 31, 26, 0.16), 0 2px 10px rgba(35, 31, 26, 0.08);
+      --grain-opacity: 0.03;
+
+      --ui-font: 'IBM Plex Sans Arabic', sans-serif;
+      --display-font: 'Amiri', serif;
+      --read-font: 'Amiri', 'Noto Naskh Arabic', serif;
+      --read-size: 20.5px;
+      --read-lh: 1.98;
+      --read-ws: 0px;
+      --read-weight: 400;
+      --read-align: justify;
+      --read-indent: 1.5em;
+      --read-pgap: 8px;
+      --page-turn-ms: 290ms;
+      --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+      --ribbon-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    html[data-theme="dark-burnt"] {
+      --desk-bg: #100C0A;
+      --board-rim: #2D231C;
+      --bg: #181310;
+      --surface: #221B17;
+      --surface-elevated: #2B231D;
+      --hud-bg: rgba(24, 19, 16, 0.95);
+      --panel-bg: rgba(33, 26, 21, 0.97);
+      --text: #DECFC0;
+      --muted: #A69686;
+      --border: #372C25;
+      --accent: #DF7863;
+      --accent-soft: rgba(223, 120, 99, 0.15);
+      --cta-bg: #A34131;
+      --cta-text: #FAF3EA;
+      --quote-bg: rgba(222, 207, 192, 0.045);
+      --quote-border: #C95E4B;
+      --page-edge: rgba(222, 207, 192, 0.22);
+      --page-edge-bg: #1E1713;
+      --ribbon: #B54737;
+      --ribbon-deep: #893022;
+      --ribbon-stitch: rgba(250, 238, 224, 0.28);
+      --spine-crease: rgba(0, 0, 0, 0.78);
+      --spine-inner: rgba(0, 0, 0, 0.44);
+      --spine-mid: rgba(0, 0, 0, 0.16);
+      --spine-sheen: rgba(255, 238, 220, 0.035);
+      --book-shadow: 0 22px 56px rgba(0, 0, 0, 0.62), 0 2px 10px rgba(0, 0, 0, 0.40);
+      --cover-rim: rgba(232, 214, 192, 0.14);
+      --cover-shadow: -5px 10px 24px rgba(0, 0, 0, 0.48), -1px 2px 5px rgba(0, 0, 0, 0.30);
+      --panel-shadow: 0 24px 60px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(222, 207, 192, 0.06);
+      --grain-opacity: 0.018;
+    }
+
+    html[data-theme="dark-ink"] {
+      --desk-bg: #090D14;
+      --board-rim: #222C3E;
+      --bg: #10151E;
+      --surface: #171E2B;
+      --surface-elevated: #1F2838;
+      --hud-bg: rgba(16, 21, 30, 0.95);
+      --panel-bg: rgba(23, 30, 43, 0.97);
+      --text: #D4D8DF;
+      --muted: #939EAE;
+      --border: #283347;
+      --accent: #DB7B7C;
+      --accent-soft: rgba(219, 123, 124, 0.14);
+      --cta-bg: #993D45;
+      --cta-text: #FAF3F4;
+      --quote-bg: rgba(212, 216, 223, 0.04);
+      --quote-border: #C26269;
+      --page-edge: rgba(212, 216, 223, 0.18);
+      --page-edge-bg: #141B26;
+      --ribbon: #A8454E;
+      --ribbon-deep: #7F2F37;
+      --ribbon-stitch: rgba(248, 232, 235, 0.25);
+      --spine-crease: rgba(3, 6, 12, 0.82);
+      --spine-inner: rgba(4, 8, 16, 0.48);
+      --spine-mid: rgba(4, 8, 16, 0.18);
+      --spine-sheen: rgba(212, 224, 245, 0.032);
+      --book-shadow: 0 22px 56px rgba(3, 6, 12, 0.68), 0 2px 10px rgba(3, 6, 12, 0.45);
+      --cover-rim: rgba(208, 218, 235, 0.14);
+      --cover-shadow: -5px 10px 24px rgba(3, 6, 14, 0.55);
+      --panel-shadow: 0 24px 60px rgba(3, 6, 14, 0.70);
+      --grain-opacity: 0.01;
+    }
+
+    html[data-theme="dark-oled"] {
+      --desk-bg: #000000;
+      --board-rim: #24201F;
+      --bg: #000000;
+      --surface: #0E0C0C;
+      --surface-elevated: #171414;
+      --hud-bg: rgba(0, 0, 0, 0.96);
+      --panel-bg: rgba(16, 14, 14, 0.98);
+      --text: #B9B2A7;
+      --muted: #878077;
+      --border: #262120;
+      --accent: #D46A5A;
+      --accent-soft: rgba(212, 106, 90, 0.15);
+      --cta-bg: #9B3A2C;
+      --cta-text: #F8EFE8;
+      --quote-bg: rgba(185, 178, 167, 0.045);
+      --quote-border: #B84D3D;
+      --page-edge: rgba(185, 178, 167, 0.16);
+      --page-edge-bg: #0A0909;
+      --ribbon: #B04233;
+      --ribbon-deep: #822A1E;
+      --ribbon-stitch: rgba(248, 232, 224, 0.24);
+      --spine-crease: rgba(210, 198, 185, 0.16);
+      --spine-inner: rgba(210, 198, 185, 0.035);
+      --spine-mid: rgba(0, 0, 0, 0);
+      --spine-sheen: rgba(255, 255, 255, 0.02);
+      --book-shadow: 0 0 0 1px #24201F;
+      --cover-rim: rgba(210, 198, 185, 0.16);
+      --cover-shadow: 0 10px 24px rgba(0, 0, 0, 0.72);
+      --panel-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 0 1px #2C2625;
+      --grain-opacity: 0;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      letter-spacing: 0 !important;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      font-family: var(--ui-font);
+      background: #1C1917;
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden;
+    }
+
+    body.embed {
+      background: var(--bg);
+    }
+
+    /* Standalone desktop stage */
+    .stage-wrap {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 12px;
+      overflow: auto;
+    }
+
+    body.embed .stage-wrap {
+      padding: 0;
+      gap: 0;
+      overflow: hidden;
+    }
+
+    .standalone-bar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 6px;
+      padding: 6px 10px;
+      background: rgba(28, 25, 23, 0.94);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      color: #EAE4DC;
+      flex-shrink: 0;
+    }
+
+    body.embed .standalone-bar { display: none; }
+
+    .sb-btn {
+      border: none;
+      background: transparent;
+      color: #B4ABA0;
+      font-family: var(--ui-font);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 5px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .sb-btn.active {
+      background: #A34131;
+      color: #FAF3EA;
+      font-weight: 600;
+    }
+
+    .sb-sep {
+      width: 1px;
+      height: 16px;
+      background: rgba(255, 255, 255, 0.14);
+      margin: 0 2px;
+    }
+
+    /* Tablet viewport container */
+    .tablet-viewport-scaler {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      width: 100%;
+      min-height: 0;
+    }
+
+    .tablet {
+      position: relative;
+      width: 1366px;
+      height: 1024px;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+      border-radius: 22px;
+      box-shadow: 0 32px 84px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.10);
+      transition: background-color 220ms var(--ease-out), color 220ms var(--ease-out);
+      user-select: none;
+      transform-origin: center center;
+    }
+
+    html[data-orient="portrait"] .tablet {
+      width: 1024px;
+      height: 1366px;
+    }
+
+    body.embed .tablet {
+      width: 100vw !important;
+      height: 100vh !important;
+      border-radius: 0;
+      box-shadow: none;
+      transform: none !important;
+    }
+
+    .paper-grain {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 95;
+      opacity: var(--grain-opacity);
+      background-repeat: repeat;
+      background-size: 128px 128px;
+    }
+
+    .screen {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      background: var(--bg);
+    }
+
+    .screen.active { display: flex; }
+
+    /* ===================== TABLET LIBRARY SCREEN ===================== */
+    .tlib-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 28px 56px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+      flex-shrink: 0;
+    }
+
+    html[data-orient="portrait"] .tlib-header {
+      padding: 32px 44px 20px;
+    }
+
+    .brand-lockup {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-name {
+      font-family: var(--display-font);
+      font-size: 32px;
+      font-weight: 700;
+      line-height: 1.05;
+      color: var(--text);
+    }
+
+    .brand-sub {
+      font-size: 13px;
+      color: var(--muted);
+      padding-inline-start: 14px;
+      border-inline-start: 1px solid var(--border);
+    }
+
+    .tlib-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .theme-pill-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .theme-pill-btn {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-family: var(--ui-font);
+      font-size: 12.5px;
+      font-weight: 500;
+      padding: 6px 12px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background 150ms, color 150ms;
+    }
+
+    .theme-pill-btn.active {
+      background: var(--surface-elevated);
+      color: var(--accent);
+      font-weight: 600;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+    }
+
+    .import-btn {
+      height: 38px;
+      padding: 0 16px;
+      border-radius: 7px;
+      border: 1px solid var(--accent);
+      background: transparent;
+      color: var(--accent);
+      font-family: var(--ui-font);
+      font-size: 13.5px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+      transition: background 160ms, color 160ms, border-color 160ms;
+    }
+
+    .import-btn:hover {
+      background: var(--cta-bg);
+      border-color: var(--cta-bg);
+      color: var(--cta-text);
+    }
+
+    .tlib-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 32px 56px 48px;
+      scrollbar-width: none;
+    }
+
+    html[data-orient="portrait"] .tlib-scroll {
+      padding: 30px 44px 48px;
+    }
+
+    .tlib-scroll::-webkit-scrollbar { display: none; }
+
+    /* Prominent Continue Reading Editorial Hero Spread */
+    .t-hero {
+      display: grid;
+      grid-template-columns: 164px minmax(0, 1fr) 260px;
+      gap: 32px;
+      align-items: center;
+      padding-bottom: 32px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+
+    html[data-orient="portrait"] .t-hero {
+      grid-template-columns: 152px minmax(0, 1fr);
+      gap: 28px;
+    }
+
+    .t-hero-cover {
+      width: 164px;
+      height: 238px;
+    }
+
+    html[data-orient="portrait"] .t-hero-cover {
+      width: 152px;
+      height: 220px;
+    }
+
+    .t-hero-body {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .hero-state-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .hero-state {
+      font-size: 12.5px;
+      color: var(--accent);
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .hero-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .hero-spread-tag {
+      font-size: 11.5px;
+      color: var(--muted);
+      padding: 2px 9px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .t-hero-title {
+      font-family: var(--display-font);
+      font-size: 38px;
+      font-weight: 700;
+      line-height: 1.3;
+      margin: 0 0 4px;
+      color: var(--text);
+    }
+
+    .t-hero-author {
+      font-size: 15px;
+      color: var(--muted);
+      margin: 0 0 14px;
+    }
+
+    .t-hero-excerpt {
+      font-family: var(--read-font);
+      font-size: 17px;
+      line-height: 1.85;
+      color: var(--muted);
+      margin: 0 0 18px;
+      padding-inline-start: 14px;
+      border-inline-start: 2px solid var(--quote-border);
+      max-width: 56ch;
+    }
+
+    .t-hero-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .continue-cta {
+      height: 44px;
+      padding: 0 22px;
+      border-radius: 7px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: var(--cta-bg);
+      color: var(--cta-text);
+      font-family: var(--ui-font);
+      font-size: 14.5px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      cursor: pointer;
+      transition: transform 150ms var(--ease-out), opacity 150ms;
+    }
+
+    .continue-cta:hover { opacity: 0.94; }
+    .continue-cta:active { transform: scale(0.98); }
+
+    .secondary-cta {
+      height: 44px;
+      padding: 0 18px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-family: var(--ui-font);
+      font-size: 13.5px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+    }
+
+    .secondary-cta:hover { border-color: var(--accent); color: var(--accent); }
+
+    .t-hero-stats {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding-inline-start: 28px;
+      border-inline-start: 1px solid var(--border);
+    }
+
+    html[data-orient="portrait"] .t-hero-stats {
+      grid-column: 1 / -1;
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      padding-inline-start: 0;
+      padding-top: 16px;
+      border-inline-start: none;
+      border-top: 1px solid var(--border);
+    }
+
+    .stat-block {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .stat-label { font-size: 11.5px; color: var(--muted); }
+    .stat-val { font-size: 15px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+
+    .hair-track {
+      width: 100%;
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .hair-fill {
+      height: 100%;
+      background: var(--accent);
+      transition: width 300ms var(--ease-out);
+    }
+
+    /* Tablet Shelf Grid */
+    .shelf-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin: 28px 0 20px;
+    }
+
+    .shelf-title {
+      font-family: var(--display-font);
+      font-size: 25px;
+      font-weight: 700;
+      margin: 0;
+      color: var(--text);
+    }
+
+    .shelf-meta {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .t-book-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 30px 28px;
+    }
+
+    html[data-orient="portrait"] .t-book-grid {
+      grid-template-columns: repeat(3, 1fr);
+      gap: 28px 24px;
+    }
+
+    .book-tile {
+      display: flex;
+      flex-direction: column;
+      cursor: pointer;
+    }
+
+    .book-tile:hover .proc-cover {
+      transform: translateY(-3px);
+    }
+
+    .tile-cover-box {
+      width: 100%;
+      aspect-ratio: 2 / 2.85;
+      margin-bottom: 12px;
+    }
+
+    .tile-title {
+      font-family: var(--display-font);
+      font-size: 19px;
+      font-weight: 700;
+      line-height: 1.35;
+      color: var(--text);
+      margin: 0 0 3px;
+    }
+
+    .tile-author {
+      font-size: 13px;
+      color: var(--muted);
+      margin: 0 0 9px;
+    }
+
+    .tile-foot {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .tile-foot .hair-track { flex: 1; height: 2px; }
+    .tile-pct { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+    /* Al-Warraq Linen Cover */
+    .proc-cover {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      border-radius: 5px 2px 2px 5px;
+      overflow: hidden;
+      box-shadow: var(--cover-shadow);
+      border: 1px solid var(--cover-rim);
+      transition: transform 200ms var(--ease-out);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 16px 18px 16px 14px;
+    }
+
+    .proc-cover::before {
+      content: '';
+      position: absolute;
+      top: 0; bottom: 0; right: 0;
+      width: 12px;
+      background: linear-gradient(to left, rgba(0, 0, 0, 0.36), rgba(255, 255, 255, 0.11) 48%, rgba(0, 0, 0, 0.18) 72%, transparent);
+      pointer-events: none;
+    }
+
+    .proc-cover::after {
+      content: '';
+      position: absolute;
+      top: 3px; bottom: 3px; left: 0;
+      width: 2.5px;
+      background: rgba(255, 250, 240, 0.28);
+      pointer-events: none;
+    }
+
+    .cover-frame {
+      position: absolute;
+      inset: 10px 18px 10px 10px;
+      border: 1px solid currentColor;
+      opacity: 0.23;
+      pointer-events: none;
+    }
+
+    .cover-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      opacity: 0.16;
+    }
+
+    .cover-top-mark {
+      position: relative;
+      z-index: 2;
+      font-size: 10px;
+      text-align: center;
+      opacity: 0.78;
+    }
+
+    .cover-title-text {
+      position: relative;
+      z-index: 2;
+      font-family: var(--display-font);
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1.4;
+      text-align: center;
+      padding: 0 6px;
+    }
+
+    .t-hero-cover .cover-title-text { font-size: 24px; }
+
+    .cover-author-text {
+      position: relative;
+      z-index: 2;
+      font-family: var(--ui-font);
+      font-size: 11px;
+      text-align: center;
+      opacity: 0.82;
+    }
+
+    /* ===================== TABLET READER SCREEN ===================== */
+    .reader-screen {
+      background: var(--desk-bg);
+      align-items: center;
+      justify-content: center;
+      padding: 20px 24px;
+    }
+
+    /* Portrait: Full clean page with generous margins (no outer desk border needed, or subtle) */
+    html[data-orient="portrait"] .reader-screen {
+      background: var(--bg);
+      padding: 0;
+    }
+
+    /* Physical Open-Book Shell in Landscape */
+    .book-vessel {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      border-radius: 6px;
+      border: 1px solid var(--board-rim);
+      box-shadow: var(--book-shadow);
+      overflow: hidden;
+    }
+
+    html[data-orient="portrait"] .book-vessel {
+      border: none;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    /* Outer Page-Edge Stacks (Right = Read, Left = Remaining in RTL) */
+    .edge-stack {
+      position: absolute;
+      top: 14px;
+      bottom: 14px;
+      z-index: 10;
+      pointer-events: none;
+      background-color: var(--page-edge-bg);
+      transition: width 280ms var(--ease-out);
+      background-image: repeating-linear-gradient(
+        to left,
+        var(--page-edge) 0px,
+        var(--page-edge) 0.9px,
+        transparent 0.9px,
+        transparent 2.4px
+      );
+    }
+
+    .edge-stack.right {
+      right: 0;
+      width: 8px;
+      border-left: 1px solid var(--border);
+      box-shadow: inset 3px 0 6px rgba(0, 0, 0, 0.08);
+    }
+
+    .edge-stack.left {
+      left: 0;
+      width: 14px;
+      border-right: 1px solid var(--border);
+      box-shadow: inset -3px 0 6px rgba(0, 0, 0, 0.08);
+    }
+
+    html[data-orient="portrait"] .edge-stack {
+      background-color: transparent;
+      box-shadow: none;
+    }
+
+    /* Center Book Spine Shadow (Landscape Two-Page Spread ONLY) */
+    .spine-gutter {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 108px;
+      pointer-events: none;
+      z-index: 14;
+      display: none;
+    }
+
+    .reader-screen.spread-mode .spine-gutter {
+      display: block;
+    }
+
+    .spine-shadow-layer {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        to left,
+        transparent 0%,
+        var(--spine-sheen) 18%,
+        var(--spine-mid) 36%,
+        var(--spine-inner) 48%,
+        var(--spine-crease) 50%,
+        var(--spine-inner) 52%,
+        var(--spine-mid) 64%,
+        var(--spine-sheen) 82%,
+        transparent 100%
+      );
+    }
+
+    /* Subtle crimson woven headband at top & bottom of open book spine */
+    .spine-headband {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 24px;
+      height: 5px;
+      background: repeating-linear-gradient(
+        to left,
+        var(--ribbon) 0px,
+        var(--ribbon) 3px,
+        var(--ribbon-deep) 3px,
+        var(--ribbon-deep) 6px
+      );
+      opacity: 0.82;
+    }
+
+    .spine-headband.top { top: 0; border-radius: 0 0 3px 3px; }
+    .spine-headband.bottom { bottom: 0; border-radius: 3px 3px 0 0; }
+
+    /* Signature Crimson Silk Ribbon */
+    .silk-ribbon-zone {
+      position: absolute;
+      top: 0;
+      left: 48px;
+      width: 44px;
+      height: 82px;
+      z-index: 26;
+      cursor: pointer;
+      display: flex;
+      justify-content: center;
+    }
+
+    /* In Two-Page Spread, ribbon emerges gracefully right from the top of the center spine! */
+    .reader-screen.spread-mode .silk-ribbon-zone {
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    .silk-ribbon {
+      width: 20px;
+      height: 18px;
+      background: linear-gradient(180deg, var(--ribbon) 0%, var(--ribbon-deep) 100%);
+      clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 82%, 0 100%);
+      box-shadow: 0 5px 14px rgba(0, 0, 0, 0.28);
+      transition: height 360ms var(--ribbon-spring), opacity 200ms;
+      opacity: 0.56;
+      position: relative;
+    }
+
+    .silk-ribbon::after {
+      content: '';
+      position: absolute;
+      inset: 0 4.5px 12px 4.5px;
+      border-inline: 1px solid var(--ribbon-stitch);
+    }
+
+    .silk-ribbon.pinned {
+      height: 58px;
+      opacity: 1;
+    }
+
+    /* Running Headers & Footers (Adapted for Portrait single-page vs Landscape two-page spread) */
+    .running-head {
+      position: absolute;
+      top: 26px;
+      left: 72px;
+      right: 72px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--muted);
+      opacity: 0.72;
+      pointer-events: none;
+      z-index: 8;
+    }
+
+    html[data-orient="portrait"] .running-head {
+      left: 50%;
+      right: auto;
+      transform: translateX(-50%);
+      width: min(62ch, 620px);
+      top: 34px;
+    }
+
+    .running-foot {
+      position: absolute;
+      bottom: 24px;
+      left: 72px;
+      right: 72px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--muted);
+      opacity: 0.78;
+      font-variant-numeric: tabular-nums;
+      pointer-events: none;
+      z-index: 8;
+    }
+
+    html[data-orient="portrait"] .running-foot {
+      left: 50%;
+      right: auto;
+      transform: translateX(-50%);
+      width: min(62ch, 620px);
+      bottom: 32px;
+    }
+
+    .foot-side {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    /* Paginated Clip Container */
+    .page-clip {
+      position: absolute;
+      top: 72px;
+      bottom: 66px;
+      left: 50%;
+      transform: translateX(-50%);
+      overflow: hidden;
+      z-index: 6;
+    }
+
+    html[data-orient="portrait"] .page-clip {
+      top: 90px;
+      bottom: 84px;
+    }
+
+    .columns-track {
+      height: 100%;
+      width: 100%;
+      column-fill: auto;
+      direction: rtl;
+      will-change: transform;
+      transition: transform var(--page-turn-ms) var(--ease-out);
+
+      font-family: var(--read-font);
+      font-size: var(--read-size);
+      line-height: var(--read-lh);
+      word-spacing: var(--read-ws);
+      font-weight: var(--read-weight);
+      text-align: var(--read-align);
+      color: var(--text);
+      font-kerning: normal;
+      font-variant-ligatures: contextual common-ligatures;
+      text-rendering: optimizeLegibility;
+    }
+
+    .columns-track.e-ink { transition: none !important; }
+
+    .chapter-sec { break-before: column; }
+    .chapter-sec:first-child { break-before: auto; }
+
+    .ch-head {
+      break-inside: avoid;
+      break-after: avoid;
+      text-align: center;
+      padding: 18px 0 16px;
+      margin-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .ch-title {
+      margin: 0;
+      font-size: 1.34em;
+      line-height: 1.55;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .ch-orn {
+      margin-top: 6px;
+      font-size: 0.75em;
+      color: var(--accent);
+      opacity: 0.88;
+    }
+
+    .scene-h2 {
+      margin: 1em 0 0.5em;
+      font-size: 1.08em;
+      line-height: 1.6;
+      font-weight: 700;
+      color: var(--accent);
+      break-inside: avoid;
+      break-after: avoid;
+      text-align: start;
+    }
+
+    .novel-p {
+      margin: 0 0 var(--read-pgap) 0;
+      text-indent: var(--read-indent);
+      orphans: 2;
+      widows: 2;
+    }
+
+    .novel-p.no-indent, .novel-p.dialogue { text-indent: 0; }
+
+    .scene-break {
+      margin: 1em 0;
+      text-align: center;
+      color: var(--accent);
+      font-size: 0.85em;
+      line-height: 1.6;
+      break-inside: avoid;
+      text-indent: 0;
+      opacity: 0.85;
+    }
+
+    .novel-quote {
+      margin: 0.95em 0;
+      padding: 0.7em 1.05em;
+      background: var(--quote-bg);
+      border-inline-start: 2.5px solid var(--quote-border);
+      border-radius: 3px;
+      font-size: 0.94em;
+      text-indent: 0;
+      break-inside: avoid;
+    }
+
+    .fn-btn {
+      display: inline-block;
+      border: none;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-family: var(--ui-font);
+      font-size: 0.62em;
+      font-weight: 700;
+      line-height: 1.2;
+      padding: 1px 5px;
+      border-radius: 3px;
+      vertical-align: super;
+      margin-inline: 2px;
+      cursor: pointer;
+    }
+
+    /* Tap Zones */
+    .tap-zones {
+      position: absolute;
+      inset: 0;
+      z-index: 16;
+      display: flex;
+      pointer-events: none;
+    }
+
+    .tap-zone { height: 100%; pointer-events: auto; cursor: pointer; }
+    .tap-right { width: 22%; }
+    .tap-center { width: 56%; }
+    .tap-left { width: 22%; }
+
+    /* ===================== TABLET HUD ===================== */
+    .hud-header {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      z-index: 35;
+      height: 64px;
+      padding: 0 28px;
+      background: var(--hud-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      opacity: 0;
+      transform: translateY(-100%);
+      pointer-events: none;
+      transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out);
+    }
+
+    .reader-screen.hud-open .hud-header,
+    .reader-screen.settings-open .hud-header {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    .hud-icon-btn {
+      height: 38px;
+      padding: 0 11px;
+      border-radius: 7px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text);
+      font-family: var(--ui-font);
+      font-size: 13px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+      transition: background 150ms, color 150ms, border-color 150ms;
+    }
+
+    .hud-icon-btn:hover, .hud-icon-btn.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-color: rgba(223, 120, 99, 0.22);
+    }
+
+    .hud-center-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .hud-book-title {
+      font-family: var(--display-font);
+      font-size: 21px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .hud-mode-pill {
+      font-size: 11.5px;
+      color: var(--muted);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 2px 10px;
+      border-radius: 999px;
+    }
+
+    .hud-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .hud-footer {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      z-index: 35;
+      padding: 16px 48px 22px;
+      background: var(--hud-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-top: 1px solid var(--border);
+      opacity: 0;
+      transform: translateY(100%);
+      pointer-events: none;
+      transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out);
+    }
+
+    .reader-screen.hud-open .hud-footer {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    .hud-footer-inner {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .hud-meta-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .hud-ch-name { font-size: 13.5px; font-weight: 600; color: var(--text); }
+    .hud-page-num { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+    .timeline-wrap {
+      position: relative;
+      padding: 12px 0 8px;
+      cursor: pointer;
+    }
+
+    .timeline-segments {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 5px;
+      width: 100%;
+      position: relative;
+    }
+
+    .tl-seg {
+      height: 5px;
+      background: var(--border);
+      position: relative;
+      overflow: hidden;
+      border-radius: 2px;
+    }
+
+    .tl-seg-fill {
+      position: absolute;
+      top: 0; bottom: 0; right: 0;
+      background: var(--accent);
+      width: 0%;
+    }
+
+    .tl-thumb {
+      position: absolute;
+      top: 50%;
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--surface-elevated);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+      transform: translate(50%, -50%);
+      pointer-events: none;
+    }
+
+    .hud-foot-sub {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* ===================== TABLET SETTINGS SIDE POPOVER (NOT A BOTTOM SHEET!) ===================== */
+    .settings-popover {
+      position: absolute;
+      top: 76px;
+      left: 28px;
+      width: 356px;
+      max-height: calc(100% - 104px);
+      z-index: 48;
+      background: var(--panel-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--panel-shadow);
+      display: flex;
+      flex-direction: column;
+      opacity: 0;
+      transform: translateY(-10px) scale(0.98);
+      pointer-events: none;
+      transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out);
+    }
+
+    .settings-popover::before {
+      content: '';
+      position: absolute;
+      top: -6px;
+      left: 42px;
+      width: 11px;
+      height: 11px;
+      background: var(--panel-bg);
+      border-top: 1px solid var(--border);
+      border-left: 1px solid var(--border);
+      transform: rotate(45deg);
+    }
+
+    .reader-screen.settings-open .settings-popover {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      pointer-events: auto;
+    }
+
+    .pop-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 18px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .pop-tabs { display: flex; gap: 18px; }
+
+    .pop-tab {
+      border: none;
+      background: transparent;
+      font-family: var(--ui-font);
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--muted);
+      padding: 8px 2px 11px;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+    }
+
+    .pop-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .pop-close {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .pop-close:hover { background: var(--surface); color: var(--text); }
+
+    .pop-body {
+      padding: 18px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .tab-pane { display: none; }
+    .tab-pane.active { display: flex; flex-direction: column; gap: 15px; }
+
+    .pop-section-label {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .font-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 7px;
+    }
+
+    .font-chip {
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 14px;
+      cursor: pointer;
+      text-align: center;
+    }
+
+    .font-chip.active {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .ctrl-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .ctrl-label { font-size: 12.5px; color: var(--muted); min-width: 72px; }
+    .ctrl-val { font-size: 12.5px; font-weight: 600; color: var(--text); min-width: 34px; text-align: left; font-variant-numeric: tabular-nums; }
+
+    .stepper {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      background: var(--surface-elevated);
+    }
+
+    .step-btn {
+      width: 36px;
+      height: 32px;
+      border: none;
+      background: transparent;
+      color: var(--text);
+      font-family: var(--ui-font);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .step-readout {
+      min-width: 40px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+      border-inline: 1px solid var(--border);
+      line-height: 32px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .range-input {
+      flex: 1;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    .seg-group {
+      display: flex;
+      flex: 1;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      background: var(--surface);
+    }
+
+    .seg-btn {
+      flex: 1;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-family: var(--ui-font);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 8px 6px;
+      cursor: pointer;
+    }
+
+    .seg-btn.active {
+      background: var(--cta-bg);
+      color: var(--cta-text);
+      font-weight: 600;
+    }
+
+    .theme-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 9px;
+    }
+
+    .theme-swatch {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      background: var(--surface);
+      text-align: right;
+    }
+
+    .theme-swatch.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+
+    .swatch-preview {
+      width: 34px;
+      height: 30px;
+      border-radius: 5px;
+      border: 1px solid rgba(140, 130, 120, 0.30);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--display-font);
+      font-size: 14px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .swatch-meta { display: flex; flex-direction: column; gap: 1px; }
+    .swatch-name { font-size: 12px; font-weight: 600; color: var(--text); }
+    .swatch-cr { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+    .pop-footer-note {
+      font-size: 11.5px;
+      color: var(--muted);
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* TOC SIDE DRAWER */
+    .drawer-backdrop {
+      position: absolute;
+      inset: 0;
+      z-index: 60;
+      background: rgba(0, 0, 0, 0.38);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 220ms var(--ease-out);
+    }
+
+    .drawer-backdrop.open { opacity: 1; pointer-events: auto; }
+
+    .toc-drawer {
+      position: absolute;
+      top: 0; bottom: 0; right: 0;
+      width: 360px;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      box-shadow: -12px 0 36px rgba(0, 0, 0, 0.25);
+      display: flex;
+      flex-direction: column;
+      transform: translateX(100%);
+      transition: transform 260ms var(--ease-out);
+    }
+
+    .drawer-backdrop.open .toc-drawer { transform: translateX(0); }
+
+    .toc-head {
+      padding: 24px 22px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .toc-head h3 { margin: 0; font-family: var(--display-font); font-size: 22px; font-weight: 700; }
+
+    .toc-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .toc-item {
+      border: none;
+      background: transparent;
+      width: 100%;
+      text-align: right;
+      padding: 13px 14px;
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      color: var(--text);
+      font-family: var(--ui-font);
+    }
+
+    .toc-item.active { background: var(--accent-soft); color: var(--accent); }
+    .toc-item-title { font-family: var(--display-font); font-size: 17.5px; font-weight: 700; line-height: 1.4; }
+    .toc-item-meta { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+    .toc-page { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+    /* Footnote Modal */
+    .fn-modal {
+      position: absolute;
+      inset: 0;
+      z-index: 70;
+      background: rgba(0, 0, 0, 0.36);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 180ms;
+    }
+
+    .fn-modal.open { opacity: 1; pointer-events: auto; }
+
+    .fn-card {
+      width: 100%;
+      max-width: 460px;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+      box-shadow: var(--panel-shadow);
+    }
+
+    .fn-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 10px;
+      margin-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .fn-card-body {
+      font-family: var(--read-font);
+      font-size: 17px;
+      line-height: 1.9;
+      color: var(--text);
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="stage-wrap">
+    <div class="standalone-bar" aria-label="أدوات معاينة التابلت">
+      <button class="sb-btn active" data-go-orient="landscape">بالعرض ١٣٦٦×١٠٢٤ (صفحتين)</button>
+      <button class="sb-btn" data-go-orient="portrait">بالطول ١٠٢٤×١٣٦٦ (صفحة واحدة)</button>
+      <span class="sb-sep"></span>
+      <button class="sb-btn" data-go-screen="library">المكتبة</button>
+      <button class="sb-btn active" data-go-screen="reader">القراية</button>
+      <button class="sb-btn" data-go-screen="hud">الـ HUD</button>
+      <button class="sb-btn" data-go-screen="settings">الإعدادات الجانبية</button>
+      <span class="sb-sep"></span>
+      <button class="sb-btn active" data-go-theme="light">فاتح (الوَرّاق)</button>
+      <button class="sb-btn" data-go-theme="dark-burnt">ورق محروق ★</button>
+      <button class="sb-btn" data-go-theme="dark-ink">حبر الليل</button>
+      <button class="sb-btn" data-go-theme="dark-oled">عتمة OLED</button>
+    </div>
+
+    <div class="tablet-viewport-scaler" id="scaler">
+      <div class="tablet" id="tablet">
+        <div class="paper-grain" id="paperGrain"></div>
+
+        <!-- SCREEN 1: TABLET LIBRARY -->
+        <section class="screen" id="screen-library" aria-label="مكتبة التابلت">
+          <header class="tlib-header">
+            <div class="brand-lockup">
+              <svg width="30" height="30" viewBox="0 0 26 26" fill="none" aria-hidden="true">
+                <path d="M4.5 5.5C8.5 5.5 11.2 6.8 13 8.8C14.8 6.8 17.5 5.5 21.5 5.5V19.8C17.6 19.8 14.9 20.8 13 22.5C11.1 20.8 8.4 19.8 4.5 19.8V5.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                <path d="M13 8.8V22.5" stroke="currentColor" stroke-width="1.3"/>
+                <path d="M17.2 5.7V13.2L15.4 11.7L13.6 13.2V7.9" fill="var(--ribbon)" opacity="0.95"/>
+              </svg>
+              <span class="brand-name">روايتي</span>
+              <span class="brand-sub">مكتبة الوَرّاق · ٨ روايات</span>
+            </div>
+
+            <div class="tlib-actions">
+              <div class="theme-pill-group" role="group" aria-label="تبديل المظهر">
+                <button class="theme-pill-btn active" data-set-theme="light">ورق دافئ</button>
+                <button class="theme-pill-btn" data-set-theme="dark-burnt">ورق محروق</button>
+                <button class="theme-pill-btn" data-set-theme="dark-ink">حبر الليل</button>
+                <button class="theme-pill-btn" data-set-theme="dark-oled">OLED</button>
+              </div>
+              <button class="import-btn" id="importDemoBtn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                <span>استيراد رواية</span>
+              </button>
+            </div>
+          </header>
+
+          <div class="tlib-scroll">
+            <article class="t-hero" id="heroBook">
+              <div class="t-hero-cover" id="heroCoverMount"></div>
+              <div class="t-hero-body">
+                <div class="hero-state-row">
+                  <span class="hero-state"><span class="hero-dot"></span>قراءة حالية</span>
+                  <span class="hero-spread-tag" id="heroModeHint">يفتح بوضع صفحتين جنب بعض</span>
+                </div>
+                <h1 class="t-hero-title">حَجَرُ الْمَاءِ</h1>
+                <p class="t-hero-author">روايتي · الفصل الثاني: صوت الماء القديم</p>
+                <blockquote class="t-hero-excerpt">«أَدْخَلَتِ الْمِفْتَاحَ. دَارَ بِلَا صَوْتٍ، ثُمَّ سَقَطَ الْحَجَرُ إِلَى الدَّاخِلِ كَأَنَّهُ كَانَ يَنْتَظِرُ...»</blockquote>
+                <div class="t-hero-actions">
+                  <button class="continue-cta" id="continueReadingBtn">
+                    <span>كمّل القراية</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+                  </button>
+                  <button class="secondary-cta" id="heroTocBtn">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h11M4 18h14"/></svg>
+                    <span>فهرس الفصول</span>
+                  </button>
+                </div>
+              </div>
+              <div class="t-hero-stats">
+                <div class="stat-block" style="min-width:160px">
+                  <span class="stat-label">التقدّم في الرواية</span>
+                  <span class="stat-val" id="heroPctLabel">٣٨٪ مقروء</span>
+                  <div class="hair-track" style="margin-top:4px"><div class="hair-fill" id="heroProgressFill" style="width:38%"></div></div>
+                </div>
+                <div class="stat-block">
+                  <span class="stat-label">الوقت المتبقّي</span>
+                  <span class="stat-val">٤٢ دقيقة</span>
+                </div>
+                <div class="stat-block">
+                  <span class="stat-label">العلامات المحفوظة</span>
+                  <span class="stat-val">شريطتان · فصل ١ و٢</span>
+                </div>
+              </div>
+            </article>
+
+            <div class="shelf-head">
+              <h2 class="shelf-title">رفّ الكتب</h2>
+              <span class="shelf-meta">مرتّبة بآخر قراءة · أغلفة كتان مولّدة تلقائياً</span>
+            </div>
+
+            <div class="t-book-grid" id="shelfGrid"></div>
+          </div>
+        </section>
+
+        <!-- SCREEN 2, 3, 4: TABLET READER + TWO-PAGE SPREAD + HUD + FLOATING SETTINGS POPOVER -->
+        <section class="screen reader-screen spread-mode active" id="screen-reader" aria-label="قارئ التابلت">
+          <div class="book-vessel" id="bookVessel">
+            <!-- Living Page-Edge Thickness Stacks -->
+            <div class="edge-stack right" id="edgeRight" aria-hidden="true"></div>
+            <div class="edge-stack left" id="edgeLeft" aria-hidden="true"></div>
+
+            <!-- Center Spine Shadow & Headbands (Landscape Two-Page Spread) -->
+            <div class="spine-gutter" id="spineGutter" aria-hidden="true">
+              <div class="spine-shadow-layer"></div>
+              <div class="spine-headband top"></div>
+              <div class="spine-headband bottom"></div>
+            </div>
+
+            <!-- Crimson Silk Bookmark Ribbon -->
+            <div class="silk-ribbon-zone" id="ribbonZone" title="اسحب أو اضغط لحفظ علامة" role="button" aria-label="شريطة العلامة المرجعية">
+              <div class="silk-ribbon pinned" id="silkRibbon"></div>
+            </div>
+
+            <!-- Running Header (Right page = Book title, Left page = Chapter title) -->
+            <div class="running-head">
+              <span>حَجَرُ الْمَاءِ</span>
+              <span id="runningChapter">الفصل الأول: المفتاح الصدئ</span>
+            </div>
+
+            <!-- Paginated Multi-Column Viewport (1 col in Portrait, 2 cols in Landscape) -->
+            <div class="page-clip" id="pageClip">
+              <div class="columns-track" id="columnsTrack"></div>
+            </div>
+
+            <!-- Running Footer (Both page numbers in spread mode!) -->
+            <div class="running-foot">
+              <div class="foot-side">
+                <span id="footRightPage">صفحة ١</span>
+                <span id="footPct" style="opacity:0.7">· ١٤٪</span>
+              </div>
+              <div class="foot-side">
+                <span id="footModeLabel" style="opacity:0.65">صفحتان متقابلتان</span>
+                <span id="footLeftPage">صفحة ٢</span>
+              </div>
+            </div>
+
+            <!-- RTL Tap Zones (Left = Next spread/page, Right = Prev spread/page, Center = HUD) -->
+            <div class="tap-zones" id="tapZones">
+              <div class="tap-zone tap-right" id="tapPrev" aria-label="الصفحتان السابقتان"></div>
+              <div class="tap-zone tap-center" id="tapCenter" aria-label="إظهار أو إخفاء الأدوات"></div>
+              <div class="tap-zone tap-left" id="tapNext" aria-label="الصفحتان التاليتان"></div>
+            </div>
+
+            <!-- TABLET HUD HEADER -->
+            <header class="hud-header" id="hudHeader">
+              <div class="hud-group">
+                <button class="hud-icon-btn" id="btnBackLib" aria-label="العودة للمكتبة">
+                  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                  <span>المكتبة</span>
+                </button>
+              </div>
+
+              <div class="hud-center-info">
+                <span class="hud-book-title">حَجَرُ الْمَاءِ</span>
+                <span class="hud-mode-pill" id="hudModePill">كتاب مفتوح · صفحتان</span>
+              </div>
+
+              <div class="hud-group">
+                <button class="hud-icon-btn" id="btnOpenToc" aria-label="الفهرس">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h11M4 18h14"/></svg>
+                  <span>الفهرس</span>
+                </button>
+                <button class="hud-icon-btn" id="btnOpenSettings" aria-label="إعدادات القراءة">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="M6 16l4-12 4 12"/><path d="M7.5 12h5"/><path d="M16 11.5c1.5 0 2.5.8 2.5 2s-1 2.5-2.5 2.5"/></svg>
+                  <span>المظهر والخط</span>
+                </button>
+              </div>
+            </header>
+
+            <!-- TABLET HUD FOOTER -->
+            <footer class="hud-footer" id="hudFooter">
+              <div class="hud-footer-inner">
+                <div class="hud-meta-line">
+                  <span class="hud-ch-name" id="hudChapterTitle">الْفَصْلُ الْأَوَّلُ: الْمِفْتَاحُ الصَّدِئُ</span>
+                  <span class="hud-page-num" id="hudPageCounter">صفحتا ١–٢ من ١٠</span>
+                </div>
+                <div class="timeline-wrap" id="timelineWrap">
+                  <div class="timeline-segments" id="timelineSegments"></div>
+                  <div class="tl-thumb" id="tlThumb"></div>
+                </div>
+                <div class="hud-foot-sub">
+                  <span>٤ فصول · التقليب يقلّب الصفحتين معاً بالترتيب العربي (اليمين أولاً)</span>
+                  <span id="hudBookmarkStatus">الصفحة محفوظة بالشريطة القرمزية</span>
+                </div>
+              </div>
+            </footer>
+
+            <!-- TABLET FLOATING SETTINGS POPOVER (Page stays clearly visible!) -->
+            <aside class="settings-popover" id="settingsPopover" aria-label="لوحة إعدادات التابلت">
+              <div class="pop-head">
+                <div class="pop-tabs" role="tablist">
+                  <button class="pop-tab active" data-tab="font" role="tab">الخط</button>
+                  <button class="pop-tab" data-tab="layout" role="tab">الصفحة</button>
+                  <button class="pop-tab" data-tab="theme" role="tab">المظهر</button>
+                </div>
+                <button class="pop-close" id="btnCloseSettings" aria-label="إغلاق الإعدادات">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
+
+              <div class="pop-body">
+                <!-- Font Tab -->
+                <div class="tab-pane active" id="pane-font">
+                  <div>
+                    <div class="pop-section-label">نوع الخط (بدون تباعد حروف على العربي)</div>
+                    <div class="font-grid" id="fontGrid"></div>
+                  </div>
+
+                  <div class="ctrl-row">
+                    <span class="ctrl-label">حجم الخط</span>
+                    <div class="stepper">
+                      <button class="step-btn" id="sizeDec">أ-</button>
+                      <span class="step-readout" id="sizeReadout">٢٠.٥</span>
+                      <button class="step-btn" id="sizeInc">أ+</button>
+                    </div>
+                  </div>
+
+                  <div class="ctrl-row">
+                    <span class="ctrl-label">تباعد الأسطر</span>
+                    <input class="range-input" id="lhRange" type="range" min="1.5" max="2.5" step="0.05" value="1.98" />
+                    <span class="ctrl-val" id="lhVal">١.٩٨</span>
+                  </div>
+
+                  <div class="ctrl-row">
+                    <span class="ctrl-label">تباعد الكلمات</span>
+                    <input class="range-input" id="wsRange" type="range" min="0" max="6" step="0.5" value="0" />
+                    <span class="ctrl-val" id="wsVal">٠</span>
+                  </div>
+                </div>
+
+                <!-- Layout Tab -->
+                <div class="tab-pane" id="pane-layout">
+                  <div>
+                    <div class="pop-section-label">وضع العرض بالعرض (Landscape)</div>
+                    <div class="seg-group">
+                      <button class="seg-btn active" data-spread-pref="two">صفحتان (كتاب مفتوح)</button>
+                      <button class="seg-btn" data-spread-pref="one">صفحة واحدة (≤٦٢حرف)</button>
+                    </div>
+                  </div>
+
+                  <div class="ctrl-row">
+                    <span class="ctrl-label">المحاذاة</span>
+                    <div class="seg-group">
+                      <button class="seg-btn active" data-align="justify">ضبط الحواف</button>
+                      <button class="seg-btn" data-align="right">يمين</button>
+                    </div>
+                  </div>
+
+                  <div class="ctrl-row">
+                    <span class="ctrl-label">الفقرات</span>
+                    <div class="seg-group">
+                      <button class="seg-btn active" data-indent="classic">كلاسيكي</button>
+                      <button class="seg-btn" data-indent="block">منفصلة</button>
+                    </div>
+                  </div>
+
+                  <div class="ctrl-row">
+                    <span class="ctrl-label">الهوامش</span>
+                    <div class="seg-group">
+                      <button class="seg-btn" data-margin="tight">ضيّق</button>
+                      <button class="seg-btn active" data-margin="balanced">متوازن</button>
+                      <button class="seg-btn" data-margin="wide">واسع</button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Theme Tab -->
+                <div class="tab-pane" id="pane-theme">
+                  <div class="theme-grid">
+                    <button class="theme-swatch active" data-set-theme="light">
+                      <span class="swatch-preview" style="background:#FAF7F0;color:#231F1A;">ض</span>
+                      <span class="swatch-meta">
+                        <span class="swatch-name">ورق دافئ</span>
+                        <span class="swatch-cr">١٥.٣:١ AAA</span>
+                      </span>
+                    </button>
+                    <button class="theme-swatch" data-set-theme="dark-burnt">
+                      <span class="swatch-preview" style="background:#181310;color:#DECFC0;">ض</span>
+                      <span class="swatch-meta">
+                        <span class="swatch-name">ورق محروق ★</span>
+                        <span class="swatch-cr">١٢.١:١ AAA</span>
+                      </span>
+                    </button>
+                    <button class="theme-swatch" data-set-theme="dark-ink">
+                      <span class="swatch-preview" style="background:#10151E;color:#D4D8DF;">ض</span>
+                      <span class="swatch-meta">
+                        <span class="swatch-name">حبر الليل</span>
+                        <span class="swatch-cr">١٢.٨:١ AAA</span>
+                      </span>
+                    </button>
+                    <button class="theme-swatch" data-set-theme="dark-oled">
+                      <span class="swatch-preview" style="background:#000000;color:#B9B2A7;">ض</span>
+                      <span class="swatch-meta">
+                        <span class="swatch-name">عتمة OLED</span>
+                        <span class="swatch-cr">١٠.٠:١ AAA</span>
+                      </span>
+                    </button>
+                  </div>
+                  <div class="pop-footer-note">
+                    <span>التغييرات تظهر فوراً على الصفحتين</span>
+                    <span style="color:var(--accent);font-weight:600">Popover جانبي</span>
+                  </div>
+                </div>
+              </div>
+            </aside>
+
+            <!-- TOC SIDE DRAWER -->
+            <div class="drawer-backdrop" id="tocBackdrop">
+              <div class="toc-drawer" id="tocDrawer">
+                <div class="toc-head">
+                  <h3>فهرس الفصول</h3>
+                  <button class="pop-close" id="btnCloseToc" aria-label="إغلاق الفهرس">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                  </button>
+                </div>
+                <div class="toc-list" id="tocList"></div>
+              </div>
+            </div>
+
+            <!-- FOOTNOTE MODAL -->
+            <div class="fn-modal" id="fnModal">
+              <div class="fn-card">
+                <div class="fn-card-head">
+                  <span id="fnTitle">حاشية ١</span>
+                  <button class="pop-close" id="fnClose" aria-label="إغلاق الحاشية">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                  </button>
+                </div>
+                <p class="fn-card-body" id="fnBody"></p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const AR_DIGITS = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
+      function toAr(n) {
+        return String(n).replace(/[0-9]/g, d => AR_DIGITS[+d]);
+      }
+
+      const FOOTNOTES = {
+        '1': 'الصَّدَفَةُ الْبَيْضَاءُ: صَدَفٌ صَغِيرٌ يَظْهَرُ فِي رَأْسِ الْمِلْحِ مَرَّةً وَاحِدَةً فِي كُلِّ عَشْرِ سِنِينَ، وَيَقُولُ النَّاسُ إِنَّهُ يَحْمِلُ صَوْتَ آخِرِ مَنْ غَرِقَ فِي الْمَدِّ. وَالْحَقِيقَةُ أَنَّهُ يَحْمِلُ صَوْتَ الْمَاءِ فَقَطْ، وَالنَّاسُ هُمُ الَّذِينَ يُضِيفُونَ إِلَيْهِ مَا يَخَافُونَ أَنْ يَنْسَوْهُ.',
+        '2': 'الْحِفْظُ: فِي كِتَابِ الْقَرْيَةِ الْقَدِيمِ، كَانَ الْحِفْظُ يُعْنَى بِهِ إِبْقَاءُ الشَّيْءِ فِي مَكَانِهِ. أَمَّا فِي هَذِهِ الْحِكَايَةِ، فَالْحِفْظُ يُعْنَى بِهِ مَعْرِفَةُ الْمَكَانِ الَّذِي ذَهَبَ إِلَيْهِ الشَّيْءُ.'
+      };
+
+      const CHAPTERS = [
+        {
+          id: 'ch1',
+          title: 'الْفَصْلُ الْأَوَّلُ: الْمِفْتَاحُ الصَّدِئُ',
+          shortTitle: 'الفصل الأول: المفتاح الصدئ',
+          words: 310,
+          blocks: [
+            { type: 'p', noIndent: true, text: 'كَانَتْ نُورُ تَعْرِفُ الْبَحْرَ قَبْلَ أَنْ تَعْرِفَ اسْمَهُ. كَبِرَتْ عَلَى صَوْتِهِ كَمَا يَكْبَرُ الطِّفْلُ عَلَى صَوْتِ أُمِّهِ: لَا تَنْتَبِهُ إِلَيْهِ إِلَّا حِينَ يَغِيبُ. وَفِي قَرْيَةِ رَأْسِ الْمِلْحِ كَانَ الْبَحْرُ يَغِيبُ مَرَّتَيْنِ فِي الْيَوْمِ: مَرَّةً عِنْدَمَا يَنْسَحِبُ الْمَدُّ فَتَبْقَى الصُّخُورُ عَارِيَةً كَأَسْنَانٍ قَدِيمَةٍ، وَمَرَّةً عِنْدَمَا يَنَامُ الْجَدُّ سَلْمَانُ فَيَسْكُتُ الْبَيْتُ كُلُّهُ.' },
+            { type: 'p', text: 'كَانَ الْبَيْتُ قَدِيمًا، سَقْفُهُ مِنْ خَشَبٍ لَوْنُهُ لَوْنُ الشَّايِ الْمُنْسَكِبِ، وَجُدْرَانُهُ تَحْمِلُ بَقَايَا مِلْحٍ لَا يَذُوبُ. وَفِي وَسَطِ الْبَيْتِ بَابٌ صَغِيرٌ لَا يُؤَدِّي إِلَى شَيْءٍ إِلَّا إِلَى دَرَجٍ هَابِطٍ، وَالدَّرَجُ يُؤَدِّي إِلَى بِئْرٍ مَسْدُودٍ بِحَجَرٍ مُسْتَدِيرٍ كَبِيرٍ. قَالَ لَهَا الْجَدُّ مَرَّةً، وَهُوَ يَغْسِلُ شَبَكَةً فِي الْفِنَاءِ: «هَذِهِ الْبِئْرُ لَيْسَتْ بِئْرَ مَاءٍ، يَا نُورُ. هِيَ بِئْرُ صَوْتٍ، وَالصَّوْتُ إِذَا خَرَجَ لَا يَعُودُ».' },
+            { type: 'p', text: 'ضَحِكَتْ نُورُ يَوْمَهَا، لِأَنَّ الْجَدَّ كَانَ يَقُولُ أَشْيَاءَ غَرِيبَةً كَثِيرَةً، وَكَانَتْ تَظُنُّ أَنَّ الْغَرَابَةَ عَادَةٌ مِنْ عَادَاتِ الْكِبَرِ مِثْلَ بَطْءِ الْخُطْوَةِ وَطُولِ الْحِكَايَةِ. لَكِنَّهَا لَمْ تَنْسَ الْجُمْلَةَ. بَقِيَتْ فِي رَأْسِهَا كَحَبَّةِ رَمْلٍ فِي حِذَاءٍ ضَيِّقٍ، لَا تُؤْلِمُ كَثِيرًا، وَلَكِنَّهَا لَا تَخْتَفِي.' },
+            { type: 'p', text: 'فِي مَسَاءِ يَوْمِ الْخَمِيسِ، بَيْنَمَا كَانَ الْجَدُّ نَائِمًا وَالْمَطَرُ يَضْرِبُ النَّوَافِذَ ضَرْبًا خَفِيفًا، فَتَحَتْ نُورُ خِزَانَةَ الْجَدِّ الْعُلْيَا. وَجَدَتْ صُنْدُوقًا مِنْ صَفِيحٍ أَصْفَرَ، وَتَحْتَهُ مِفْتَاحًا نُحَاسِيًّا طَوِيلًا مُلْتَفًّا عَلَيْهِ خَيْطٌ أَحْمَرُ بَالٍ، وَوَرَقَةً مَطْوِيَّةً كُتِبَ عَلَيْهَا بِخَطِّ الْجَدِّ:' },
+            { type: 'quote', text: '«لَا تَفْتَحِي الْبِئْرَ يَا نُورُ. لَيْسَ لِأَنَّ فِيهَا شَيْئًا مُخِيفًا، بَلْ لِأَنَّ فِيهَا شَيْئًا لَا يَحْتَمِلُ أَنْ يَرَاهُ أَحَدٌ غَيْرِي».' },
+            { type: 'p', noIndent: true, text: 'قَرَأَتِ الْجُمْلَةَ ثَلَاثَ مَرَّاتٍ. فِي الْمَرَّةِ الْأُولَى خَافَتْ. وَفِي الثَّانِيَةِ غَضِبَتْ. وَفِي الثَّالِثَةِ أَدْرَكَتْ أَنَّ الْجُمْلَةَ لَيْسَتْ تَحْذِيرًا، بَلْ اعْتِرَافٌ. وَالِاعْتِرَافُ، إِذَا وَصَلَ إِلَى طِفْلٍ، يَتَحَوَّلُ فَوْرًا إِلَى دَعْوَةٍ.' },
+            { type: 'p', text: 'أَدْخَلَتِ الْمِفْتَاحَ. دَارَ بِلَا صَوْتٍ، ثُمَّ سَقَطَ الْحَجَرُ إِلَى الدَّاخِلِ كَأَنَّهُ كَانَ يَنْتَظِرُ. وَانْبَعَثَ مِنَ الْبِئْرِ هَوَاءٌ بَارِدٌ، لَا رِيحَ تُرَابٍ وَلَا رَائِحَةَ عَفَنٍ، بَلْ رَائِحَةُ مَطَرٍ عَلَى حَجَرٍ سَاخِنٍ. رَائِحَةٌ لَهَا ذِكْرَى، وَالذِّكْرَى لَيْسَتْ لِنُورِ.' }
+          ]
+        },
+        {
+          id: 'ch2',
+          title: 'الْفَصْلُ الثَّانِي: صَوْتُ الْمَاءِ الْقَدِيمِ',
+          shortTitle: 'الفصل الثاني: صوت الماء القديم',
+          words: 375,
+          blocks: [
+            { type: 'p', noIndent: true, text: 'فِي الصَّبَاحِ كَانَ الْجَدُّ فِي الْفِنَاءِ كَالْعَادَةِ، يُصْلِحُ شَبَكَةً لَا تَحْتَاجُ إِصْلَاحًا. وَكَانَتْ نُورُ تُرَاقِبُ يَدَيْهِ، تَنْتَظِرُ أَنْ تَرْتَجِفَ، أَوْ أَنْ يَسْأَلَهَا عَنِ الْمِفْتَاحِ. لَكِنَّهُ لَمْ يَسْأَلْ. قَالَ فَقَطْ، وَهُوَ يَنْظُرُ إِلَى الْبَحْرِ:' },
+            { type: 'p', dialogue: true, text: '— الْيَوْمَ الْمَاءُ هَادِئٌ. هَذَا لَا يَحْدُثُ كَثِيرًا فِي آخِرِ الْخَرِيفِ.' },
+            { type: 'p', dialogue: true, text: '— جَدِّي، قَالَتْ نُورُ، وَجَلَسَتْ أَمَامَهُ عَلَى الْحَجَرِ: لِمَاذَا لَا نَفْتَحُ الْبِئْرَ؟' },
+            { type: 'p', text: 'تَوَقَّفَتْ يَدَاهُ. لَمْ يَرْفَعْ رَأْسَهُ. سَكَتَ طَوِيلًا، ثُمَّ قَالَ وَصَوْتُهُ أَخْفَضُ مِنْ صَوْتِ الْبَحْرِ: «يَا نُورُ، فِي هَذِهِ الْقَرْيَةِ كَانَتْ ثَلَاثَةُ آبَارٍ: بِئْرُ الشُّرْبِ، وَبِئْرُ الْمِلْحِ، وَبِئْرٌ ثَالِثَةٌ لَا يَعْرِفُهَا إِلَّا الَّذِينَ سَمِعُوا. النَّاسُ كَانُوا يَأْتُونَ بِأَصْوَاتِهِمْ إِلَيْهَا كَمَا يَأْتُونَ بِأَمْوَالِهِمْ إِلَى الْبَنْكِ، وَيَقُولُونَ لِلْبِئْرِ: احْفَظِيهِ».' },
+            { type: 'h2', text: 'مَشْهَدٌ: الْغُرْفَةُ الْمُطْفَأَةُ' },
+            { type: 'p', noIndent: true, text: 'لَمْ تَكُنْ غُرْفَةً تَحْتَ الْأَرْضِ بِمَعْنَى السَّجْنِ. كَانَتْ أَشْبَهَ بِقَاعَةِ اجْتِمَاعٍ صَغِيرَةٍ نَسِيَهَا النَّاسُ: أَرْضُهَا مِنْ حَصًى نَاعِمٍ، وَجُدْرَانُهَا مِنْ طِينٍ مَضْرُوبٍ عَلَيْهِ أَصْدَافٌ، وَفِي وَسَطِهَا حَجَرٌ أَزْرَقُ بِحَجْمِ رَأْسِ طِفْلٍ يَجْلِسُ عَلَى قَاعِدَةٍ مِنْ خَشَبٍ أَسْوَدَ.' },
+            { type: 'p', text: 'وَعَلَى الْجُدْرَانِ، بِخُطُوطٍ مُتَقَاطِعَةٍ، كَانَتْ هُنَاكَ أَسْمَاءٌ مَحْفُورَةٌ فِي الطِّينِ بِأَصَابِعَ: «سَعِيد»، «أُمُّ خَلِيل»، «الْحَاجَّةُ زَيْنَب»، «صَوْتُ الْعُرْسِ، سَنَةَ ٤٢». وَفِي الرُّكْنِ الْبَعِيدِ كَانَ اسْمٌ وَاحِدٌ: «مَرْيَم». تَوَقَّفَ قَلْبُهَا. مَرْيَمُ كَانَ اسْمَ أُمِّهَا.' },
+            { type: 'break' },
+            { type: 'p', noIndent: true, text: 'فِي الصَّبَاحِ وَجَدَهَا الْجَدُّ نَائِمَةً عَلَى الدَّرَجِ الْحَجَرِيِّ، وَالْمِصْبَاحُ بَيْنَ يَدَيْهَا انْطَفَأَ، وَعَلَى وَجْهِهَا أَثَرُ دُمُوعٍ جَفَّفَهَا التُّرَابُ. لَمْ يَصْرُخْ. جَلَسَ عَلَى الدَّرَجَةِ الَّتِي فَوْقَهَا، وَبَقِيَ صَامِتًا حَتَّى فَتَحَتْ عَيْنَيْهَا.' }
+          ]
+        },
+        {
+          id: 'ch3',
+          title: 'الْفَصْلُ الثَّالِثُ: مَا قَالَهُ الْحَجَرُ',
+          shortTitle: 'الفصل الثالث: ما قاله الحجر',
+          words: 265,
+          blocks: [
+            { type: 'p', noIndent: true, text: 'فِي الْمَسَاءِ الثَّالِثِ، جَاءَتْ نُورُ إِلَى الْغُرْفَةِ وَمَعَهَا كُرْسِيٌّ صَغِيرٌ وَقَلَمٌ وَدَفْتَرٌ. قَرَّرَتْ أَنْ تَكُونَ عَالِمَةً، لَا خَائِفَةً. الْعُلَمَاءُ يَكْتُبُونَ مَا يَرَوْنَ، وَالْخَائِفُونَ يَكْتُبُونَ مَا يَتَخَيَّلُونَ. وَالْفَرْقُ بَيْنَهُمَا، كَمَا قَالَتْ لَهَا مُعَلِّمَةُ الْعُلُومِ، هُوَ الدَّفْتَرُ.' },
+            { type: 'p', text: 'نَبَضَ الْحَجَرُ نَبْضَتَيْنِ. وَفِي الثَّالِثَةِ، تَكَلَّمَ. لَمْ يَكُنْ صَوْتًا يَخْرُجُ مِنْ حَجَرٍ، بَلْ صَوْتًا يَخْرُجُ مِنْ دَاخِلِ رَأْسِهَا: «أَنَا لَا أَتَكَلَّمُ. أَنَا أُعِيدُ. الَّذِي تَسْمَعِينَهُ هُوَ الَّذِي سَمِعْتُهُ. وَالَّذِي سَمِعْتُهُ هُوَ الَّذِي تُرِكَ لِي».' },
+            { type: 'quote', text: 'يَا بِنْتَ الْمَاءِ، إِنَّ الصَّوْتَ الْمَحْفُوظَ لَيْسَ ذِكْرَى. الذِّكْرَى تَتْرُكُ لَكَ حُرِّيَّةَ أَنْ تَنْسَى، أَمَّا الصَّوْتُ الْمَحْفُوظُ فَيُبْقِيكَ وَاقِفًا فِي الْيَوْمِ نَفْسِهِ، فِي السَّاعَةِ نَفْسِهَا، لَا تَبْرَحُ.' },
+            { type: 'p', noIndent: true, text: 'قَرَأَتْ نُورُ الْكَلِمَاتِ مَرَّتَيْنِ. لَمْ تَكُنْ مَكْتُوبَةً فِي دَفْتَرِهَا. كَانَتْ مَكْتُوبَةً عَلَى الْجِدَارِ، بِخَطٍّ يَمِيلُ إِلَى الْيَسَارِ كَأَنَّهُ يَهْرُبُ مِنَ السُّطُورِ.' },
+            { type: 'p', dialogue: true, text: '— جَدِّي، أَنَا لَا أُرِيدُ أَنْ أَتْرُكَ صَوْتًا. أُرِيدُ أَنْ أَتْرُكَ الْبَابَ مَفْتُوحًا.' }
+          ]
+        },
+        {
+          id: 'ch4',
+          title: 'الْفَصْلُ الرَّابِعُ: طَرِيقٌ إِلَى الْأَعْلَى',
+          shortTitle: 'الفصل الرابع: طريق إلى الأعلى',
+          words: 245,
+          blocks: [
+            { type: 'p', noIndent: true, text: 'فِي صَبَاحِ الْيَوْمِ التَّالِي، فَتَحَ الْجَدُّ الْمَخْزَنَ الْقَدِيمَ وَأَخْرَجَ مِنْهُ أَنْبُوبًا نُحَاسِيًّا وَمِفْتَاحًا آخَرَ، أَكْبَرَ مِنَ الْأَوَّلِ. قَالَ إِنَّ الْبِئْرَ لَهَا مَخْرَجٌ إِلَى الْبَحْرِ، سَدَّهُ هُوَ بِيَدِهِ سَنَةَ الْغَرَقِ. وَالْأَصْوَاتُ الَّتِي تُحْفَظُ بِلَا مَخْرَجٍ تَتَحَوَّلُ إِلَى ثِقَلٍ، وَالثِّقَلُ إِذَا طَالَ صَارَ حَجَرًا.' },
+            { type: 'p', text: 'فَتَحَتْ نُورُ الْمِفْتَاحَ الْأَخِيرَ. دَارَ النُّحَاسُ، وَانْكَسَرَ خَتْمُ الطِّينِ، وَانْدَفَعَ الْمَاءُ إِلَى الْغُرْفَةِ دَفْعَةً وَاحِدَةً، بَارِدًا، عَذْبًا، لَا مَالِحًا كَمَا تَوَقَّعَتْ. وَفِي لَحْظَةِ دُخُولِهِ ارْتَفَعَ مِنَ الْحَجَرِ صَوْتُ امْرَأَةٍ تَضْحَكُ؛ ضَحْكَةً وَاحِدَةً قَصِيرَةً، ثُمَّ سَكَتَتْ.' },
+            { type: 'p', text: 'وَفِي الصَّبَاحِ وَجَدَتْ عَلَى عَتَبَةِ الْبَابِ صَدَفَةً صَغِيرَةً بَيْضَاءَ. رَفَعَتْهَا إِلَى أُذُنِهَا. كَانَ فِيهَا صَوْتُ مَاءٍ، وَصَوْتُ رِيحٍ، وَصَوْتُ أَحَدٍ يَقُولُ اسْمَهَا مَرَّةً وَاحِدَةً بِلَا حُزْنٍ. وَضَعَتِ الصَّدَفَةَ فِي جَيْبِهَا وَذَهَبَتْ لِتُسَاعِدَ الْجَدَّ فِي الشَّبَكَةِ.', fn: '1' },
+            { type: 'break' },
+            { type: 'quote', text: 'لَمْ تَعُدْ نُورُ تَخَافُ مِنَ الْبَحْرِ. وَلَكِنَّهَا صَارَتْ تَعْرِفُ أَنَّ الْحِفْظَ لَيْسَ أَنْ تَمْنَعَ الشَّيْءَ مِنَ الذَّهَابِ، بَلْ أَنْ تَعْرِفَ إِلَى أَيْنَ ذَهَبَ.', fn: '2' }
+          ]
+        }
+      ];
+
+      const FONTS = [
+        { id: 'Amiri', label: 'أميري' },
+        { id: 'Noto Naskh Arabic', label: 'نوتو نسخ' },
+        { id: 'Scheherazade New', label: 'شهرزاد' },
+        { id: 'IBM Plex Sans Arabic', label: 'بلكس عربي' },
+        { id: 'Readex Pro', label: 'ريدكس برو' },
+        { id: 'Literata', label: 'Literata' }
+      ];
+
+      const LIBRARY_BOOKS = [
+        { title: 'حَجَرُ الْمَاءِ', author: 'روايتي', pct: 38, color: '#2B5356' },
+        { title: 'خريطة الملح والنجوم', author: 'سلمى المنصوري', pct: 74 },
+        { title: 'رسائل من بيت الطين', author: 'يوسف النجار', pct: 12 },
+        { title: 'دفتر السفر القديم', author: 'كريم الدسوقي', pct: 100 },
+        { title: 'ظلّ الغيمة الأخيرة', author: 'ندى الشريف', pct: 0 },
+        { title: 'مقامات الوَرّاق', author: 'طارق المنوفي', pct: 56 },
+        { title: 'قنديل حارة النحّاس', author: 'هالة عبد الرحمن', pct: 23 },
+        { title: 'أوراق ميناء الإسكندرية', author: 'مروان الشاذلي', pct: 89 },
+        { title: 'ساعة الرمل البطيئة', author: 'ليلى بدران', pct: 0 }
+      ];
+
+      const COVER_PALETTES = [
+        { bg: '#2B5356', ink: '#F5EFE4', line: '#D9C5A3' },
+        { bg: '#733329', ink: '#FAF3E8', line: '#E5C6A2' },
+        { bg: '#3B4A3A', ink: '#F4F1E8', line: '#CFD0B8' },
+        { bg: '#5B422E', ink: '#FAF3E6', line: '#E2CBA8' },
+        { bg: '#2B3B52', ink: '#F2F0EA', line: '#BCC8DB' },
+        { bg: '#5A3847', ink: '#FAF2F5', line: '#E3C2CE' },
+        { bg: '#6C542B', ink: '#FCF7EC', line: '#EAD7B0' },
+        { bg: '#344954', ink: '#F3F1EC', line: '#C3D3DB' }
+      ];
+
+      function hashTitle(str) {
+        let h = 2166136261;
+        for (let i = 0; i < str.length; i++) {
+          h ^= str.charCodeAt(i);
+          h = Math.imul(h, 16777619);
+        }
+        return Math.abs(h);
+      }
+
+      function buildCoverHTML(book) {
+        const h = hashTitle(book.title);
+        const pal = book.color
+          ? { bg: book.color, ink: '#FAF6EE', line: '#DEC8A4' }
+          : COVER_PALETTES[h % COVER_PALETTES.length];
+        const motif = h % 3;
+        let svg = '';
+        if (motif === 0) {
+          svg = `<svg class="cover-svg" viewBox="0 0 120 176" preserveAspectRatio="none"><circle cx="60" cy="88" r="42" stroke="${pal.line}" stroke-width="0.9" fill="none"/><circle cx="60" cy="88" r="28" stroke="${pal.line}" stroke-width="0.7" fill="none"/><path d="M60 32v112M18 88h84" stroke="${pal.line}" stroke-width="0.6"/></svg>`;
+        } else if (motif === 1) {
+          svg = `<svg class="cover-svg" viewBox="0 0 120 176" preserveAspectRatio="none"><path d="M22 152V64a38 38 0 0 1 76 0v88" stroke="${pal.line}" stroke-width="1" fill="none"/><path d="M34 152V70a26 26 0 0 1 52 0v82" stroke="${pal.line}" stroke-width="0.7" fill="none"/></svg>`;
+        } else {
+          svg = `<svg class="cover-svg" viewBox="0 0 120 176" preserveAspectRatio="none"><polygon points="60,26 98,88 60,150 22,88" stroke="${pal.line}" stroke-width="0.9" fill="none"/><polygon points="60,46 86,88 60,130 34,88" stroke="${pal.line}" stroke-width="0.7" fill="none"/></svg>`;
+        }
+        return `
+          <div class="proc-cover" style="background:${pal.bg};color:${pal.ink};">
+            ${svg}
+            <div class="cover-frame"></div>
+            <div class="cover-top-mark" style="color:${pal.line};">✦</div>
+            <div class="cover-title-text">${book.title}</div>
+            <div class="cover-author-text" style="color:${pal.line};">${book.author}</div>
+          </div>
+        `;
+      }
+
+      function initPaperGrain() {
+        const c = document.createElement('canvas');
+        c.width = 128;
+        c.height = 128;
+        const ctx = c.getContext('2d');
+        if (!ctx) return;
+        const img = ctx.createImageData(128, 128);
+        let seed = 4219;
+        for (let i = 0; i < img.data.length; i += 4) {
+          seed = (seed * 16807) % 2147483647;
+          const v = (seed & 255);
+          img.data[i] = v;
+          img.data[i + 1] = v;
+          img.data[i + 2] = v;
+          img.data[i + 3] = 255;
+        }
+        ctx.putImageData(img, 0, 0);
+        document.getElementById('paperGrain').style.backgroundImage = `url(${c.toDataURL('image/png')})`;
+      }
+
+      const state = {
+        orient: 'landscape', // landscape (1366x1024) | portrait (1024x1366)
+        spreadPref: 'two',   // two | one (applies in landscape)
+        screen: 'reader',    // library | reader | hud | settings
+        theme: 'light',      // light | dark-burnt | dark-ink | dark-oled
+        viewIndex: 0,        // spread index (in 2-col mode) or page index (in 1-col mode)
+        totalCols: 1,
+        viewCount: 1,
+        colsPerView: 2,
+        colStride: 600,
+        viewStride: 1200,
+        chapterMeta: [],
+        bookmarks: new Set([0, 2]),
+        font: 'Amiri',
+        size: 20.5,
+        lh: 1.98,
+        ws: 0,
+        align: 'justify',
+        indent: 'classic',
+        marginMode: 'balanced' // tight | balanced | wide
+      };
+
+      const tabletEl = document.getElementById('tablet');
+      const screenLib = document.getElementById('screen-library');
+      const screenReader = document.getElementById('screen-reader');
+      const bookVessel = document.getElementById('bookVessel');
+      const pageClip = document.getElementById('pageClip');
+      const track = document.getElementById('columnsTrack');
+      const edgeRight = document.getElementById('edgeRight');
+      const edgeLeft = document.getElementById('edgeLeft');
+      const silkRibbon = document.getElementById('silkRibbon');
+      const timelineSegments = document.getElementById('timelineSegments');
+      const tlThumb = document.getElementById('tlThumb');
+
+      function isTwoPageActive() {
+        return state.orient === 'landscape' && state.spreadPref === 'two';
+      }
+
+      function fitStandaloneScale() {
+        if (document.body.classList.contains('embed')) {
+          tabletEl.style.transform = '';
+          return;
+        }
+        const scaler = document.getElementById('scaler');
+        const tw = state.orient === 'landscape' ? 1366 : 1024;
+        const th = state.orient === 'landscape' ? 1024 : 1366;
+        const availW = Math.max(320, scaler.clientWidth - 16);
+        const availH = Math.max(320, scaler.clientHeight - 16);
+        const scale = Math.min(1, availW / tw, availH / th);
+        tabletEl.style.transform = `scale(${scale.toFixed(4)})`;
+      }
+
+      function renderLibrary() {
+        document.getElementById('heroCoverMount').innerHTML = buildCoverHTML(LIBRARY_BOOKS[0]);
+        const grid = document.getElementById('shelfGrid');
+        grid.innerHTML = LIBRARY_BOOKS.slice(1).map((b, idx) => `
+          <article class="book-tile" data-open-book="${idx + 1}">
+            <div class="tile-cover-box">${buildCoverHTML(b)}</div>
+            <h3 class="tile-title">${b.title}</h3>
+            <p class="tile-author">${b.author}</p>
+            <div class="tile-foot">
+              <div class="hair-track"><div class="hair-fill" style="width:${b.pct}%"></div></div>
+              <span class="tile-pct">${b.pct === 100 ? 'مكتملة' : b.pct === 0 ? 'جديدة' : toAr(b.pct) + '٪'}</span>
+            </div>
+          </article>
+        `).join('');
+
+        grid.querySelectorAll('.book-tile').forEach(el => {
+          el.addEventListener('click', () => setScreen('reader'));
+        });
+      }
+
+      function renderNovel() {
+        track.innerHTML = CHAPTERS.map((ch, idx) => {
+          const blocksHtml = ch.blocks.map(b => {
+            const fnHtml = b.fn ? `<button class="fn-btn" data-fn="${b.fn}" aria-label="حاشية ${b.fn}">${toAr(b.fn)}</button>` : '';
+            if (b.type === 'h2') return `<h2 class="scene-h2">${b.text}</h2>`;
+            if (b.type === 'break') return `<div class="scene-break">✦ &nbsp; ✦ &nbsp; ✦</div>`;
+            if (b.type === 'quote') return `<blockquote class="novel-quote">${b.text}${fnHtml}</blockquote>`;
+            const cls = ['novel-p', b.noIndent ? 'no-indent' : '', b.dialogue ? 'dialogue' : ''].filter(Boolean).join(' ');
+            return `<p class="${cls}">${b.text}${fnHtml}</p>`;
+          }).join('');
+          return `
+            <section class="chapter-sec" data-ch-index="${idx}">
+              <div class="ch-head">
+                <h1 class="ch-title">${ch.title}</h1>
+                <div class="ch-orn">✦</div>
+              </div>
+              ${blocksHtml}
+            </section>
+          `;
+        }).join('');
+
+        track.querySelectorAll('.fn-btn').forEach(btn => {
+          btn.addEventListener('click', e => {
+            e.stopPropagation();
+            const id = btn.getAttribute('data-fn');
+            document.getElementById('fnTitle').textContent = `حاشية ${toAr(id)}`;
+            document.getElementById('fnBody').textContent = FOOTNOTES[id] || '';
+            document.getElementById('fnModal').classList.add('open');
+          });
+        });
+      }
+
+      function measureLayout(preserveRatio) {
+        const prevRatio = preserveRatio && state.viewCount > 1 ? state.viewIndex / (state.viewCount - 1) : null;
+        const twoPage = isTwoPageActive();
+        state.colsPerView = twoPage ? 2 : 1;
+        screenReader.classList.toggle('spread-mode', twoPage);
+
+        const vesselW = bookVessel.clientWidth || (state.orient === 'landscape' ? 1318 : 1024);
+        const marginPad = state.marginMode === 'tight' ? 54 : state.marginMode === 'wide' ? 104 : 78;
+
+        let colW, gap, clipW;
+        if (twoPage) {
+          gap = 108; // Exact center spine gutter width!
+          const maxAvail = Math.max(600, vesselW - marginPad * 2);
+          colW = Math.floor((maxAvail - gap) / 2);
+          clipW = colW * 2 + gap;
+          state.colStride = colW + gap;
+          state.viewStride = 2 * state.colStride;
+        } else {
+          // Comfortable single-page measure <= 65ch (max 620px on 1024px portrait!)
+          const maxMeasure = state.marginMode === 'tight' ? 660 : state.marginMode === 'wide' ? 540 : 600;
+          colW = Math.min(maxMeasure, Math.floor(vesselW - 160));
+          gap = 80;
+          clipW = colW;
+          state.colStride = colW + gap;
+          state.viewStride = state.colStride;
+        }
+
+        pageClip.style.width = clipW + 'px';
+        track.style.columnWidth = colW + 'px';
+        track.style.columnGap = gap + 'px';
+
+        // Reset transform to accurately measure columns
+        const oldTrans = track.style.transition;
+        track.style.transition = 'none';
+        track.style.transform = 'translateX(0px)';
+        void track.offsetWidth;
+
+        const clipRect = pageClip.getBoundingClientRect();
+        const sections = Array.from(track.querySelectorAll('.chapter-sec'));
+        let maxCol = 0;
+        const meta = [];
+
+        sections.forEach((sec, idx) => {
+          const children = Array.from(sec.children);
+          let startC = Infinity;
+          let endC = 0;
+          children.forEach(el => {
+            const r = el.getBoundingClientRect();
+            const distStart = clipRect.right - r.right;
+            const distEnd = clipRect.right - r.left;
+            const c0 = Math.max(0, Math.floor((distStart + 14) / state.colStride));
+            const c1 = Math.max(0, Math.floor((distEnd - 8) / state.colStride));
+            if (c0 < startC) startC = c0;
+            if (c1 > endC) endC = c1;
+          });
+          if (!isFinite(startC)) startC = maxCol;
+          if (endC < startC) endC = startC;
+          if (endC > maxCol) maxCol = endC;
+          meta.push({
+            index: idx,
+            title: CHAPTERS[idx].title,
+            shortTitle: CHAPTERS[idx].shortTitle,
+            words: CHAPTERS[idx].words,
+            startCol: startC,
+            endCol: endC,
+            colCount: endC - startC + 1
+          });
+        });
+
+        state.totalCols = Math.max(1, maxCol + 1);
+        state.viewCount = Math.max(1, Math.ceil(state.totalCols / state.colsPerView));
+        state.chapterMeta = meta;
+
+        if (prevRatio !== null) {
+          state.viewIndex = Math.max(0, Math.min(state.viewCount - 1, Math.round(prevRatio * (state.viewCount - 1))));
+        } else {
+          state.viewIndex = Math.max(0, Math.min(state.viewCount - 1, state.viewIndex));
+        }
+
+        track.style.transform = `translateX(${state.viewIndex * state.viewStride}px)`;
+        void track.offsetWidth;
+        track.style.transition = oldTrans;
+
+        renderTimeline();
+        renderToc();
+        updateReadingUI();
+      }
+
+      function getChapterForCol(c) {
+        let found = state.chapterMeta[0];
+        for (const m of state.chapterMeta) {
+          if (c >= m.startCol) found = m;
+        }
+        return found || { title: CHAPTERS[0].title, shortTitle: CHAPTERS[0].shortTitle, index: 0, startCol: 0, endCol: 0 };
+      }
+
+      function renderTimeline() {
+        const totalWords = CHAPTERS.reduce((s, c) => s + c.words, 0);
+        timelineSegments.innerHTML = CHAPTERS.map((c, idx) => {
+          const flex = (c.words / totalWords * 100).toFixed(2);
+          return `<div class="tl-seg" style="flex:${flex} 0 0"><div class="tl-seg-fill" id="segFill-${idx}"></div></div>`;
+        }).join('');
+      }
+
+      function renderToc() {
+        const activeCol = state.viewIndex * state.colsPerView;
+        const activeCh = getChapterForCol(activeCol);
+        document.getElementById('tocList').innerHTML = state.chapterMeta.map(m => `
+          <button class="toc-item ${m.index === activeCh.index ? 'active' : ''}" data-toc-col="${m.startCol}">
+            <div>
+              <div class="toc-item-title">${m.title}</div>
+              <div class="toc-item-meta">${toAr(m.colCount)} صفحات</div>
+            </div>
+            <span class="toc-page">ص ${toAr(m.startCol + 1)}</span>
+          </button>
+        `).join('');
+
+        document.querySelectorAll('.toc-item').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const targetCol = parseInt(btn.getAttribute('data-toc-col'), 10);
+            state.viewIndex = Math.floor(targetCol / state.colsPerView);
+            updateReadingUI();
+            document.getElementById('tocBackdrop').classList.remove('open');
+          });
+        });
+      }
+
+      function updateReadingUI() {
+        const twoPage = isTwoPageActive();
+        const firstCol = state.viewIndex * state.colsPerView;
+        const lastCol = Math.min(state.totalCols - 1, firstCol + state.colsPerView - 1);
+        const ratio = state.viewCount > 1 ? state.viewIndex / (state.viewCount - 1) : 1;
+        const pct = Math.max(1, Math.round(((lastCol + 1) / state.totalCols) * 100));
+        const ch = getChapterForCol(firstCol);
+
+        track.style.transform = `translateX(${state.viewIndex * state.viewStride}px)`;
+
+        // Page-edge stack thickness (Right = pages already read in RTL, Left = pages remaining)
+        if (twoPage) {
+          const rightW = (5 + ratio * 11).toFixed(1);
+          const leftW = (16 - ratio * 11).toFixed(1);
+          edgeRight.style.width = rightW + 'px';
+          edgeLeft.style.width = leftW + 'px';
+        } else {
+          const rightW = (2 + ratio * 5).toFixed(1);
+          const leftW = (7 - ratio * 5).toFixed(1);
+          edgeRight.style.width = rightW + 'px';
+          edgeLeft.style.width = leftW + 'px';
+        }
+
+        document.getElementById('runningChapter').textContent = ch.shortTitle;
+        document.getElementById('hudChapterTitle').textContent = ch.title;
+        document.getElementById('footPct').textContent = `· ${toAr(pct)}٪`;
+
+        if (twoPage) {
+          const pRight = firstCol + 1;
+          const pLeft = firstCol + 2;
+          document.getElementById('footRightPage').textContent = `صفحة ${toAr(pRight)}`;
+          document.getElementById('footLeftPage').textContent = pLeft <= state.totalCols ? `صفحة ${toAr(pLeft)}` : 'نهاية الكتاب';
+          document.getElementById('footModeLabel').textContent = 'صفحتان متقابلتان · اليمين أولاً';
+          document.getElementById('hudPageCounter').textContent = pLeft <= state.totalCols
+            ? `صفحتا ${toAr(pRight)}–${toAr(pLeft)} من ${toAr(state.totalCols)}`
+            : `صفحة ${toAr(pRight)} من ${toAr(state.totalCols)}`;
+          document.getElementById('hudModePill').textContent = 'كتاب مفتوح · صفحتان';
+          document.getElementById('heroModeHint').textContent = 'يفتح بوضع صفحتين جنب بعض';
+        } else {
+          const p = firstCol + 1;
+          document.getElementById('footRightPage').textContent = `صفحة ${toAr(p)} / ${toAr(state.totalCols)}`;
+          document.getElementById('footLeftPage').textContent = '';
+          document.getElementById('footModeLabel').textContent = 'عمود قراءة مريح ≤ ٦٢ حرفاً';
+          document.getElementById('hudPageCounter').textContent = `صفحة ${toAr(p)} من ${toAr(state.totalCols)}`;
+          document.getElementById('hudModePill').textContent = 'تابلت بالطول · صفحة واحدة';
+          document.getElementById('heroModeHint').textContent = 'يفتح بصفحة مريحة وهوامش واسعة';
+        }
+
+        state.chapterMeta.forEach((m, idx) => {
+          const fill = document.getElementById(`segFill-${idx}`);
+          if (!fill) return;
+          if (lastCol >= m.endCol) fill.style.width = '100%';
+          else if (lastCol < m.startCol) fill.style.width = '0%';
+          else {
+            const segProg = m.colCount > 1 ? ((lastCol - m.startCol + 1) / m.colCount) * 100 : 100;
+            fill.style.width = segProg + '%';
+          }
+        });
+        tlThumb.style.right = (ratio * 100) + '%';
+
+        const isBookmarked = state.bookmarks.has(state.viewIndex);
+        silkRibbon.classList.toggle('pinned', isBookmarked);
+        document.getElementById('hudBookmarkStatus').textContent = isBookmarked
+          ? 'الصفحة محفوظة بالشريطة القرمزية'
+          : 'اضغط الشريطة القرمزية لحفظ الموضع';
+      }
+
+      function goView(nextIdx) {
+        const clamped = Math.max(0, Math.min(state.viewCount - 1, nextIdx));
+        if (clamped === state.viewIndex) return;
+        state.viewIndex = clamped;
+        updateReadingUI();
+      }
+
+      function setOrient(orient) {
+        state.orient = orient;
+        document.documentElement.setAttribute('data-orient', orient);
+        document.querySelectorAll('[data-go-orient]').forEach(b => {
+          b.classList.toggle('active', b.getAttribute('data-go-orient') === orient);
+        });
+        fitStandaloneScale();
+        if (state.screen !== 'library') {
+          requestAnimationFrame(() => measureLayout(true));
+        }
+      }
+
+      function setScreen(mode) {
+        state.screen = mode;
+        const isLib = mode === 'library';
+        screenLib.classList.toggle('active', isLib);
+        screenReader.classList.toggle('active', !isLib);
+        screenReader.classList.toggle('hud-open', mode === 'hud');
+        screenReader.classList.toggle('settings-open', mode === 'settings');
+
+        document.getElementById('btnOpenSettings').classList.toggle('active', mode === 'settings');
+        document.querySelectorAll('[data-go-screen]').forEach(b => {
+          b.classList.toggle('active', b.getAttribute('data-go-screen') === mode);
+        });
+
+        if (!isLib) {
+          requestAnimationFrame(() => measureLayout(false));
+        }
+      }
+
+      function setTheme(theme) {
+        state.theme = theme;
+        document.documentElement.setAttribute('data-theme', theme);
+        document.querySelectorAll('[data-set-theme]').forEach(b => {
+          b.classList.toggle('active', b.getAttribute('data-set-theme') === theme);
+        });
+        document.querySelectorAll('[data-go-theme]').forEach(b => {
+          b.classList.toggle('active', b.getAttribute('data-go-theme') === theme);
+        });
+      }
+
+      function initSettings() {
+        const fontGrid = document.getElementById('fontGrid');
+        fontGrid.innerHTML = FONTS.map(f => `
+          <button class="font-chip ${f.id === state.font ? 'active' : ''}" data-font="${f.id}" style="font-family:'${f.id}',serif">${f.label}</button>
+        `).join('');
+
+        fontGrid.querySelectorAll('.font-chip').forEach(btn => {
+          btn.addEventListener('click', () => {
+            state.font = btn.getAttribute('data-font');
+            document.documentElement.style.setProperty('--read-font', `'${state.font}', 'Amiri', serif`);
+            fontGrid.querySelectorAll('.font-chip').forEach(b => b.classList.toggle('active', b === btn));
+            measureLayout(true);
+          });
+        });
+
+        const updateSize = d => {
+          state.size = Math.max(15, Math.min(30, +(state.size + d).toFixed(1)));
+          document.documentElement.style.setProperty('--read-size', state.size + 'px');
+          document.getElementById('sizeReadout').textContent = toAr(state.size);
+          measureLayout(true);
+        };
+        document.getElementById('sizeDec').addEventListener('click', () => updateSize(-1));
+        document.getElementById('sizeInc').addEventListener('click', () => updateSize(1));
+
+        document.getElementById('lhRange').addEventListener('input', e => {
+          state.lh = parseFloat(e.target.value);
+          document.documentElement.style.setProperty('--read-lh', state.lh);
+          document.getElementById('lhVal').textContent = toAr(state.lh.toFixed(2));
+          measureLayout(true);
+        });
+
+        document.getElementById('wsRange').addEventListener('input', e => {
+          state.ws = parseFloat(e.target.value);
+          document.documentElement.style.setProperty('--read-ws', state.ws + 'px');
+          document.getElementById('wsVal').textContent = toAr(state.ws);
+          measureLayout(true);
+        });
+
+        document.querySelectorAll('[data-spread-pref]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            state.spreadPref = btn.getAttribute('data-spread-pref');
+            document.querySelectorAll('[data-spread-pref]').forEach(b => b.classList.toggle('active', b === btn));
+            measureLayout(true);
+          });
+        });
+
+        document.querySelectorAll('[data-align]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            state.align = btn.getAttribute('data-align');
+            document.documentElement.style.setProperty('--read-align', state.align);
+            document.querySelectorAll('[data-align]').forEach(b => b.classList.toggle('active', b === btn));
+            measureLayout(true);
+          });
+        });
+
+        document.querySelectorAll('[data-indent]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            state.indent = btn.getAttribute('data-indent');
+            const classic = state.indent === 'classic';
+            document.documentElement.style.setProperty('--read-indent', classic ? '1.5em' : '0em');
+            document.documentElement.style.setProperty('--read-pgap', classic ? '8px' : '16px');
+            document.querySelectorAll('[data-indent]').forEach(b => b.classList.toggle('active', b === btn));
+            measureLayout(true);
+          });
+        });
+
+        document.querySelectorAll('[data-margin]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            state.marginMode = btn.getAttribute('data-margin');
+            document.querySelectorAll('[data-margin]').forEach(b => b.classList.toggle('active', b === btn));
+            measureLayout(true);
+          });
+        });
+
+        document.querySelectorAll('.pop-tab').forEach(tab => {
+          tab.addEventListener('click', () => {
+            const target = tab.getAttribute('data-tab');
+            document.querySelectorAll('.pop-tab').forEach(t => t.classList.toggle('active', t === tab));
+            document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === `pane-${target}`));
+          });
+        });
+
+        document.querySelectorAll('[data-set-theme]').forEach(btn => {
+          btn.addEventListener('click', () => setTheme(btn.getAttribute('data-set-theme')));
+        });
+      }
+
+      function bindEvents() {
+        document.getElementById('heroBook').addEventListener('click', () => setScreen('reader'));
+        document.getElementById('continueReadingBtn').addEventListener('click', e => { e.stopPropagation(); setScreen('reader'); });
+        document.getElementById('heroTocBtn').addEventListener('click', e => {
+          e.stopPropagation();
+          setScreen('reader');
+          setTimeout(() => { renderToc(); document.getElementById('tocBackdrop').classList.add('open'); }, 80);
+        });
+        document.getElementById('importDemoBtn').addEventListener('click', () => setScreen('reader'));
+
+        document.getElementById('tapNext').addEventListener('click', () => {
+          if (state.screen === 'settings') { setScreen('reader'); return; }
+          goView(state.viewIndex + 1);
+        });
+        document.getElementById('tapPrev').addEventListener('click', () => {
+          if (state.screen === 'settings') { setScreen('reader'); return; }
+          goView(state.viewIndex - 1);
+        });
+        document.getElementById('tapCenter').addEventListener('click', () => {
+          if (state.screen === 'settings') setScreen('reader');
+          else setScreen(state.screen === 'hud' ? 'reader' : 'hud');
+        });
+
+        document.getElementById('ribbonZone').addEventListener('click', e => {
+          e.stopPropagation();
+          if (state.bookmarks.has(state.viewIndex)) state.bookmarks.delete(state.viewIndex);
+          else state.bookmarks.add(state.viewIndex);
+          updateReadingUI();
+        });
+
+        document.getElementById('btnBackLib').addEventListener('click', () => setScreen('library'));
+        document.getElementById('btnOpenToc').addEventListener('click', () => {
+          renderToc();
+          document.getElementById('tocBackdrop').classList.add('open');
+        });
+        document.getElementById('btnCloseToc').addEventListener('click', () => document.getElementById('tocBackdrop').classList.remove('open'));
+        document.getElementById('tocBackdrop').addEventListener('click', e => {
+          if (e.target.id === 'tocBackdrop') document.getElementById('tocBackdrop').classList.remove('open');
+        });
+
+        document.getElementById('btnOpenSettings').addEventListener('click', () => {
+          setScreen(state.screen === 'settings' ? 'hud' : 'settings');
+        });
+        document.getElementById('btnCloseSettings').addEventListener('click', () => setScreen('reader'));
+
+        document.getElementById('fnClose').addEventListener('click', () => document.getElementById('fnModal').classList.remove('open'));
+        document.getElementById('fnModal').addEventListener('click', e => {
+          if (e.target.id === 'fnModal') document.getElementById('fnModal').classList.remove('open');
+        });
+
+        document.getElementById('timelineWrap').addEventListener('click', e => {
+          const r = e.currentTarget.getBoundingClientRect();
+          const ratio = Math.max(0, Math.min(1, (r.right - e.clientX) / r.width));
+          goView(Math.round(ratio * (state.viewCount - 1)));
+        });
+
+        document.querySelectorAll('[data-go-orient]').forEach(btn => {
+          btn.addEventListener('click', () => setOrient(btn.getAttribute('data-go-orient')));
+        });
+        document.querySelectorAll('[data-go-screen]').forEach(btn => {
+          btn.addEventListener('click', () => setScreen(btn.getAttribute('data-go-screen')));
+        });
+        document.querySelectorAll('[data-go-theme]').forEach(btn => {
+          btn.addEventListener('click', () => setTheme(btn.getAttribute('data-go-theme')));
+        });
+
+        window.addEventListener('keydown', e => {
+          if (state.screen === 'library') return;
+          if (e.key === 'ArrowLeft') goView(state.viewIndex + 1);
+          if (e.key === 'ArrowRight') goView(state.viewIndex - 1);
+        });
+
+        window.addEventListener('resize', () => {
+          fitStandaloneScale();
+          if (state.screen !== 'library') measureLayout(true);
+        });
+
+        window.addEventListener('message', e => {
+          if (!e.data || typeof e.data !== 'object') return;
+          if (e.data.type === 'setScreen' && e.data.screen) setScreen(e.data.screen);
+          if (e.data.type === 'setTheme' && e.data.theme) setTheme(e.data.theme);
+          if (e.data.type === 'setOrient' && e.data.orient) setOrient(e.data.orient);
+          if (e.data.type === 'setTab' && e.data.tab) {
+            document.querySelectorAll('.pop-tab').forEach(t => t.classList.toggle('active', t.getAttribute('data-tab') === e.data.tab));
+            document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === `pane-${e.data.tab}`));
+          }
+        });
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('embed') === '1') document.body.classList.add('embed');
+
+      initPaperGrain();
+      renderLibrary();
+      renderNovel();
+      initSettings();
+      bindEvents();
+
+      const autoOrient = window.innerHeight > window.innerWidth ? 'portrait' : 'landscape';
+      const initOrient = params.get('orient') || (params.get('embed') === '1' ? autoOrient : 'landscape');
+      const initTheme = params.get('theme') || 'light';
+      const initScreen = params.get('screen') || 'reader';
+      const initView = parseInt(params.get('view') || '0', 10);
+      const initTab = params.get('tab');
+
+      if (!isNaN(initView) && initView >= 0) state.viewIndex = initView;
+      setTheme(initTheme);
+      setOrient(initOrient);
+      if (initTab) {
+        document.querySelectorAll('.pop-tab').forEach(t => t.classList.toggle('active', t.getAttribute('data-tab') === initTab));
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === `pane-${initTab}`));
+      }
+      setScreen(initScreen);
+
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(() => {
+          fitStandaloneScale();
+          if (state.screen !== 'library') measureLayout(false);
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

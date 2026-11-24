@@ -1,0 +1,2537 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="burnt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>روايتي — الوَرّاق (دارك ١: وَرَق مَحْروق)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=Literata:ital,opsz,wght@0,7..72,300..600;1,7..72,400&family=Merriweather:wght@300;400;700&family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Readex+Pro:wght@300;400;500;600;700&family=Scheherazade+New:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #181310;
+      --surface: #221B17;
+      --surface-elevated: #2B231D;
+      --hud-bg: rgba(24, 19, 16, 0.95);
+      --sheet-bg: rgba(31, 24, 20, 0.97);
+      --text: #DECFC0;
+      --muted: #A69686;
+      --border: #372C25;
+      --accent: #DF7863;
+      --accent-soft: rgba(223, 120, 99, 0.15);
+      --cta-bg: #A34131;
+      --cta-text: #FAF3EA;
+      --quote-bg: rgba(222, 207, 192, 0.045);
+      --quote-border: #C95E4B;
+      --page-edge: rgba(222, 207, 192, 0.18);
+      --ribbon: #B34636;
+      --ribbon-deep: #8B3123;
+      --ribbon-stitch: rgba(250, 238, 224, 0.28);
+      --cover-rim: rgba(232, 214, 192, 0.14);
+      --cover-shadow: -4px 8px 20px rgba(0, 0, 0, 0.45), -1px 2px 4px rgba(0, 0, 0, 0.30);
+      --grain-opacity: 0.018;
+
+      --ui-font: 'IBM Plex Sans Arabic', sans-serif;
+      --display-font: 'Amiri', serif;
+      --read-font: 'Amiri', 'Noto Naskh Arabic', serif;
+      --read-size: 20px;
+      --read-lh: 1.95;
+      --read-ws: 0px;
+      --read-weight: 400;
+      --read-align: justify;
+      --read-indent: 1.5em;
+      --read-pgap: 8px;
+      --margin-h: 26px;
+      --margin-v: 26px;
+      --page-turn-ms: 260ms;
+      --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+      --ribbon-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    html[data-theme="paper"] {
+      --bg: #FAF7F0;
+      --surface: #F3EDE2;
+      --surface-elevated: #FFFDF8;
+      --hud-bg: rgba(250, 247, 240, 0.96);
+      --sheet-bg: rgba(252, 249, 243, 0.98);
+      --text: #231F1A;
+      --muted: #6E655A;
+      --border: #E3DACB;
+      --accent: #9E3E2F;
+      --accent-soft: rgba(158, 62, 47, 0.11);
+      --cta-bg: #9E3E2F;
+      --cta-text: #FFFBF7;
+      --quote-bg: rgba(35, 31, 26, 0.035);
+      --quote-border: #9E3E2F;
+      --page-edge: rgba(110, 96, 78, 0.28);
+      --ribbon: #9E3E2F;
+      --ribbon-deep: #7B2D21;
+      --ribbon-stitch: rgba(255, 250, 240, 0.28);
+      --cover-rim: rgba(35, 31, 26, 0.10);
+      --cover-shadow: -3px 6px 14px rgba(35, 31, 26, 0.16), -1px 1px 3px rgba(35, 31, 26, 0.10);
+      --grain-opacity: 0.032;
+    }
+
+    html[data-theme="sepia"] {
+      --bg: #F3EBD6;
+      --surface: #EAE0C6;
+      --surface-elevated: #F8F2E2;
+      --hud-bg: rgba(243, 235, 214, 0.95);
+      --sheet-bg: rgba(245, 238, 220, 0.97);
+      --text: #382B1E;
+      --muted: #725E49;
+      --border: #D8C9AA;
+      --accent: #8C3A2B;
+      --accent-soft: rgba(140, 58, 43, 0.12);
+      --cta-bg: #8C3A2B;
+      --cta-text: #FAF5EA;
+      --quote-bg: rgba(56, 43, 30, 0.045);
+      --quote-border: #8C3A2B;
+      --page-edge: rgba(104, 82, 56, 0.30);
+      --ribbon: #8C3A2B;
+      --ribbon-deep: #6C2B1F;
+      --ribbon-stitch: rgba(250, 245, 234, 0.28);
+      --cover-rim: rgba(56, 43, 30, 0.12);
+      --cover-shadow: -3px 6px 14px rgba(56, 43, 30, 0.18);
+      --grain-opacity: 0.035;
+    }
+
+    html[data-theme="burnt"] {
+      --bg: #181310;
+      --surface: #221B17;
+      --surface-elevated: #2B231D;
+      --hud-bg: rgba(24, 19, 16, 0.95);
+      --sheet-bg: rgba(31, 24, 20, 0.97);
+      --text: #DECFC0;
+      --muted: #A69686;
+      --border: #372C25;
+      --accent: #DF7863;
+      --accent-soft: rgba(223, 120, 99, 0.15);
+      --cta-bg: #A34131;
+      --cta-text: #FAF3EA;
+      --quote-bg: rgba(222, 207, 192, 0.045);
+      --quote-border: #C95E4B;
+      --page-edge: rgba(222, 207, 192, 0.18);
+      --ribbon: #B34636;
+      --ribbon-deep: #8B3123;
+      --ribbon-stitch: rgba(250, 238, 224, 0.28);
+      --cover-rim: rgba(232, 214, 192, 0.14);
+      --cover-shadow: -4px 8px 20px rgba(0, 0, 0, 0.45), -1px 2px 4px rgba(0, 0, 0, 0.30);
+      --grain-opacity: 0.018;
+    }
+
+    html[data-theme="night-ink"] {
+      --bg: #10151E;
+      --surface: #171E2B;
+      --surface-elevated: #1F2838;
+      --hud-bg: rgba(16, 21, 30, 0.95);
+      --sheet-bg: rgba(21, 28, 40, 0.97);
+      --text: #D4D8DF;
+      --muted: #939EAE;
+      --border: #283347;
+      --accent: #DB7B7C;
+      --accent-soft: rgba(219, 123, 124, 0.14);
+      --cta-bg: #993D45;
+      --cta-text: #FAF3F4;
+      --quote-bg: rgba(212, 216, 223, 0.04);
+      --quote-border: #C26269;
+      --page-edge: rgba(212, 216, 223, 0.16);
+      --ribbon: #A8454E;
+      --ribbon-deep: #7F2F37;
+      --ribbon-stitch: rgba(248, 232, 235, 0.25);
+      --cover-rim: rgba(208, 218, 235, 0.14);
+      --cover-shadow: -4px 8px 22px rgba(4, 7, 14, 0.52), -1px 2px 4px rgba(4, 7, 14, 0.35);
+      --grain-opacity: 0.01;
+    }
+
+    html[data-theme="oled"] {
+      --bg: #000000;
+      --surface: #0E0C0C;
+      --surface-elevated: #171414;
+      --hud-bg: rgba(0, 0, 0, 0.96);
+      --sheet-bg: rgba(14, 12, 12, 0.98);
+      --text: #B9B2A7;
+      --muted: #878077;
+      --border: #262120;
+      --accent: #D46A5A;
+      --accent-soft: rgba(212, 106, 90, 0.15);
+      --cta-bg: #9B3A2C;
+      --cta-text: #F8EFE8;
+      --quote-bg: rgba(185, 178, 167, 0.045);
+      --quote-border: #B84D3D;
+      --page-edge: rgba(185, 178, 167, 0.14);
+      --ribbon: #B04233;
+      --ribbon-deep: #822A1E;
+      --ribbon-stitch: rgba(248, 232, 224, 0.24);
+      --cover-rim: rgba(210, 198, 185, 0.16);
+      --cover-shadow: 0 10px 24px rgba(0, 0, 0, 0.72), inset 0 0 0 1px rgba(210, 198, 185, 0.14);
+      --grain-opacity: 0;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      letter-spacing: 0 !important;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      font-family: var(--ui-font);
+      background: #110D0B;
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden;
+    }
+
+    body.embed {
+      background: var(--bg);
+    }
+
+    .stage-wrapper {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      padding: 16px;
+    }
+
+    body.embed .stage-wrapper {
+      padding: 0;
+      gap: 0;
+    }
+
+    .standalone-bar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 6px;
+      padding: 6px 10px;
+      background: rgba(34, 27, 23, 0.94);
+      border: 1px solid #3A2F28;
+      border-radius: 8px;
+      font-size: 12px;
+    }
+
+    body.embed .standalone-bar { display: none; }
+    @media (max-width: 440px) {
+      .stage-wrapper { padding: 0; }
+      .standalone-bar { display: none; }
+    }
+
+    .sb-btn {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-family: var(--ui-font);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 5px 10px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background 150ms, color 150ms;
+    }
+
+    .sb-btn.active {
+      background: var(--cta-bg);
+      color: var(--cta-text);
+    }
+
+    .sb-sep {
+      width: 1px;
+      height: 16px;
+      background: var(--border);
+      margin: 0 2px;
+    }
+
+    .sb-badge {
+      font-size: 11px;
+      color: var(--accent);
+      background: var(--accent-soft);
+      padding: 4px 8px;
+      border-radius: 5px;
+      font-weight: 600;
+    }
+
+    /* 390x844 Phone Frame */
+    .phone {
+      position: relative;
+      width: 390px;
+      height: 844px;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+      border-radius: 26px;
+      box-shadow: 0 26px 64px rgba(0, 0, 0, 0.62), 0 0 0 1px rgba(222, 207, 192, 0.09);
+      transition: background-color 220ms var(--ease-out), color 220ms var(--ease-out);
+      user-select: none;
+    }
+
+    body.embed .phone {
+      border-radius: 0;
+      box-shadow: none;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    @media (max-width: 440px) {
+      .phone {
+        width: 100vw;
+        height: 100vh;
+        border-radius: 0;
+        box-shadow: none;
+      }
+    }
+
+    .paper-grain {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 90;
+      opacity: var(--grain-opacity);
+      background-repeat: repeat;
+      background-size: 128px 128px;
+      transition: opacity 240ms ease;
+    }
+
+    .screen {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      background: var(--bg);
+    }
+
+    .screen.active { display: flex; }
+
+    /* Subtle night ambient aura only in library (off on OLED) */
+    .lib-ambient {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(ellipse 85% 65% at 78% 12%, rgba(223, 120, 99, 0.065), transparent 70%);
+      z-index: 0;
+    }
+
+    html[data-theme="paper"] .lib-ambient,
+    html[data-theme="sepia"] .lib-ambient,
+    html[data-theme="oled"] .lib-ambient {
+      background: none;
+    }
+
+    /* ===================== LIBRARY SCREEN (Al-Warraq Open Editorial) ===================== */
+    .lib-header {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 46px 24px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand-lockup {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-name {
+      font-family: var(--display-font);
+      font-size: 26px;
+      font-weight: 700;
+      line-height: 1.1;
+      color: var(--text);
+    }
+
+    .lib-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .icon-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 150ms, border-color 150ms, color 150ms;
+    }
+
+    .icon-btn:hover { background: var(--surface); }
+
+    .import-btn {
+      height: 38px;
+      padding: 0 13px;
+      border-radius: 6px;
+      border: 1px solid var(--accent);
+      background: transparent;
+      color: var(--accent);
+      font-family: var(--ui-font);
+      font-size: 13px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: background 160ms, color 160ms, border-color 160ms;
+    }
+
+    .import-btn:hover {
+      background: var(--cta-bg);
+      border-color: var(--cta-bg);
+      color: var(--cta-text);
+    }
+
+    .lib-scroll {
+      position: relative;
+      z-index: 2;
+      flex: 1;
+      overflow-y: auto;
+      padding: 22px 24px 36px;
+      scrollbar-width: none;
+    }
+
+    .lib-scroll::-webkit-scrollbar { display: none; }
+
+    .hero-spread {
+      display: flex;
+      gap: 18px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+
+    .hero-cover-wrap {
+      flex-shrink: 0;
+      width: 108px;
+      height: 158px;
+    }
+
+    .hero-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 2px 0;
+      min-width: 0;
+    }
+
+    .hero-state {
+      font-size: 11.5px;
+      color: var(--accent);
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .hero-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .hero-title {
+      font-family: var(--display-font);
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 1.5;
+      color: var(--text);
+      margin: 8px 0 3px;
+    }
+
+    .hero-author {
+      font-size: 13px;
+      color: var(--muted);
+      margin: 0;
+    }
+
+    .hero-chapter {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .hero-progress-wrap { margin-top: 10px; }
+
+    .hair-track {
+      width: 100%;
+      height: 2px;
+      background: var(--border);
+      position: relative;
+    }
+
+    .hair-fill {
+      height: 2px;
+      background: var(--accent);
+      transition: width 300ms var(--ease-out);
+    }
+
+    .hero-meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 6px;
+      font-size: 11.5px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .continue-cta {
+      margin-top: 12px;
+      align-self: flex-start;
+      height: 36px;
+      padding: 0 16px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: var(--cta-bg);
+      color: var(--cta-text);
+      font-family: var(--ui-font);
+      font-size: 13px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: opacity 150ms, transform 150ms var(--ease-out);
+    }
+
+    .continue-cta:active { transform: scale(0.97); }
+
+    .shelf-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin: 22px 0 16px;
+    }
+
+    .shelf-title {
+      font-family: var(--display-font);
+      font-size: 20px;
+      font-weight: 700;
+      margin: 0;
+      color: var(--text);
+    }
+
+    .shelf-count {
+      font-size: 12px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .book-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 24px 18px;
+    }
+
+    .book-tile {
+      display: flex;
+      flex-direction: column;
+      cursor: pointer;
+    }
+
+    .book-tile:active .proc-cover {
+      transform: translateY(1px) scale(0.985);
+    }
+
+    .tile-cover-box {
+      width: 100%;
+      aspect-ratio: 2 / 2.9;
+      margin-bottom: 10px;
+    }
+
+    .tile-title {
+      font-family: var(--display-font);
+      font-size: 17px;
+      font-weight: 700;
+      line-height: 1.35;
+      color: var(--text);
+      margin: 0 0 2px;
+    }
+
+    .tile-author {
+      font-size: 12px;
+      color: var(--muted);
+      margin: 0 0 8px;
+    }
+
+    .tile-foot {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tile-foot .hair-track { flex: 1; }
+
+    .tile-pct {
+      font-size: 11px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Procedural Linen Book Cover — Al-Warraq Signature Right-Side Spine */
+    .proc-cover {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      border-radius: 4px 2px 2px 4px;
+      overflow: hidden;
+      box-shadow: var(--cover-shadow);
+      border: 1px solid var(--cover-rim);
+      transition: transform 180ms var(--ease-out);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 12px 14px 12px 12px;
+    }
+
+    /* Arabic book spine is on the RIGHT */
+    .proc-cover::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      right: 0;
+      width: 9px;
+      background: linear-gradient(to left, rgba(0, 0, 0, 0.42), rgba(255, 255, 255, 0.10) 48%, rgba(0, 0, 0, 0.20) 72%, transparent);
+      pointer-events: none;
+    }
+
+    /* Subtle page-block highlight on left edge */
+    .proc-cover::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      bottom: 2px;
+      left: 0;
+      width: 2px;
+      background: rgba(255, 250, 240, 0.24);
+      pointer-events: none;
+    }
+
+    .cover-frame {
+      position: absolute;
+      inset: 8px 14px 8px 8px;
+      border: 1px solid currentColor;
+      opacity: 0.22;
+      pointer-events: none;
+    }
+
+    .cover-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      opacity: 0.16;
+    }
+
+    .cover-top-mark {
+      position: relative;
+      z-index: 2;
+      font-size: 9px;
+      text-align: center;
+      opacity: 0.78;
+    }
+
+    .cover-title-text {
+      position: relative;
+      z-index: 2;
+      font-family: var(--display-font);
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1.4;
+      text-align: center;
+      padding: 0 4px;
+    }
+
+    .hero-cover-wrap .cover-title-text { font-size: 18px; }
+
+    .cover-author-text {
+      position: relative;
+      z-index: 2;
+      font-family: var(--ui-font);
+      font-size: 10px;
+      text-align: center;
+      opacity: 0.82;
+    }
+
+    /* ===================== READER SCREEN ===================== */
+    .reader-screen { background: var(--bg); }
+
+    .edge-stack {
+      position: absolute;
+      top: 18px;
+      bottom: 18px;
+      z-index: 8;
+      pointer-events: none;
+      transition: width 260ms var(--ease-out);
+      background-image: repeating-linear-gradient(
+        to left,
+        var(--page-edge) 0px,
+        var(--page-edge) 0.75px,
+        transparent 0.75px,
+        transparent 1.75px
+      );
+    }
+
+    .edge-stack.right {
+      right: 0;
+      width: 2px;
+      border-left: 0.5px solid var(--page-edge);
+    }
+
+    .edge-stack.left {
+      left: 0;
+      width: 6px;
+      border-right: 0.5px solid var(--page-edge);
+    }
+
+    /* Signature Crimson Silk Ribbon */
+    .silk-ribbon-zone {
+      position: absolute;
+      top: 0;
+      left: 16px;
+      width: 36px;
+      height: 64px;
+      z-index: 25;
+      cursor: pointer;
+      display: flex;
+      justify-content: center;
+      touch-action: none;
+    }
+
+    .silk-ribbon {
+      width: 18px;
+      height: 14px;
+      background: linear-gradient(180deg, var(--ribbon) 0%, var(--ribbon-deep) 100%);
+      clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%);
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+      transition: height 340ms var(--ribbon-spring), opacity 200ms;
+      opacity: 0.48;
+      position: relative;
+    }
+
+    .silk-ribbon::after {
+      content: '';
+      position: absolute;
+      inset: 0 4px 10px 4px;
+      border-inline: 1px solid var(--ribbon-stitch);
+    }
+
+    .silk-ribbon.pinned {
+      height: 44px;
+      opacity: 1;
+    }
+
+    .running-head {
+      position: absolute;
+      top: 16px;
+      left: 58px;
+      right: 26px;
+      height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 10.5px;
+      color: var(--muted);
+      opacity: 0.72;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .running-foot {
+      position: absolute;
+      bottom: 11px;
+      left: 26px;
+      right: 26px;
+      height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 10.5px;
+      color: var(--muted);
+      opacity: 0.78;
+      font-variant-numeric: tabular-nums;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .page-clip {
+      position: absolute;
+      top: 52px;
+      bottom: 36px;
+      left: var(--margin-h);
+      right: var(--margin-h);
+      overflow: hidden;
+      z-index: 4;
+    }
+
+    .columns-track {
+      height: 100%;
+      width: 100%;
+      column-fill: auto;
+      direction: rtl;
+      will-change: transform;
+      transition: transform var(--page-turn-ms) var(--ease-out);
+
+      font-family: var(--read-font);
+      font-size: var(--read-size);
+      line-height: var(--read-lh);
+      word-spacing: var(--read-ws);
+      font-weight: var(--read-weight);
+      text-align: var(--read-align);
+      color: var(--text);
+      font-kerning: normal;
+      font-variant-ligatures: contextual common-ligatures;
+      text-rendering: optimizeLegibility;
+    }
+
+    .columns-track.e-ink { transition: none !important; }
+    .chapter-sec { break-before: column; }
+    .chapter-sec:first-child { break-before: auto; }
+
+    .ch-head {
+      break-inside: avoid;
+      break-after: avoid;
+      text-align: center;
+      padding: 16px 0 14px;
+      margin-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .ch-title {
+      margin: 0;
+      font-size: 1.32em;
+      line-height: 1.55;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .ch-orn {
+      margin-top: 6px;
+      font-size: 0.72em;
+      color: var(--accent);
+      opacity: 0.88;
+    }
+
+    .scene-h2 {
+      margin: 1em 0 0.5em;
+      font-size: 1.08em;
+      line-height: 1.6;
+      font-weight: 700;
+      color: var(--accent);
+      break-inside: avoid;
+      break-after: avoid;
+      text-align: start;
+    }
+
+    .novel-p {
+      margin: 0 0 var(--read-pgap) 0;
+      text-indent: var(--read-indent);
+      orphans: 2;
+      widows: 2;
+    }
+
+    .novel-p.no-indent, .novel-p.dialogue { text-indent: 0; }
+
+    .scene-break {
+      margin: 1em 0;
+      text-align: center;
+      color: var(--accent);
+      font-size: 0.85em;
+      line-height: 1.6;
+      break-inside: avoid;
+      text-indent: 0;
+      opacity: 0.85;
+    }
+
+    .novel-quote {
+      margin: 0.9em 0;
+      padding: 0.65em 0.95em;
+      background: var(--quote-bg);
+      border-inline-start: 2.5px solid var(--quote-border);
+      border-radius: 3px;
+      font-size: 0.94em;
+      text-indent: 0;
+      break-inside: avoid;
+    }
+
+    .fn-btn {
+      display: inline-block;
+      border: none;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-family: var(--ui-font);
+      font-size: 0.62em;
+      font-weight: 700;
+      line-height: 1.2;
+      padding: 1px 5px;
+      border-radius: 3px;
+      vertical-align: super;
+      margin-inline: 2px;
+      cursor: pointer;
+    }
+
+    .tap-zones {
+      position: absolute;
+      inset: 0;
+      z-index: 12;
+      display: flex;
+      pointer-events: none;
+    }
+
+    .tap-zone { height: 100%; pointer-events: auto; cursor: pointer; }
+    .tap-right { width: 29%; }
+    .tap-center { width: 42%; }
+    .tap-left { width: 29%; }
+
+    .peek-pill {
+      position: absolute;
+      bottom: 48px;
+      right: 20px;
+      z-index: 22;
+      height: 34px;
+      padding: 0 13px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface-elevated);
+      color: var(--accent);
+      font-family: var(--ui-font);
+      font-size: 12px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.36);
+      cursor: pointer;
+      opacity: 0;
+      transform: translateY(10px);
+      pointer-events: none;
+      transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out);
+    }
+
+    .peek-pill.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+
+    /* ===================== HUD OVERLAY ===================== */
+    .hud-header {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      z-index: 30;
+      padding: 44px 16px 12px;
+      background: var(--hud-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      opacity: 0;
+      transform: translateY(-100%);
+      pointer-events: none;
+      transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out);
+    }
+
+    .reader-screen.hud-open .hud-header { opacity: 1; transform: translateY(0); pointer-events: auto; }
+
+    .hud-icon-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 150ms, color 150ms;
+    }
+
+    .hud-icon-btn:hover, .hud-icon-btn.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .hud-title-wrap { flex: 1; text-align: center; min-width: 0; }
+
+    .hud-book-title {
+      font-family: var(--display-font);
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .hud-header-group { display: flex; align-items: center; gap: 2px; }
+
+    .hud-footer {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      z-index: 30;
+      padding: 14px 20px 26px;
+      background: var(--hud-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-top: 1px solid var(--border);
+      opacity: 0;
+      transform: translateY(100%);
+      pointer-events: none;
+      transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out);
+    }
+
+    .reader-screen.hud-open .hud-footer { opacity: 1; transform: translateY(0); pointer-events: auto; }
+
+    .hud-meta-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .hud-ch-name {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .hud-page-num {
+      font-size: 12px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .timeline-wrap {
+      position: relative;
+      padding: 12px 0 8px;
+      cursor: pointer;
+      touch-action: none;
+    }
+
+    .scrub-tooltip {
+      position: absolute;
+      bottom: 42px;
+      right: 0; left: 0;
+      margin: 0 auto;
+      width: 280px;
+      padding: 9px 12px;
+      border-radius: 6px;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42);
+      opacity: 0;
+      transform: translateY(6px);
+      pointer-events: none;
+      transition: opacity 150ms, transform 150ms;
+      z-index: 40;
+    }
+
+    .scrub-tooltip.show { opacity: 1; transform: translateY(0); }
+
+    .tt-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 3px;
+    }
+
+    .tt-snippet {
+      font-family: var(--read-font);
+      font-size: 12.5px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .timeline-segments {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      height: 4px;
+      width: 100%;
+      position: relative;
+    }
+
+    .tl-seg {
+      height: 4px;
+      background: var(--border);
+      position: relative;
+      overflow: hidden;
+      border-radius: 1px;
+    }
+
+    .tl-seg-fill {
+      position: absolute;
+      top: 0; bottom: 0; right: 0;
+      background: var(--accent);
+      width: 0%;
+    }
+
+    .tl-marker {
+      position: absolute;
+      top: 50%;
+      width: 7px;
+      height: 7px;
+      transform: translate(50%, -50%) rotate(45deg);
+      background: var(--accent);
+      border: 1px solid var(--surface-elevated);
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    .tl-thumb {
+      position: absolute;
+      top: 50%;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--surface-elevated);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+      transform: translate(50%, -50%);
+      pointer-events: none;
+      z-index: 4;
+    }
+
+    .hud-foot-sub {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 6px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* ===================== 35% LIVE SETTINGS SHEET ===================== */
+    .settings-sheet {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 35%;
+      z-index: 45;
+      background: var(--sheet-bg);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-top: 1px solid var(--border);
+      border-radius: 14px 14px 0 0;
+      box-shadow: 0 -10px 32px rgba(0, 0, 0, 0.45);
+      display: flex;
+      flex-direction: column;
+      transform: translateY(105%);
+      transition: transform 280ms var(--ease-out);
+    }
+
+    .reader-screen.settings-open .settings-sheet { transform: translateY(0); }
+
+    .sheet-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 18px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sheet-tabs { display: flex; gap: 18px; }
+
+    .sheet-tab {
+      border: none;
+      background: transparent;
+      font-family: var(--ui-font);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      padding: 8px 2px 10px;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      transition: color 150ms, border-color 150ms;
+    }
+
+    .sheet-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .sheet-close {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      width: 32px;
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      border-radius: 6px;
+    }
+
+    .sheet-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 18px 16px;
+      scrollbar-width: none;
+    }
+
+    .sheet-body::-webkit-scrollbar { display: none; }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: flex; flex-direction: column; gap: 13px; }
+
+    .font-strip {
+      display: flex;
+      gap: 7px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+      scrollbar-width: none;
+    }
+
+    .font-strip::-webkit-scrollbar { display: none; }
+
+    .font-chip {
+      flex-shrink: 0;
+      padding: 6px 12px;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 13.5px;
+      cursor: pointer;
+      transition: border-color 150ms, background 150ms, color 150ms;
+    }
+
+    .font-chip.active {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .ctrl-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .ctrl-label {
+      font-size: 12px;
+      color: var(--muted);
+      min-width: 64px;
+    }
+
+    .ctrl-val {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      min-width: 34px;
+      text-align: left;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stepper {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      background: var(--surface-elevated);
+    }
+
+    .step-btn {
+      width: 34px;
+      height: 30px;
+      border: none;
+      background: transparent;
+      color: var(--text);
+      font-family: var(--ui-font);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .step-btn:active { background: var(--accent-soft); }
+
+    .step-readout {
+      min-width: 34px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      border-inline: 1px solid var(--border);
+      line-height: 30px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .range-input {
+      flex: 1;
+      accent-color: var(--accent);
+      height: 3px;
+      cursor: pointer;
+    }
+
+    .seg-group {
+      display: flex;
+      flex: 1;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      background: var(--surface);
+    }
+
+    .seg-btn {
+      flex: 1;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-family: var(--ui-font);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 7px 6px;
+      cursor: pointer;
+      transition: background 150ms, color 150ms;
+    }
+
+    .seg-btn.active {
+      background: var(--cta-bg);
+      color: var(--cta-text);
+      font-weight: 600;
+    }
+
+    .theme-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+
+    .theme-swatch {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 9px 4px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      background: var(--surface);
+      transition: border-color 150ms, transform 150ms;
+    }
+
+    .theme-swatch.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+
+    .swatch-preview {
+      width: 34px;
+      height: 24px;
+      border-radius: 4px;
+      border: 1px solid rgba(160, 150, 140, 0.28);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--display-font);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .swatch-name {
+      font-size: 10.5px;
+      color: var(--text);
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 4px;
+    }
+
+    .switch {
+      position: relative;
+      width: 40px;
+      height: 22px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      cursor: pointer;
+      transition: background 180ms, border-color 180ms;
+    }
+
+    .switch::after {
+      content: '';
+      position: absolute;
+      top: 2px; right: 2px;
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: transform 180ms var(--ease-out), background 180ms;
+    }
+
+    .switch.on {
+      background: var(--cta-bg);
+      border-color: var(--cta-bg);
+    }
+
+    .switch.on::after {
+      transform: translateX(-18px);
+      background: var(--cta-text);
+    }
+
+    /* TOC DRAWER & FOOTNOTE */
+    .drawer-backdrop {
+      position: absolute;
+      inset: 0;
+      z-index: 60;
+      background: rgba(0, 0, 0, 0.56);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 220ms var(--ease-out);
+    }
+
+    .drawer-backdrop.open { opacity: 1; pointer-events: auto; }
+
+    .toc-drawer {
+      position: absolute;
+      top: 0; bottom: 0; right: 0;
+      width: 82%;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      transform: translateX(100%);
+      transition: transform 260ms var(--ease-out);
+    }
+
+    .drawer-backdrop.open .toc-drawer { transform: translateX(0); }
+
+    .toc-head {
+      padding: 46px 20px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .toc-head h3 {
+      margin: 0;
+      font-family: var(--display-font);
+      font-size: 21px;
+      font-weight: 700;
+    }
+
+    .toc-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .toc-item {
+      border: none;
+      background: transparent;
+      width: 100%;
+      text-align: right;
+      padding: 12px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      cursor: pointer;
+      color: var(--text);
+      font-family: var(--ui-font);
+    }
+
+    .toc-item.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .toc-item-title {
+      font-family: var(--display-font);
+      font-size: 16.5px;
+      font-weight: 700;
+      line-height: 1.4;
+    }
+
+    .toc-item-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .toc-page { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+    .fn-modal {
+      position: absolute;
+      inset: 0;
+      z-index: 70;
+      background: rgba(0, 0, 0, 0.52);
+      display: flex;
+      align-items: flex-end;
+      padding: 16px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 180ms;
+    }
+
+    .fn-modal.open { opacity: 1; pointer-events: auto; }
+
+    .fn-card {
+      width: 100%;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
+    }
+
+    .fn-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .fn-card-body {
+      font-family: var(--read-font);
+      font-size: 16px;
+      line-height: 1.85;
+      color: var(--text);
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="stage-wrapper">
+    <div class="standalone-bar" aria-label="أدوات العرض السريع">
+      <button class="sb-btn active" data-go-screen="library">١. المكتبة</button>
+      <button class="sb-btn" data-go-screen="reader">٢. القراية</button>
+      <button class="sb-btn" data-go-screen="hud">٣. الـ HUD</button>
+      <button class="sb-btn" data-go-screen="settings">٤. الإعدادات ٣٥٪</button>
+      <span class="sb-sep"></span>
+      <button class="sb-btn active" data-go-theme="burnt">ورق محروق</button>
+      <button class="sb-btn" data-go-theme="paper">ورق فاتح</button>
+      <span class="sb-badge">تباين النص ١٢.١:١ (AAA)</span>
+    </div>
+
+    <div class="phone" id="phone">
+      <div class="paper-grain" id="paperGrain"></div>
+
+      <!-- SCREEN 1: LIBRARY -->
+      <section class="screen active" id="screen-library" aria-label="المكتبة">
+        <div class="lib-ambient" aria-hidden="true"></div>
+        <header class="lib-header">
+          <div class="brand-lockup">
+            <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true">
+              <path d="M4.5 5.5C8.5 5.5 11.2 6.8 13 8.8C14.8 6.8 17.5 5.5 21.5 5.5V19.8C17.6 19.8 14.9 20.8 13 22.5C11.1 20.8 8.4 19.8 4.5 19.8V5.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+              <path d="M13 8.8V22.5" stroke="currentColor" stroke-width="1.3"/>
+              <path d="M17.2 5.7V13.2L15.4 11.7L13.6 13.2V7.9" fill="var(--ribbon)" opacity="0.95"/>
+            </svg>
+            <span class="brand-name">روايتي</span>
+          </div>
+          <div class="lib-actions">
+            <button class="icon-btn" id="libThemeToggle" title="تبديل المظهر" aria-label="تبديل المظهر">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            </button>
+            <button class="import-btn" id="importDemoBtn">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              <span>استيراد</span>
+            </button>
+          </div>
+        </header>
+
+        <div class="lib-scroll">
+          <article class="hero-spread" id="heroBook">
+            <div class="hero-cover-wrap" id="heroCoverMount"></div>
+            <div class="hero-info">
+              <div>
+                <div class="hero-state">
+                  <span class="hero-dot"></span>
+                  <span>قراءة حالية</span>
+                </div>
+                <h1 class="hero-title">حَجَرُ الْمَاءِ</h1>
+                <p class="hero-author">روايتي</p>
+                <div class="hero-chapter" id="heroChapterLabel">الفصل الثاني: صوت الماء القديم</div>
+              </div>
+              <div>
+                <div class="hero-progress-wrap">
+                  <div class="hair-track"><div class="hair-fill" id="heroProgressFill" style="width:38%"></div></div>
+                  <div class="hero-meta-row">
+                    <span id="heroPctLabel">٣٨٪ مقروء</span>
+                    <span>متبقّي ٤٢ دقيقة</span>
+                  </div>
+                </div>
+                <button class="continue-cta" id="continueReadingBtn">
+                  <span>كمّل القراية</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+                </button>
+              </div>
+            </div>
+          </article>
+
+          <div class="shelf-head">
+            <h2 class="shelf-title">رفّ الكتب</h2>
+            <span class="shelf-count">٤ روايات</span>
+          </div>
+
+          <div class="book-grid" id="shelfGrid"></div>
+        </div>
+      </section>
+
+      <!-- SCREEN 2, 3, 4: READER + HUD + 35% SETTINGS SHEET -->
+      <section class="screen reader-screen" id="screen-reader" aria-label="صفحة القراية">
+        <div class="edge-stack right" id="edgeRight" aria-hidden="true"></div>
+        <div class="edge-stack left" id="edgeLeft" aria-hidden="true"></div>
+
+        <div class="silk-ribbon-zone" id="ribbonZone" title="اسحب أو اضغط لحفظ علامة" role="button" aria-label="شريطة العلامة المرجعية">
+          <div class="silk-ribbon" id="silkRibbon"></div>
+        </div>
+
+        <div class="running-head">
+          <span>حَجَرُ الْمَاءِ</span>
+          <span id="runningChapter">الْفَصْلُ الْأَوَّلُ: الْمِفْتَاحُ الصَّدِئُ</span>
+        </div>
+
+        <div class="page-clip" id="pageClip">
+          <div class="columns-track" id="columnsTrack"></div>
+        </div>
+
+        <div class="running-foot">
+          <span id="runningPageNum">١ / ١٨</span>
+          <span id="runningPct">٦٪</span>
+        </div>
+
+        <div class="tap-zones" id="tapZones">
+          <div class="tap-zone tap-right" id="tapPrev" aria-label="الصفحة السابقة"></div>
+          <div class="tap-zone tap-center" id="tapCenter" aria-label="إظهار أو إخفاء الأدوات"></div>
+          <div class="tap-zone tap-left" id="tapNext" aria-label="الصفحة التالية"></div>
+        </div>
+
+        <button class="peek-pill" id="peekPill">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+          <span id="peekText">ارجع لصفحة ٣</span>
+        </button>
+
+        <header class="hud-header" id="hudHeader">
+          <button class="hud-icon-btn" id="btnBackLib" aria-label="العودة للمكتبة">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
+          <div class="hud-title-wrap">
+            <div class="hud-book-title">حَجَرُ الْمَاءِ</div>
+          </div>
+          <div class="hud-header-group">
+            <button class="hud-icon-btn" id="btnOpenToc" aria-label="الفهرس">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h11M4 18h14"/></svg>
+            </button>
+            <button class="hud-icon-btn" id="btnOpenSettings" aria-label="إعدادات القراءة">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="M6 16l4-12 4 12"/><path d="M7.5 12h5"/><path d="M16 11.5c1.5 0 2.5.8 2.5 2s-1 2.5-2.5 2.5"/></svg>
+            </button>
+          </div>
+        </header>
+
+        <footer class="hud-footer" id="hudFooter">
+          <div class="hud-meta-line">
+            <span class="hud-ch-name" id="hudChapterTitle">الْفَصْلُ الْأَوَّلُ: الْمِفْتَاحُ الصَّدِئُ</span>
+            <span class="hud-page-num" id="hudPageCounter">صفحة ١ من ١٨</span>
+          </div>
+
+          <div class="timeline-wrap" id="timelineWrap">
+            <div class="scrub-tooltip" id="scrubTooltip">
+              <div class="tt-top">
+                <span id="ttChapter">الفصل الأول</span>
+                <span id="ttPage">صفحة ١</span>
+              </div>
+              <div class="tt-snippet" id="ttSnippet">كَانَتْ نُورُ تَعْرِفُ الْبَحْرَ قَبْلَ أَنْ تَعْرِفَ اسْمَهُ...</div>
+            </div>
+            <div class="timeline-segments" id="timelineSegments"></div>
+            <div class="tl-thumb" id="tlThumb"></div>
+          </div>
+
+          <div class="hud-foot-sub">
+            <span id="hudChapterSub">٤ فصول · موزونة بعدد الكلمات</span>
+            <span id="hudBookmarkStatus">اسحب الشريطة لحفظ الصفحة</span>
+          </div>
+        </footer>
+
+        <aside class="settings-sheet" id="settingsSheet" aria-label="إعدادات القراءة المباشرة">
+          <div class="sheet-head">
+            <div class="sheet-tabs" role="tablist">
+              <button class="sheet-tab active" data-tab="font" role="tab">الخط</button>
+              <button class="sheet-tab" data-tab="layout" role="tab">الصفحة</button>
+              <button class="sheet-tab" data-tab="theme" role="tab">المظهر</button>
+            </div>
+            <button class="sheet-close" id="btnCloseSettings" aria-label="إغلاق الإعدادات">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+
+          <div class="sheet-body">
+            <div class="tab-pane active" id="pane-font">
+              <div class="font-strip" id="fontStrip"></div>
+
+              <div class="ctrl-row">
+                <span class="ctrl-label">حجم الخط</span>
+                <div class="stepper">
+                  <button class="step-btn" id="sizeDec">أ-</button>
+                  <span class="step-readout" id="sizeReadout">٢٠</span>
+                  <button class="step-btn" id="sizeInc">أ+</button>
+                </div>
+                <span class="ctrl-label" style="min-width:auto">الوزن</span>
+                <div class="seg-group" style="max-width:118px">
+                  <button class="seg-btn" data-weight="300">خفيف</button>
+                  <button class="seg-btn active" data-weight="400">عادي</button>
+                  <button class="seg-btn" data-weight="600">داكن</button>
+                </div>
+              </div>
+
+              <div class="ctrl-row">
+                <span class="ctrl-label">تباعد الأسطر</span>
+                <input class="range-input" id="lhRange" type="range" min="1.5" max="2.6" step="0.05" value="1.95" />
+                <span class="ctrl-val" id="lhVal">١.٩٥</span>
+              </div>
+
+              <div class="ctrl-row">
+                <span class="ctrl-label">تباعد الكلمات</span>
+                <input class="range-input" id="wsRange" type="range" min="0" max="6" step="0.5" value="0" />
+                <span class="ctrl-val" id="wsVal">٠</span>
+              </div>
+            </div>
+
+            <div class="tab-pane" id="pane-layout">
+              <div class="ctrl-row">
+                <span class="ctrl-label">المحاذاة</span>
+                <div class="seg-group">
+                  <button class="seg-btn active" data-align="justify">ضبط الحواف</button>
+                  <button class="seg-btn" data-align="right">محاذاة اليمين</button>
+                </div>
+              </div>
+
+              <div class="ctrl-row">
+                <span class="ctrl-label">الفقرات</span>
+                <div class="seg-group">
+                  <button class="seg-btn active" data-indent="classic">كلاسيكي بمسافة</button>
+                  <button class="seg-btn" data-indent="block">فقرات منفصلة</button>
+                </div>
+              </div>
+
+              <div class="ctrl-row">
+                <span class="ctrl-label">الهوامش</span>
+                <div class="seg-group">
+                  <button class="seg-btn" data-margin="18">ضيّق</button>
+                  <button class="seg-btn active" data-margin="26">متوازن</button>
+                  <button class="seg-btn" data-margin="36">واسع</button>
+                </div>
+              </div>
+
+              <div class="toggle-row">
+                <span class="ctrl-label" style="min-width:auto">تقليب بلا حركة (حبر إلكتروني)</span>
+                <button class="switch" id="eInkToggle" role="switch" aria-checked="false"></button>
+              </div>
+            </div>
+
+            <div class="tab-pane" id="pane-theme">
+              <div class="theme-grid" id="themeGrid">
+                <button class="theme-swatch" data-set-theme="paper">
+                  <span class="swatch-preview" style="background:#FAF7F0;color:#231F1A;">ض</span>
+                  <span class="swatch-name">ورق دافئ</span>
+                </button>
+                <button class="theme-swatch" data-set-theme="sepia">
+                  <span class="swatch-preview" style="background:#F3EBD6;color:#382B1E;">ض</span>
+                  <span class="swatch-name">سيبيا</span>
+                </button>
+                <button class="theme-swatch active" data-set-theme="burnt">
+                  <span class="swatch-preview" style="background:#181310;color:#DECFC0;">ض</span>
+                  <span class="swatch-name">ورق محروق</span>
+                </button>
+                <button class="theme-swatch" data-set-theme="oled">
+                  <span class="swatch-preview" style="background:#000000;color:#B9B2A7;">ض</span>
+                  <span class="swatch-name">عتمة OLED</span>
+                </button>
+              </div>
+              <div class="ctrl-row" style="margin-top:4px">
+                <span class="ctrl-label">تباين النص</span>
+                <span class="ctrl-val" style="min-width:auto;color:var(--accent)">تباين النص ١٢.١:١ (AAA)</span>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <div class="drawer-backdrop" id="tocBackdrop">
+          <div class="toc-drawer" id="tocDrawer">
+            <div class="toc-head">
+              <h3>فهرس الفصول</h3>
+              <button class="sheet-close" id="btnCloseToc" aria-label="إغلاق الفهرس">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div class="toc-list" id="tocList"></div>
+          </div>
+        </div>
+
+        <div class="fn-modal" id="fnModal">
+          <div class="fn-card">
+            <div class="fn-card-head">
+              <span id="fnTitle">حاشية ١</span>
+              <button class="sheet-close" id="fnClose" aria-label="إغلاق الحاشية">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <p class="fn-card-body" id="fnBody"></p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const DEFAULT_THEME = 'burnt';
+      const AR_DIGITS = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
+      function toAr(n) {
+        return String(n).replace(/[0-9]/g, d => AR_DIGITS[+d]);
+      }
+
+      const FOOTNOTES = {
+        '1': 'الصَّدَفَةُ الْبَيْضَاءُ: صَدَفٌ صَغِيرٌ يَظْهَرُ فِي رَأْسِ الْمِلْحِ مَرَّةً وَاحِدَةً فِي كُلِّ عَشْرِ سِنِينَ، وَيَقُولُ النَّاسُ إِنَّهُ يَحْمِلُ صَوْتَ آخِرِ مَنْ غَرِقَ فِي الْمَدِّ. وَالْحَقِيقَةُ أَنَّهُ يَحْمِلُ صَوْتَ الْمَاءِ فَقَطْ، وَالنَّاسُ هُمُ الَّذِينَ يُضِيفُونَ إِلَيْهِ مَا يَخَافُونَ أَنْ يَنْسَوْهُ.',
+        '2': 'الْحِفْظُ: فِي كِتَابِ الْقَرْيَةِ الْقَدِيمِ، كَانَ الْحِفْظُ يُعْنَى بِهِ إِبْقَاءُ الشَّيْءِ فِي مَكَانِهِ. أَمَّا فِي هَذِهِ الْحِكَايَةِ، فَالْحِفْظُ يُعْنَى بِهِ مَعْرِفَةُ الْمَكَانِ الَّذِي ذَهَبَ إِلَيْهِ الشَّيْءُ.'
+      };
+
+      const CHAPTERS = [
+        {
+          id: 'ch1',
+          title: 'الْفَصْلُ الْأَوَّلُ: الْمِفْتَاحُ الصَّدِئُ',
+          shortTitle: 'الفصل الأول: المفتاح الصدئ',
+          snippet: 'كَانَتْ نُورُ تَعْرِفُ الْبَحْرَ قَبْلَ أَنْ تَعْرِفَ اسْمَهُ.',
+          words: 310,
+          blocks: [
+            { type: 'p', noIndent: true, text: 'كَانَتْ نُورُ تَعْرِفُ الْبَحْرَ قَبْلَ أَنْ تَعْرِفَ اسْمَهُ. كَبِرَتْ عَلَى صَوْتِهِ كَمَا يَكْبَرُ الطِّفْلُ عَلَى صَوْتِ أُمِّهِ: لَا تَنْتَبِهُ إِلَيْهِ إِلَّا حِينَ يَغِيبُ. وَفِي قَرْيَةِ رَأْسِ الْمِلْحِ كَانَ الْبَحْرُ يَغِيبُ مَرَّتَيْنِ فِي الْيَوْمِ: مَرَّةً عِنْدَمَا يَنْسَحِبُ الْمَدُّ فَتَبْقَى الصُّخُورُ عَارِيَةً كَأَسْنَانٍ قَدِيمَةٍ، وَمَرَّةً عِنْدَمَا يَنَامُ الْجَدُّ سَلْمَانُ فَيَسْكُتُ الْبَيْتُ كُلُّهُ.' },
+            { type: 'p', text: 'كَانَ الْبَيْتُ قَدِيمًا، سَقْفُهُ مِنْ خَشَبٍ لَوْنُهُ لَوْنُ الشَّايِ الْمُنْسَكِبِ، وَجُدْرَانُهُ تَحْمِلُ بَقَايَا مِلْحٍ لَا يَذُوبُ. وَفِي وَسَطِ الْبَيْتِ بَابٌ صَغِيرٌ لَا يُؤَدِّي إِلَى شَيْءٍ إِلَّا إِلَى دَرَجٍ هَابِطٍ، وَالدَّرَجُ يُؤَدِّي إِلَى بِئْرٍ مَسْدُودٍ بِحَجَرٍ مُسْتَدِيرٍ كَبِيرٍ. قَالَ لَهَا الْجَدُّ مَرَّةً، وَهُوَ يَغْسِلُ شَبَكَةً فِي الْفِنَاءِ: «هَذِهِ الْبِئْرُ لَيْسَتْ بِئْرَ مَاءٍ، يَا نُورُ. هِيَ بِئْرُ صَوْتٍ، وَالصَّوْتُ إِذَا خَرَجَ لَا يَعُودُ».' },
+            { type: 'p', text: 'ضَحِكَتْ نُورُ يَوْمَهَا، لِأَنَّ الْجَدَّ كَانَ يَقُولُ أَشْيَاءَ غَرِيبَةً كَثِيرَةً، وَكَانَتْ تَظُنُّ أَنَّ الْغَرَابَةَ عَادَةٌ مِنْ عَادَاتِ الْكِبَرِ مِثْلَ بَطْءِ الْخُطْوَةِ وَطُولِ الْحِكَايَةِ. لَكِنَّهَا لَمْ تَنْسَ الْجُمْلَةَ. بَقِيَتْ فِي رَأْسِهَا كَحَبَّةِ رَمْلٍ فِي حِذَاءٍ ضَيِّقٍ، لَا تُؤْلِمُ كَثِيرًا، وَلَكِنَّهَا لَا تَخْتَفِي.' },
+            { type: 'p', text: 'فِي مَسَاءِ يَوْمِ الْخَمِيسِ، بَيْنَمَا كَانَ الْجَدُّ نَائِمًا وَالْمَطَرُ يَضْرِبُ النَّوَافِذَ ضَرْبًا خَفِيفًا، فَتَحَتْ نُورُ خِزَانَةَ الْجَدِّ الْعُلْيَا. وَجَدَتْ صُنْدُوقًا مِنْ صَفِيحٍ أَصْفَرَ، وَتَحْتَهُ مِفْتَاحًا نُحَاسِيًّا طَوِيلًا مُلْتَفًّا عَلَيْهِ خَيْطٌ أَحْمَرُ بَالٍ، وَوَرَقَةً مَطْوِيَّةً كُتِبَ عَلَيْهَا بِخَطِّ الْجَدِّ:' },
+            { type: 'quote', text: '«لَا تَفْتَحِي الْبِئْرَ يَا نُورُ. لَيْسَ لِأَنَّ فِيهَا شَيْئًا مُخِيفًا، بَلْ لِأَنَّ فِيهَا شَيْئًا لَا يَحْتَمِلُ أَنْ يَرَاهُ أَحَدٌ غَيْرِي».' },
+            { type: 'p', noIndent: true, text: 'قَرَأَتِ الْجُمْلَةَ ثَلَاثَ مَرَّاتٍ. فِي الْمَرَّةِ الْأُولَى خَافَتْ. وَفِي الثَّانِيَةِ غَضِبَتْ. وَفِي الثَّالِثَةِ أَدْرَكَتْ أَنَّ الْجُمْلَةَ لَيْسَتْ تَحْذِيرًا، بَلْ اعْتِرَافٌ. وَالِاعْتِرَافُ، إِذَا وَصَلَ إِلَى طِفْلٍ، يَتَحَوَّلُ فَوْرًا إِلَى دَعْوَةٍ.' },
+            { type: 'p', text: 'أَدْخَلَتِ الْمِفْتَاحَ. دَارَ بِلَا صَوْتٍ، ثُمَّ سَقَطَ الْحَجَرُ إِلَى الدَّاخِلِ كَأَنَّهُ كَانَ يَنْتَظِرُ. وَانْبَعَثَ مِنَ الْبِئْرِ هَوَاءٌ بَارِدٌ، لَا رِيحَ تُرَابٍ وَلَا رَائِحَةَ عَفَنٍ، بَلْ رَائِحَةُ مَطَرٍ عَلَى حَجَرٍ سَاخِنٍ. رَائِحَةٌ لَهَا ذِكْرَى، وَالذِّكْرَى لَيْسَتْ لِنُورِ.' }
+          ]
+        },
+        {
+          id: 'ch2',
+          title: 'الْفَصْلُ الثَّانِي: صَوْتُ الْمَاءِ الْقَدِيمِ',
+          shortTitle: 'الفصل الثاني: صوت الماء القديم',
+          snippet: 'فِي الصَّبَاحِ كَانَ الْجَدُّ فِي الْفِنَاءِ كَالْعَادَةِ، يُصْلِحُ شَبَكَةً...',
+          words: 375,
+          blocks: [
+            { type: 'p', noIndent: true, text: 'فِي الصَّبَاحِ كَانَ الْجَدُّ فِي الْفِنَاءِ كَالْعَادَةِ، يُصْلِحُ شَبَكَةً لَا تَحْتَاجُ إِصْلَاحًا. وَكَانَتْ نُورُ تُرَاقِبُ يَدَيْهِ، تَنْتَظِرُ أَنْ تَرْتَجِفَ، أَوْ أَنْ يَسْأَلَهَا عَنِ الْمِفْتَاحِ. لَكِنَّهُ لَمْ يَسْأَلْ. قَالَ فَقَطْ، وَهُوَ يَنْظُرُ إِلَى الْبَحْرِ:' },
+            { type: 'p', dialogue: true, text: '— الْيَوْمَ الْمَاءُ هَادِئٌ. هَذَا لَا يَحْدُثُ كَثِيرًا فِي آخِرِ الْخَرِيفِ.' },
+            { type: 'p', dialogue: true, text: '— جَدِّي، قَالَتْ نُورُ، وَجَلَسَتْ أَمَامَهُ عَلَى الْحَجَرِ: لِمَاذَا لَا نَفْتَحُ الْبِئْرَ؟' },
+            { type: 'p', text: 'تَوَقَّفَتْ يَدَاهُ. لَمْ يَرْفَعْ رَأْسَهُ. سَكَتَ طَوِيلًا، ثُمَّ قَالَ وَصَوْتُهُ أَخْفَضُ مِنْ صَوْتِ الْبَحْرِ: «يَا نُورُ، فِي هَذِهِ الْقَرْيَةِ كَانَتْ ثَلَاثَةُ آبَارٍ: بِئْرُ الشُّرْبِ، وَبِئْرُ الْمِلْحِ، وَبِئْرٌ ثَالِثَةٌ لَا يَعْرِفُهَا إِلَّا الَّذِينَ سَمِعُوا. النَّاسُ كَانُوا يَأْتُونَ بِأَصْوَاتِهِمْ إِلَيْهَا كَمَا يَأْتُونَ بِأَمْوَالِهِمْ إِلَى الْبَنْكِ، وَيَقُولُونَ لِلْبِئْرِ: احْفَظِيهِ».' },
+            { type: 'h2', text: 'مَشْهَدٌ: الْغُرْفَةُ الْمُطْفَأَةُ' },
+            { type: 'p', noIndent: true, text: 'لَمْ تَكُنْ غُرْفَةً تَحْتَ الْأَرْضِ بِمَعْنَى السَّجْنِ. كَانَتْ أَشْبَهَ بِقَاعَةِ اجْتِمَاعٍ صَغِيرَةٍ نَسِيَهَا النَّاسُ: أَرْضُهَا مِنْ حَصًى نَاعِمٍ، وَجُدْرَانُهَا مِنْ طِينٍ مَضْرُوبٍ عَلَيْهِ أَصْدَافٌ، وَفِي وَسَطِهَا حَجَرٌ أَزْرَقُ بِحَجْمِ رَأْسِ طِفْلٍ يَجْلِسُ عَلَى قَاعِدَةٍ مِنْ خَشَبٍ أَسْوَدَ.' },
+            { type: 'p', text: 'وَعَلَى الْجُدْرَانِ، بِخُطُوطٍ مُتَقَاطِعَةٍ، كَانَتْ هُنَاكَ أَسْمَاءٌ مَحْفُورَةٌ فِي الطِّينِ بِأَصَابِعَ: «سَعِيد»، «أُمُّ خَلِيل»، «الْحَاجَّةُ زَيْنَب»، «صَوْتُ الْعُرْسِ، سَنَةَ ٤٢». وَفِي الرُّكْنِ الْبَعِيدِ كَانَ اسْمٌ وَاحِدٌ: «مَرْيَم». تَوَقَّفَ قَلْبُهَا. مَرْيَمُ كَانَ اسْمَ أُمِّهَا.' },
+            { type: 'break' },
+            { type: 'p', noIndent: true, text: 'فِي الصَّبَاحِ وَجَدَهَا الْجَدُّ نَائِمَةً عَلَى الدَّرَجِ الْحَجَرِيِّ، وَالْمِصْبَاحُ بَيْنَ يَدَيْهَا انْطَفَأَ، وَعَلَى وَجْهِهَا أَثَرُ دُمُوعٍ جَفَّفَهَا التُّرَابُ. لَمْ يَصْرُخْ. جَلَسَ عَلَى الدَّرَجَةِ الَّتِي فَوْقَهَا، وَبَقِيَ صَامِتًا حَتَّى فَتَحَتْ عَيْنَيْهَا.' }
+          ]
+        },
+        {
+          id: 'ch3',
+          title: 'الْفَصْلُ الثَّالِثُ: مَا قَالَهُ الْحَجَرُ',
+          shortTitle: 'الفصل الثالث: ما قاله الحجر',
+          snippet: 'فِي الْمَسَاءِ الثَّالِثِ، جَاءَتْ نُورُ إِلَى الْغُرْفَةِ وَمَعَهَا دَفْتَرٌ...',
+          words: 265,
+          blocks: [
+            { type: 'p', noIndent: true, text: 'فِي الْمَسَاءِ الثَّالِثِ، جَاءَتْ نُورُ إِلَى الْغُرْفَةِ وَمَعَهَا كُرْسِيٌّ صَغِيرٌ وَقَلَمٌ وَدَفْتَرٌ. قَرَّرَتْ أَنْ تَكُونَ عَالِمَةً، لَا خَائِفَةً. الْعُلَمَاءُ يَكْتُبُونَ مَا يَرَوْنَ، وَالْخَائِفُونَ يَكْتُبُونَ مَا يَتَخَيَّلُونَ. وَالْفَرْقُ بَيْنَهُمَا، كَمَا قَالَتْ لَهَا مُعَلِّمَةُ الْعُلُومِ، هُوَ الدَّفْتَرُ.' },
+            { type: 'p', text: 'نَبَضَ الْحَجَرُ نَبْضَتَيْنِ. وَفِي الثَّالِثَةِ، تَكَلَّمَ. لَمْ يَكُنْ صَوْتًا يَخْرُجُ مِنْ حَجَرٍ، بَلْ صَوْتًا يَخْرُجُ مِنْ دَاخِلِ رَأْسِهَا: «أَنَا لَا أَتَكَلَّمُ. أَنَا أُعِيدُ. الَّذِي تَسْمَعِينَهُ هُوَ الَّذِي سَمِعْتُهُ. وَالَّذِي سَمِعْتُهُ هُوَ الَّذِي تُرِكَ لِي».' },
+            { type: 'quote', text: 'يَا بِنْتَ الْمَاءِ، إِنَّ الصَّوْتَ الْمَحْفُوظَ لَيْسَ ذِكْرَى. الذِّكْرَى تَتْرُكُ لَكَ حُرِّيَّةَ أَنْ تَنْسَى، أَمَّا الصَّوْتُ الْمَحْفُوظُ فَيُبْقِيكَ وَاقِفًا فِي الْيَوْمِ نَفْسِهِ، فِي السَّاعَةِ نَفْسِهَا، لَا تَبْرَحُ.' },
+            { type: 'p', noIndent: true, text: 'قَرَأَتْ نُورُ الْكَلِمَاتِ مَرَّتَيْنِ. لَمْ تَكُنْ مَكْتُوبَةً فِي دَفْتَرِهَا. كَانَتْ مَكْتُوبَةً عَلَى الْجِدَارِ، بِخَطٍّ يَمِيلُ إِلَى الْيَسَارِ كَأَنَّهُ يَهْرُبُ مِنَ السُّطُورِ.' },
+            { type: 'p', dialogue: true, text: '— جَدِّي، أَنَا لَا أُرِيدُ أَنْ أَتْرُكَ صَوْتًا. أُرِيدُ أَنْ أَتْرُكَ الْبَابَ مَفْتُوحًا.' }
+          ]
+        },
+        {
+          id: 'ch4',
+          title: 'الْفَصْلُ الرَّابِعُ: طَرِيقٌ إِلَى الْأَعْلَى',
+          shortTitle: 'الفصل الرابع: طريق إلى الأعلى',
+          snippet: 'فِي صَبَاحِ الْيَوْمِ التَّالِي، فَتَحَ الْجَدُّ الْمَخْزَنَ الْقَدِيمَ...',
+          words: 245,
+          blocks: [
+            { type: 'p', noIndent: true, text: 'فِي صَبَاحِ الْيَوْمِ التَّالِي، فَتَحَ الْجَدُّ الْمَخْزَنَ الْقَدِيمَ وَأَخْرَجَ مِنْهُ أَنْبُوبًا نُحَاسِيًّا وَمِفْتَاحًا آخَرَ، أَكْبَرَ مِنَ الْأَوَّلِ. قَالَ إِنَّ الْبِئْرَ لَهَا مَخْرَجٌ إِلَى الْبَحْرِ، سَدَّهُ هُوَ بِيَدِهِ سَنَةَ الْغَرَقِ. وَالْأَصْوَاتُ الَّتِي تُحْفَظُ بِلَا مَخْرَجٍ تَتَحَوَّلُ إِلَى ثِقَلٍ، وَالثِّقَلُ إِذَا طَالَ صَارَ حَجَرًا.' },
+            { type: 'p', text: 'فَتَحَتْ نُورُ الْمِفْتَاحَ الْأَخِيرَ. دَارَ النُّحَاسُ، وَانْكَسَرَ خَتْمُ الطِّينِ، وَانْدَفَعَ الْمَاءُ إِلَى الْغُرْفَةِ دَفْعَةً وَاحِدَةً، بَارِدًا، عَذْبًا، لَا مَالِحًا كَمَا تَوَقَّعَتْ. وَفِي لَحْظَةِ دُخُولِهِ ارْتَفَعَ مِنَ الْحَجَرِ صَوْتُ امْرَأَةٍ تَضْحَكُ؛ ضَحْكَةً وَاحِدَةً قَصِيرَةً، ثُمَّ سَكَتَتْ.' },
+            { type: 'p', text: 'وَفِي الصَّبَاحِ وَجَدَتْ عَلَى عَتَبَةِ الْبَابِ صَدَفَةً صَغِيرَةً بَيْضَاءَ. رَفَعَتْهَا إِلَى أُذُنِهَا. كَانَ فِيهَا صَوْتُ مَاءٍ، وَصَوْتُ رِيحٍ، وَصَوْتُ أَحَدٍ يَقُولُ اسْمَهَا مَرَّةً وَاحِدَةً بِلَا حُزْنٍ. وَضَعَتِ الصَّدَفَةَ فِي جَيْبِهَا وَذَهَبَتْ لِتُسَاعِدَ الْجَدَّ فِي الشَّبَكَةِ.', fn: '1' },
+            { type: 'break' },
+            { type: 'quote', text: 'لَمْ تَعُدْ نُورُ تَخَافُ مِنَ الْبَحْرِ. وَلَكِنَّهَا صَارَتْ تَعْرِفُ أَنَّ الْحِفْظَ لَيْسَ أَنْ تَمْنَعَ الشَّيْءَ مِنَ الذَّهَابِ، بَلْ أَنْ تَعْرِفَ إِلَى أَيْنَ ذَهَبَ.', fn: '2' }
+          ]
+        }
+      ];
+
+      const FONTS = [
+        { id: 'Amiri', label: 'أميري' },
+        { id: 'Noto Naskh Arabic', label: 'نوتو نسخ' },
+        { id: 'Scheherazade New', label: 'شهرزاد' },
+        { id: 'IBM Plex Sans Arabic', label: 'بلكس عربي' },
+        { id: 'Readex Pro', label: 'ريدكس برو' },
+        { id: 'Literata', label: 'Literata' },
+        { id: 'Merriweather', label: 'Merriweather' },
+        { id: 'Inter', label: 'Inter' }
+      ];
+
+      const LIBRARY_BOOKS = [
+        { title: 'حَجَرُ الْمَاءِ', author: 'روايتي', pct: 38, hero: true },
+        { title: 'خريطة الملح والنجوم', author: 'سلمى المنصوري', pct: 74 },
+        { title: 'رسائل من بيت الطين', author: 'يوسف النجار', pct: 12 },
+        { title: 'دفتر السفر القديم', author: 'كريم الدسوقي', pct: 100 },
+        { title: 'ظلّ الغيمة الأخيرة', author: 'ندى الشريف', pct: 0 }
+      ];
+
+      const HERO_PALETTE = {"bg": "#27474A", "ink": "#F2E9DC", "line": "#D6C09C"};
+      const COVER_PALETTES = [{"bg": "#27474A", "ink": "#F2E9DC", "line": "#D6C09C"}, {"bg": "#6B2E24", "ink": "#F6ECE0", "line": "#E2BF98"}, {"bg": "#334232", "ink": "#EFECE2", "line": "#C7C9AE"}, {"bg": "#523B28", "ink": "#F5ECDD", "line": "#DFC49E"}, {"bg": "#26364A", "ink": "#ECEAE4", "line": "#B5C2D6"}, {"bg": "#523240", "ink": "#F6ECEF", "line": "#DFBAC7"}, {"bg": "#5E4924", "ink": "#F8F0E2", "line": "#E2CC9F"}];
+
+      function hashTitle(str) {
+        let h = 2166136261;
+        for (let i = 0; i < str.length; i++) {
+          h ^= str.charCodeAt(i);
+          h = Math.imul(h, 16777619);
+        }
+        return Math.abs(h);
+      }
+
+      function buildCoverHTML(book) {
+        const h = hashTitle(book.title);
+        const pal = book.hero ? HERO_PALETTE : COVER_PALETTES[h % COVER_PALETTES.length];
+        const motif = h % 3;
+        let svg = '';
+        if (motif === 0) {
+          svg = `<svg class="cover-svg" viewBox="0 0 120 176" preserveAspectRatio="none"><circle cx="60" cy="88" r="42" stroke="${pal.line}" stroke-width="0.9" fill="none"/><circle cx="60" cy="88" r="28" stroke="${pal.line}" stroke-width="0.7" fill="none"/><path d="M60 32v112M18 88h84" stroke="${pal.line}" stroke-width="0.6"/></svg>`;
+        } else if (motif === 1) {
+          svg = `<svg class="cover-svg" viewBox="0 0 120 176" preserveAspectRatio="none"><path d="M22 152V64a38 38 0 0 1 76 0v88" stroke="${pal.line}" stroke-width="1" fill="none"/><path d="M34 152V70a26 26 0 0 1 52 0v82" stroke="${pal.line}" stroke-width="0.7" fill="none"/></svg>`;
+        } else {
+          svg = `<svg class="cover-svg" viewBox="0 0 120 176" preserveAspectRatio="none"><polygon points="60,26 98,88 60,150 22,88" stroke="${pal.line}" stroke-width="0.9" fill="none"/><polygon points="60,46 86,88 60,130 34,88" stroke="${pal.line}" stroke-width="0.7" fill="none"/></svg>`;
+        }
+        return `
+          <div class="proc-cover" style="background:${pal.bg};color:${pal.ink};">
+            ${svg}
+            <div class="cover-frame"></div>
+            <div class="cover-top-mark" style="color:${pal.line};">✦</div>
+            <div class="cover-title-text">${book.title}</div>
+            <div class="cover-author-text" style="color:${pal.line};">${book.author}</div>
+          </div>
+        `;
+      }
+
+      function initPaperGrain() {
+        const c = document.createElement('canvas');
+        c.width = 128;
+        c.height = 128;
+        const ctx = c.getContext('2d');
+        if (!ctx) return;
+        const img = ctx.createImageData(128, 128);
+        let seed = 4219;
+        for (let i = 0; i < img.data.length; i += 4) {
+          seed = (seed * 16807) % 2147483647;
+          const v = (seed & 255);
+          img.data[i] = v;
+          img.data[i + 1] = v;
+          img.data[i + 2] = v;
+          img.data[i + 3] = 255;
+        }
+        ctx.putImageData(img, 0, 0);
+        document.getElementById('paperGrain').style.backgroundImage = `url(${c.toDataURL('image/png')})`;
+      }
+
+      const state = {
+        screen: 'library',
+        theme: DEFAULT_THEME,
+        page: 1,
+        pageCount: 1,
+        stride: 386,
+        chapterMeta: [],
+        bookmarks: new Set([1, 4]),
+        jumpOrigin: null,
+        turnsSinceJump: 0,
+        font: 'Amiri',
+        size: 20,
+        lh: 1.95,
+        ws: 0,
+        weight: 400,
+        align: 'justify',
+        indent: 'classic',
+        marginH: 26,
+        eInk: false
+      };
+
+      const screenLib = document.getElementById('screen-library');
+      const screenReader = document.getElementById('screen-reader');
+      const pageClip = document.getElementById('pageClip');
+      const track = document.getElementById('columnsTrack');
+      const edgeRight = document.getElementById('edgeRight');
+      const edgeLeft = document.getElementById('edgeLeft');
+      const silkRibbon = document.getElementById('silkRibbon');
+      const peekPill = document.getElementById('peekPill');
+      const peekText = document.getElementById('peekText');
+      const timelineWrap = document.getElementById('timelineWrap');
+      const timelineSegments = document.getElementById('timelineSegments');
+      const tlThumb = document.getElementById('tlThumb');
+      const scrubTooltip = document.getElementById('scrubTooltip');
+
+      function renderLibrary() {
+        document.getElementById('heroCoverMount').innerHTML = buildCoverHTML(LIBRARY_BOOKS[0]);
+        const grid = document.getElementById('shelfGrid');
+        grid.innerHTML = LIBRARY_BOOKS.slice(1).map((b, idx) => `
+          <article class="book-tile" data-open-book="${idx + 1}">
+            <div class="tile-cover-box">${buildCoverHTML(b)}</div>
+            <h3 class="tile-title">${b.title}</h3>
+            <p class="tile-author">${b.author}</p>
+            <div class="tile-foot">
+              <div class="hair-track"><div class="hair-fill" style="width:${b.pct}%"></div></div>
+              <span class="tile-pct">${b.pct === 100 ? 'مكتملة' : b.pct === 0 ? 'جديدة' : toAr(b.pct) + '٪'}</span>
+            </div>
+          </article>
+        `).join('');
+
+        grid.querySelectorAll('.book-tile').forEach(el => {
+          el.addEventListener('click', () => setScreen('reader'));
+        });
+      }
+
+      function renderNovel() {
+        track.innerHTML = CHAPTERS.map((ch, idx) => {
+          const blocksHtml = ch.blocks.map(b => {
+            const fnHtml = b.fn ? `<button class="fn-btn" data-fn="${b.fn}" aria-label="حاشية ${b.fn}">${toAr(b.fn)}</button>` : '';
+            if (b.type === 'h2') return `<h2 class="scene-h2">${b.text}</h2>`;
+            if (b.type === 'break') return `<div class="scene-break">✦ &nbsp; ✦ &nbsp; ✦</div>`;
+            if (b.type === 'quote') return `<blockquote class="novel-quote">${b.text}${fnHtml}</blockquote>`;
+            const cls = ['novel-p', b.noIndent ? 'no-indent' : '', b.dialogue ? 'dialogue' : ''].filter(Boolean).join(' ');
+            return `<p class="${cls}">${b.text}${fnHtml}</p>`;
+          }).join('');
+          return `
+            <section class="chapter-sec" data-ch-index="${idx}">
+              <div class="ch-head">
+                <h1 class="ch-title">${ch.title}</h1>
+                <div class="ch-orn">✦</div>
+              </div>
+              ${blocksHtml}
+            </section>
+          `;
+        }).join('');
+
+        track.querySelectorAll('.fn-btn').forEach(btn => {
+          btn.addEventListener('click', e => {
+            e.stopPropagation();
+            const id = btn.getAttribute('data-fn');
+            document.getElementById('fnTitle').textContent = `حاشية ${toAr(id)}`;
+            document.getElementById('fnBody').textContent = FOOTNOTES[id] || '';
+            document.getElementById('fnModal').classList.add('open');
+          });
+        });
+      }
+
+      function measureLayout(preserveRatio) {
+        const prevRatio = preserveRatio && state.pageCount > 1 ? state.page / (state.pageCount - 1) : null;
+        const clipW = Math.max(240, pageClip.clientWidth);
+        const gap = Math.max(36, state.marginH * 2);
+        state.stride = clipW + gap;
+
+        track.style.columnWidth = clipW + 'px';
+        track.style.columnGap = gap + 'px';
+
+        const oldTrans = track.style.transition;
+        track.style.transition = 'none';
+        track.style.transform = 'translateX(0px)';
+        void track.offsetWidth;
+
+        const clipRect = pageClip.getBoundingClientRect();
+        const sections = Array.from(track.querySelectorAll('.chapter-sec'));
+        let maxPage = 0;
+        const meta = [];
+
+        sections.forEach((sec, idx) => {
+          const children = Array.from(sec.children);
+          let startP = Infinity;
+          let endP = 0;
+          children.forEach(el => {
+            const r = el.getBoundingClientRect();
+            const distStart = clipRect.right - r.right;
+            const distEnd = clipRect.right - r.left;
+            const p0 = Math.max(0, Math.floor((distStart + 12) / state.stride));
+            const p1 = Math.max(0, Math.floor((distEnd - 6) / state.stride));
+            if (p0 < startP) startP = p0;
+            if (p1 > endP) endP = p1;
+          });
+          if (!isFinite(startP)) startP = maxPage;
+          if (endP < startP) endP = startP;
+          if (endP > maxPage) maxPage = endP;
+          meta.push({
+            index: idx,
+            id: CHAPTERS[idx].id,
+            title: CHAPTERS[idx].title,
+            shortTitle: CHAPTERS[idx].shortTitle,
+            snippet: CHAPTERS[idx].snippet,
+            words: CHAPTERS[idx].words,
+            startPage: startP,
+            endPage: endP,
+            pageCount: endP - startP + 1
+          });
+        });
+
+        state.pageCount = Math.max(1, maxPage + 1);
+        state.chapterMeta = meta;
+
+        if (prevRatio !== null) {
+          state.page = Math.max(0, Math.min(state.pageCount - 1, Math.round(prevRatio * (state.pageCount - 1))));
+        } else {
+          state.page = Math.max(0, Math.min(state.pageCount - 1, state.page));
+        }
+
+        track.style.transform = `translateX(${state.page * state.stride}px)`;
+        void track.offsetWidth;
+        track.style.transition = oldTrans;
+
+        renderTimelineSegments();
+        renderToc();
+        updateReadingUI();
+      }
+
+      function getChapterForPage(p) {
+        let found = state.chapterMeta[0];
+        for (const m of state.chapterMeta) {
+          if (p >= m.startPage) found = m;
+        }
+        return found || { title: CHAPTERS[0].title, shortTitle: CHAPTERS[0].shortTitle, index: 0, startPage: 0, endPage: 0 };
+      }
+
+      function renderTimelineSegments() {
+        const totalWords = CHAPTERS.reduce((s, c) => s + c.words, 0);
+        timelineSegments.innerHTML = CHAPTERS.map((c, idx) => {
+          const flex = (c.words / totalWords * 100).toFixed(2);
+          return `<div class="tl-seg" style="flex:${flex} 0 0" data-seg="${idx}"><div class="tl-seg-fill" id="segFill-${idx}"></div></div>`;
+        }).join('');
+
+        state.bookmarks.forEach(bp => {
+          if (bp < state.pageCount) {
+            const pct = state.pageCount > 1 ? (bp / (state.pageCount - 1)) * 100 : 0;
+            const dot = document.createElement('span');
+            dot.className = 'tl-marker';
+            dot.style.right = pct + '%';
+            timelineSegments.appendChild(dot);
+          }
+        });
+      }
+
+      function renderToc() {
+        const activeCh = getChapterForPage(state.page);
+        document.getElementById('tocList').innerHTML = state.chapterMeta.map(m => `
+          <button class="toc-item ${m.index === activeCh.index ? 'active' : ''}" data-toc-page="${m.startPage}">
+            <div>
+              <div class="toc-item-title">${m.title}</div>
+              <div class="toc-item-meta">${toAr(m.pageCount)} صفحات</div>
+            </div>
+            <span class="toc-page">${toAr(m.startPage + 1)}</span>
+          </button>
+        `).join('');
+
+        document.querySelectorAll('.toc-item').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const target = parseInt(btn.getAttribute('data-toc-page'), 10);
+            jumpToPage(target);
+            document.getElementById('tocBackdrop').classList.remove('open');
+          });
+        });
+      }
+
+      function updateReadingUI() {
+        const ratio = state.pageCount > 1 ? state.page / (state.pageCount - 1) : 1;
+        const pct = Math.max(1, Math.round(((state.page + 1) / state.pageCount) * 100));
+        const ch = getChapterForPage(state.page);
+
+        track.style.transform = `translateX(${state.page * state.stride}px)`;
+
+        const rightW = (1.5 + ratio * 4.5).toFixed(1);
+        const leftW = (6 - ratio * 4.5).toFixed(1);
+        edgeRight.style.width = rightW + 'px';
+        edgeLeft.style.width = leftW + 'px';
+
+        document.getElementById('runningChapter').textContent = ch.shortTitle;
+        document.getElementById('runningPageNum').textContent = `${toAr(state.page + 1)} / ${toAr(state.pageCount)}`;
+        document.getElementById('runningPct').textContent = `${toAr(pct)}٪`;
+        document.getElementById('hudChapterTitle').textContent = ch.title;
+        document.getElementById('hudPageCounter').textContent = `صفحة ${toAr(state.page + 1)} من ${toAr(state.pageCount)}`;
+
+        document.getElementById('heroProgressFill').style.width = pct + '%';
+        document.getElementById('heroPctLabel').textContent = `${toAr(pct)}٪ مقروء`;
+        document.getElementById('heroChapterLabel').textContent = ch.shortTitle;
+
+        state.chapterMeta.forEach((m, idx) => {
+          const fill = document.getElementById(`segFill-${idx}`);
+          if (!fill) return;
+          if (state.page > m.endPage) fill.style.width = '100%';
+          else if (state.page < m.startPage) fill.style.width = '0%';
+          else {
+            const segProg = m.pageCount > 1 ? ((state.page - m.startPage + 1) / m.pageCount) * 100 : 100;
+            fill.style.width = segProg + '%';
+          }
+        });
+
+        tlThumb.style.right = (ratio * 100) + '%';
+
+        const isBookmarked = state.bookmarks.has(state.page);
+        silkRibbon.classList.toggle('pinned', isBookmarked);
+        document.getElementById('hudBookmarkStatus').textContent = isBookmarked
+          ? 'الصفحة محفوظة بالشريطة'
+          : 'اسحب الشريطة لحفظ الصفحة';
+
+        if (state.jumpOrigin !== null && state.jumpOrigin !== state.page) {
+          peekText.textContent = `ارجع لصفحة ${toAr(state.jumpOrigin + 1)}`;
+          peekPill.classList.add('visible');
+        } else {
+          peekPill.classList.remove('visible');
+        }
+      }
+
+      function goPage(nextPage) {
+        const clamped = Math.max(0, Math.min(state.pageCount - 1, nextPage));
+        if (clamped === state.page) return;
+        state.page = clamped;
+        if (state.jumpOrigin !== null) {
+          state.turnsSinceJump++;
+          if (state.turnsSinceJump >= 2) {
+            state.jumpOrigin = null;
+            state.turnsSinceJump = 0;
+          }
+        }
+        updateReadingUI();
+      }
+
+      function jumpToPage(target) {
+        const clamped = Math.max(0, Math.min(state.pageCount - 1, target));
+        if (clamped !== state.page) {
+          if (state.jumpOrigin === null) state.jumpOrigin = state.page;
+          state.turnsSinceJump = 0;
+          state.page = clamped;
+          updateReadingUI();
+        }
+      }
+
+      function setScreen(mode) {
+        state.screen = mode;
+        const isLib = mode === 'library';
+        screenLib.classList.toggle('active', isLib);
+        screenReader.classList.toggle('active', !isLib);
+        screenReader.classList.toggle('hud-open', mode === 'hud');
+        screenReader.classList.toggle('settings-open', mode === 'settings');
+
+        document.querySelectorAll('[data-go-screen]').forEach(b => {
+          b.classList.toggle('active', b.getAttribute('data-go-screen') === mode);
+        });
+
+        if (!isLib) {
+          requestAnimationFrame(() => measureLayout(false));
+        }
+      }
+
+      function setTheme(theme) {
+        state.theme = theme === 'default' ? DEFAULT_THEME : theme;
+        document.documentElement.setAttribute('data-theme', state.theme);
+        document.querySelectorAll('[data-set-theme]').forEach(b => {
+          b.classList.toggle('active', b.getAttribute('data-set-theme') === state.theme);
+        });
+        document.querySelectorAll('[data-go-theme]').forEach(b => {
+          b.classList.toggle('active', b.getAttribute('data-go-theme') === state.theme);
+        });
+      }
+
+      function initSettings() {
+        const strip = document.getElementById('fontStrip');
+        strip.innerHTML = FONTS.map(f => `
+          <button class="font-chip ${f.id === state.font ? 'active' : ''}" data-font="${f.id}" style="font-family:'${f.id}',serif">${f.label}</button>
+        `).join('');
+
+        strip.querySelectorAll('.font-chip').forEach(btn => {
+          btn.addEventListener('click', () => {
+            state.font = btn.getAttribute('data-font');
+            document.documentElement.style.setProperty('--read-font', `'${state.font}', 'Amiri', serif`);
+            strip.querySelectorAll('.font-chip').forEach(b => b.classList.toggle('active', b === btn));
+            measureLayout(true);
+          });
+        });
+
+        const updateSize = delta => {
+          state.size = Math.max(14, Math.min(36, state.size + delta));
+          document.documentElement.style.setProperty('--read-size', state.size + 'px');
+          document.getElementById('sizeReadout').textContent = toAr(state.size);
+          measureLayout(true);
+        };
+        document.getElementById('sizeDec').addEventListener('click', () => updateSize(-1));
+        document.getElementById('sizeInc').addEventListener('click', () => updateSize(1));
+
+        document.querySelectorAll('[data-weight]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            state.weight = parseInt(btn.getAttribute('data-weight'), 10);
+            document.documentElement.style.setProperty('--read-weight', state.weight);
+            document.querySelectorAll('[data-weight]').forEach(b => b.classList.toggle('active', b === btn));
+            measureLayout(true);
+          });
+        });
+
+        const lhRange = document.getElementById('lhRange');
+        lhRange.addEventListener('input', () => {
+          state.lh = parseFloat(lhRange.value);
+          document.documentElement.style.setProperty('--read-lh', state.lh);
+          document.getElementById('lhVal').textContent = toAr(state.lh.toFixed(2));
+          measureLayout(true);
+        });
+
+        const wsRange = document.getElementById('wsRange');
+        wsRange.addEventListener('input', () => {
+          state.ws = parseFloat(wsRange.value);
+          document.documentElement.style.setProperty('--read-ws', state.ws + 'px');
+          document.getElementById('wsVal').textContent = toAr(state.ws);
+          measureLayout(true);
+        });
+
+        document.querySelectorAll('[data-align]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            state.align = btn.getAttribute('data-align');
+            document.documentElement.style.setProperty('--read-align', state.align);
+            document.querySelectorAll('[data-align]').forEach(b => b.classList.toggle('active', b === btn));
+            measureLayout(true);
+          });
+        });
+
+        document.querySelectorAll('[data-indent]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            state.indent = btn.getAttribute('data-indent');
+            const isClassic = state.indent === 'classic';
+            document.documentElement.style.setProperty('--read-indent', isClassic ? '1.5em' : '0em');
+            document.documentElement.style.setProperty('--read-pgap', isClassic ? '8px' : '16px');
+            document.querySelectorAll('[data-indent]').forEach(b => b.classList.toggle('active', b === btn));
+            measureLayout(true);
+          });
+        });
+
+        document.querySelectorAll('[data-margin]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            state.marginH = parseInt(btn.getAttribute('data-margin'), 10);
+            document.documentElement.style.setProperty('--margin-h', state.marginH + 'px');
+            document.querySelectorAll('[data-margin]').forEach(b => b.classList.toggle('active', b === btn));
+            measureLayout(true);
+          });
+        });
+
+        const eInkBtn = document.getElementById('eInkToggle');
+        eInkBtn.addEventListener('click', () => {
+          state.eInk = !state.eInk;
+          eInkBtn.classList.toggle('on', state.eInk);
+          eInkBtn.setAttribute('aria-checked', String(state.eInk));
+          track.classList.toggle('e-ink', state.eInk);
+        });
+
+        document.querySelectorAll('[data-set-theme]').forEach(btn => {
+          btn.addEventListener('click', () => setTheme(btn.getAttribute('data-set-theme')));
+        });
+
+        document.querySelectorAll('.sheet-tab').forEach(tab => {
+          tab.addEventListener('click', () => {
+            const target = tab.getAttribute('data-tab');
+            document.querySelectorAll('.sheet-tab').forEach(t => t.classList.toggle('active', t === tab));
+            document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === `pane-${target}`));
+          });
+        });
+      }
+
+      function initScrubber() {
+        let dragging = false;
+        const pageFromClientX = clientX => {
+          const rect = timelineWrap.getBoundingClientRect();
+          const ratio = Math.max(0, Math.min(1, (rect.right - clientX) / rect.width));
+          return Math.round(ratio * (state.pageCount - 1));
+        };
+
+        const showPreview = p => {
+          const ch = getChapterForPage(p);
+          document.getElementById('ttChapter').textContent = ch.shortTitle;
+          document.getElementById('ttPage').textContent = `صفحة ${toAr(p + 1)}`;
+          document.getElementById('ttSnippet').textContent = ch.snippet;
+          scrubTooltip.classList.add('show');
+          tlThumb.style.right = ((state.pageCount > 1 ? p / (state.pageCount - 1) : 0) * 100) + '%';
+        };
+
+        timelineWrap.addEventListener('pointerdown', e => {
+          dragging = true;
+          timelineWrap.setPointerCapture(e.pointerId);
+          showPreview(pageFromClientX(e.clientX));
+        });
+
+        timelineWrap.addEventListener('pointermove', e => {
+          if (!dragging) return;
+          showPreview(pageFromClientX(e.clientX));
+        });
+
+        const finish = e => {
+          if (!dragging) return;
+          dragging = false;
+          scrubTooltip.classList.remove('show');
+          jumpToPage(pageFromClientX(e.clientX));
+        };
+
+        timelineWrap.addEventListener('pointerup', finish);
+        timelineWrap.addEventListener('pointercancel', () => {
+          dragging = false;
+          scrubTooltip.classList.remove('show');
+          updateReadingUI();
+        });
+      }
+
+      function bindEvents() {
+        document.getElementById('heroBook').addEventListener('click', () => setScreen('reader'));
+        document.getElementById('continueReadingBtn').addEventListener('click', e => {
+          e.stopPropagation();
+          setScreen('reader');
+        });
+
+        const themeOrder = [DEFAULT_THEME, 'paper', 'sepia', 'oled'];
+        document.getElementById('libThemeToggle').addEventListener('click', () => {
+          const idx = (themeOrder.indexOf(state.theme) + 1) % themeOrder.length;
+          setTheme(themeOrder[idx]);
+        });
+
+        document.getElementById('importDemoBtn').addEventListener('click', () => setScreen('reader'));
+
+        document.getElementById('tapNext').addEventListener('click', () => {
+          if (state.screen === 'settings') { setScreen('reader'); return; }
+          goPage(state.page + 1);
+        });
+        document.getElementById('tapPrev').addEventListener('click', () => {
+          if (state.screen === 'settings') { setScreen('reader'); return; }
+          goPage(state.page - 1);
+        });
+        document.getElementById('tapCenter').addEventListener('click', () => {
+          if (state.screen === 'settings') setScreen('reader');
+          else setScreen(state.screen === 'hud' ? 'reader' : 'hud');
+        });
+
+        document.getElementById('ribbonZone').addEventListener('click', e => {
+          e.stopPropagation();
+          if (state.bookmarks.has(state.page)) state.bookmarks.delete(state.page);
+          else state.bookmarks.add(state.page);
+          renderTimelineSegments();
+          updateReadingUI();
+        });
+
+        peekPill.addEventListener('click', () => {
+          if (state.jumpOrigin !== null) {
+            const back = state.jumpOrigin;
+            state.jumpOrigin = null;
+            state.turnsSinceJump = 0;
+            state.page = back;
+            updateReadingUI();
+          }
+        });
+
+        document.getElementById('btnBackLib').addEventListener('click', () => setScreen('library'));
+        document.getElementById('btnOpenToc').addEventListener('click', () => {
+          renderToc();
+          document.getElementById('tocBackdrop').classList.add('open');
+        });
+        document.getElementById('btnCloseToc').addEventListener('click', () => {
+          document.getElementById('tocBackdrop').classList.remove('open');
+        });
+        document.getElementById('tocBackdrop').addEventListener('click', e => {
+          if (e.target.id === 'tocBackdrop') document.getElementById('tocBackdrop').classList.remove('open');
+        });
+
+        document.getElementById('btnOpenSettings').addEventListener('click', () => setScreen('settings'));
+        document.getElementById('btnCloseSettings').addEventListener('click', () => setScreen('reader'));
+
+        document.getElementById('fnClose').addEventListener('click', () => document.getElementById('fnModal').classList.remove('open'));
+        document.getElementById('fnModal').addEventListener('click', e => {
+          if (e.target.id === 'fnModal') document.getElementById('fnModal').classList.remove('open');
+        });
+
+        document.querySelectorAll('[data-go-screen]').forEach(btn => {
+          btn.addEventListener('click', () => setScreen(btn.getAttribute('data-go-screen')));
+        });
+        document.querySelectorAll('[data-go-theme]').forEach(btn => {
+          btn.addEventListener('click', () => setTheme(btn.getAttribute('data-go-theme')));
+        });
+
+        window.addEventListener('keydown', e => {
+          if (state.screen === 'library') return;
+          if (e.key === 'ArrowLeft') goPage(state.page + 1);
+          if (e.key === 'ArrowRight') goPage(state.page - 1);
+        });
+
+        window.addEventListener('message', e => {
+          if (!e.data || typeof e.data !== 'object') return;
+          if (e.data.type === 'setScreen' && e.data.screen) setScreen(e.data.screen);
+          if (e.data.type === 'setTheme' && e.data.theme) setTheme(e.data.theme);
+          if (e.data.type === 'setTab' && e.data.tab) {
+            document.querySelectorAll('.sheet-tab').forEach(t => t.classList.toggle('active', t.getAttribute('data-tab') === e.data.tab));
+            document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === `pane-${e.data.tab}`));
+          }
+        });
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('embed') === '1') document.body.classList.add('embed');
+
+      initPaperGrain();
+      renderLibrary();
+      renderNovel();
+      initSettings();
+      initScrubber();
+      bindEvents();
+
+      const initTheme = params.get('theme') || DEFAULT_THEME;
+      setTheme(initTheme);
+
+      const initScreen = params.get('screen') || 'library';
+      const initPage = parseInt(params.get('page') || '1', 10);
+      if (!isNaN(initPage) && initPage >= 0) state.page = initPage;
+
+      const initTab = params.get('tab');
+      if (initTab) {
+        document.querySelectorAll('.sheet-tab').forEach(t => t.classList.toggle('active', t.getAttribute('data-tab') === initTab));
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === `pane-${initTab}`));
+      }
+
+      setScreen(initScreen);
+
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(() => {
+          if (state.screen !== 'library') measureLayout(false);
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
