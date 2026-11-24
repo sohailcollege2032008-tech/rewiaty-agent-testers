@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>روايتي — مقارنة اتجاهات التصميم (أ · ب · ج)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Readex+Pro:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #F6F3EC;
+      --surface: #FFFDF9;
+      --surface-alt: #EFEAE0;
+      --text: #1F1D1A;
+      --muted: #655F56;
+      --border: #E2DBD0;
+      --accent: #1F5E5B;
+      --accent-soft: rgba(31, 94, 91, 0.10);
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      letter-spacing: 0 !important;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'IBM Plex Sans Arabic', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      background: rgba(246, 243, 236, 0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 28px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .top-brand {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .top-title {
+      font-family: 'Amiri', serif;
+      font-size: 26px;
+      font-weight: 700;
+      line-height: 1.2;
+      margin: 0;
+    }
+
+    .top-sub {
+      font-size: 13px;
+      color: var(--muted);
+      margin: 0;
+    }
+
+    .controls-cluster {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .pill-bar {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--surface-alt);
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+
+    .ctrl-btn {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-family: 'IBM Plex Sans Arabic', sans-serif;
+      font-size: 12.5px;
+      font-weight: 500;
+      padding: 6px 12px;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: background 160ms, color 160ms;
+    }
+
+    .ctrl-btn:hover { color: var(--text); }
+
+    .ctrl-btn.active {
+      background: var(--surface);
+      color: var(--accent);
+      font-weight: 600;
+      box-shadow: 0 2px 6px rgba(31, 29, 26, 0.08);
+    }
+
+    .main-wrap {
+      max-width: 1420px;
+      margin: 0 auto;
+      padding: 28px 24px 64px;
+    }
+
+    .hint-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 12px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 28px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .hint-strip strong { color: var(--text); }
+
+    /* 3 Side-by-Side Interactive Prototypes */
+    .directions-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(390px, 1fr));
+      gap: 28px;
+      align-items: start;
+      overflow-x: auto;
+      padding-bottom: 10px;
+    }
+
+    @media (max-width: 1280px) {
+      .directions-grid {
+        grid-template-columns: repeat(auto-fit, minmax(390px, 1fr));
+      }
+    }
+
+    .dir-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .dir-header {
+      width: 390px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 18px;
+    }
+
+    .dir-header.recommended {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+
+    .dir-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .dir-name-wrap {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+
+    .dir-letter {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background: var(--surface-alt);
+      color: var(--text);
+      font-weight: 700;
+      font-size: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .dir-header.recommended .dir-letter {
+      background: var(--accent);
+      color: #FFFFFF;
+    }
+
+    .dir-name {
+      font-family: 'Amiri', serif;
+      font-size: 22px;
+      font-weight: 700;
+      margin: 0;
+      line-height: 1.2;
+    }
+
+    .rec-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .dir-idea {
+      font-size: 13px;
+      line-height: 1.65;
+      color: var(--muted);
+      margin: 0 0 10px;
+    }
+
+    .dir-links {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 12px;
+    }
+
+    .dir-links a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .dir-links a:hover { text-decoration: underline; }
+
+    .phone-shell {
+      width: 390px;
+      height: 844px;
+      border-radius: 28px;
+      overflow: hidden;
+      border: 1px solid rgba(31, 29, 26, 0.14);
+      box-shadow: 0 20px 50px rgba(31, 29, 26, 0.12);
+      background: #FAF8F5;
+      flex-shrink: 0;
+    }
+
+    .phone-shell.dark-shell {
+      background: #18181B;
+      border-color: rgba(255, 255, 255, 0.14);
+    }
+
+    .phone-shell iframe {
+      width: 390px;
+      height: 844px;
+      border: none;
+      display: block;
+    }
+
+    .dir-notes {
+      width: 390px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 15px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .note-line { margin: 0; color: var(--muted); }
+    .note-line strong { color: var(--text); font-weight: 600; }
+
+    /* Recommendation Section */
+    .recommendation-box {
+      margin-top: 42px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-inline-start: 4px solid var(--accent);
+      border-radius: 14px;
+      padding: 26px 28px;
+    }
+
+    .rec-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .rec-title {
+      font-family: 'Amiri', serif;
+      font-size: 25px;
+      font-weight: 700;
+      margin: 0;
+    }
+
+    .rec-body {
+      font-size: 14.5px;
+      line-height: 1.9;
+      color: var(--text);
+      margin: 0 0 14px;
+    }
+
+    .rec-points {
+      margin: 0;
+      padding: 0 20px 0 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 13.5px;
+      line-height: 1.8;
+      color: var(--muted);
+    }
+
+    .rec-points strong { color: var(--text); }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="top-brand">
+      <h1 class="top-title">روايتي — مقارنة اتجاهات التصميم</h1>
+      <p class="top-sub">٣ اتجاهات تفاعلية كاملة بمقاس ٣٩٠×٨٤٤ · نص «حَجَرُ الْمَاءِ» المشكّل الحقيقي · بدون letter-spacing على العربي</p>
+    </div>
+
+    <div class="controls-cluster">
+      <div class="pill-bar" role="group" aria-label="تبديل الشاشة في الاتجاهات الثلاثة">
+        <button class="ctrl-btn active" data-sync-screen="library">١. المكتبة</button>
+        <button class="ctrl-btn" data-sync-screen="reader">٢. صفحة القراية</button>
+        <button class="ctrl-btn" data-sync-screen="hud">٣. الـ HUD</button>
+        <button class="ctrl-btn" data-sync-screen="settings">٤. شيت الإعدادات ٣٥٪</button>
+      </div>
+
+      <div class="pill-bar" role="group" aria-label="تبديل الثيم في الاتجاهات الثلاثة">
+        <button class="ctrl-btn active" data-sync-theme="default">الافتراضي</button>
+        <button class="ctrl-btn" data-sync-theme="paper">ورق دافئ</button>
+        <button class="ctrl-btn" data-sync-theme="sepia">سيبيا</button>
+        <button class="ctrl-btn" data-sync-theme="charcoal">فحمي</button>
+        <button class="ctrl-btn" data-sync-theme="oled">ليل OLED</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-wrap">
+    <div class="hint-strip">
+      <span><strong>جرّب بنفسك جوه كل شاشة:</strong> اضغط على «حجر الماء» لفتح القارئ، المس اليسار للتقليب للأمام واليمين للخلف، المس المنتصف للـ HUD، اسحب الشريطة القماش فوق يسار، اسحب شريط الفصول الموزون، وعدّل الخطوط والأحجام مباشرة من شيت الإعدادات.</span>
+      <span>الخطوط الـ ٨ شغالة live · الثيمات الـ ٤ شغالة live</span>
+    </div>
+
+    <section class="directions-grid" aria-label="عرض الاتجاهات الثلاثة جنباً إلى جنب">
+      <!-- Direction A -->
+      <div class="dir-col">
+        <div class="dir-header">
+          <div class="dir-title-row">
+            <div class="dir-name-wrap">
+              <span class="dir-letter">أ</span>
+              <h2 class="dir-name">الوَرّاق</h2>
+            </div>
+            <span style="font-size:12px;color:var(--muted);">Amiri · حبر قرمزي</span>
+          </div>
+          <p class="dir-idea">دفء الكتاب الورقي العربي المطبوع بعناية، حيث تتوارى الواجهة كغلاف قماشي وحواشي دار نشر أدبية.</p>
+          <div class="dir-links">
+            <a href="./a/index.html" target="_blank">فتح منفرد ↗</a>
+            <a href="./a/tokens.json" target="_blank">tokens.json</a>
+          </div>
+        </div>
+
+        <div class="phone-shell">
+          <iframe id="frame-a" src="./a/index.html?embed=1&screen=library" title="الاتجاه أ: الوَرّاق"></iframe>
+        </div>
+
+        <div class="dir-notes">
+          <p class="note-line"><strong>نقاط القوة:</strong> هويّة عربية أصيلة وفريدة جداً (مكتبة مفتوحة بلا كروت مكررة، كعب عربي على اليمين، حِبر قرمزي مستوحى من المخطوطات، وتايبوجرافي أميري مريح للروايات الطويلة).</p>
+          <p class="note-line"><strong>نقاط الضعف:</strong> طابعه الأدبي الكلاسيكي قد يبدو هادئاً أكثر من اللازم لمن يفضّل واجهات أندرويد العصرية السريعة بلمسة واحدة، والرف الثنائي يعرض عناوين أقل في الشاشة الأولى مقارنة بالقائمة.</p>
+        </div>
+      </div>
+
+      <!-- Direction B -->
+      <div class="dir-col">
+        <div class="dir-header recommended">
+          <div class="dir-title-row">
+            <div class="dir-name-wrap">
+              <span class="dir-letter">ب</span>
+              <h2 class="dir-name">السَّكينة</h2>
+            </div>
+            <span class="rec-badge">التوصية الأولى</span>
+          </div>
+          <p class="dir-idea">نقاء معماري هادئ بأسطح عائمة ناعمة وتباين نظيف، يتنفس فيه النص العربي بلا زخرفة زائدة.</p>
+          <div class="dir-links">
+            <a href="./b/index.html" target="_blank">فتح منفرد ↗</a>
+            <a href="./b/tokens.json" target="_blank">tokens.json</a>
+          </div>
+        </div>
+
+        <div class="phone-shell">
+          <iframe id="frame-b" src="./b/index.html?embed=1&screen=library" title="الاتجاه ب: السَّكينة"></iframe>
+        </div>
+
+        <div class="dir-notes">
+          <p class="note-line"><strong>نقاط القوة:</strong> أريح تجربة استخدام يومي بيد واحدة على أندرويد؛ الـ HUD العائم وشيت الإعدادات المنفصل يتركان الصفحة تتنفس حولهم، مع لوحة ألوان ورقية وتيل عميق مريحة للعين ووضوح ممتاز لغير التقنيين.</p>
+          <p class="note-line"><strong>نقاط الضعف:</strong> الأغلفة الهندسية التجريدية أقل دفئاً وحنيناً للكتاب الورقي من أغلفة «الوَرّاق»، وقد يحتاج القارئ الكلاسيكي لتبديل الخط من نوتو نسخ إلى أميري عند قراءة الأدب القديم.</p>
+        </div>
+      </div>
+
+      <!-- Direction C -->
+      <div class="dir-col">
+        <div class="dir-header">
+          <div class="dir-title-row">
+            <div class="dir-name-wrap">
+              <span class="dir-letter">ج</span>
+              <h2 class="dir-name">مِداد</h2>
+            </div>
+            <span style="font-size:12px;color:var(--muted);">Scheherazade · نحاس ليلي</span>
+          </div>
+          <p class="dir-idea">خلوة قراءة ليلية مستوحاة من الحبر والورق المعتّق والنحاس الدافئ، بتركيز مطلق وتباين أدبي هادئ.</p>
+          <div class="dir-links">
+            <a href="./c/index.html" target="_blank">فتح منفرد ↗</a>
+            <a href="./c/tokens.json" target="_blank">tokens.json</a>
+          </div>
+        </div>
+
+        <div class="phone-shell dark-shell">
+          <iframe id="frame-c" src="./c/index.html?embed=1&screen=library" title="الاتجاه ج: مِداد"></iframe>
+        </div>
+
+        <div class="dir-notes">
+          <p class="note-line"><strong>نقاط القوة:</strong> تركيز بصري استثنائي لقراءة الليل الطويلة بخط شهرزاد الواضح مع التشكيل ومسطرة الفصول الدقيقة والنحاس الدافئ، بدون أي وهج أو ألوان زاعقة.</p>
+          <p class="note-line"><strong>نقاط الضعف:</strong> البدء بالوضع الفحمي يعطي انطباعاً جاداً وداكناً قد لا يرحّب بجميع القراء نهاراً، والمسطرة الدقيقة والفهرس الجدولي أقرب لجوّ النخبة الأدبية منه للقارئ العادي.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="recommendation-box" aria-label="التوصية النهائية">
+      <div class="rec-head">
+        <h2 class="rec-title">التوصية: الاتجاه «ب — السَّكينة» (مع استعارة لمسة الأغلفة القماشية من «أ — الوَرّاق»)</h2>
+      </div>
+      <p class="rec-body">
+        لأن <strong>روايتي</strong> موجّه لقارئ عربي غير تقني على أندرويد ويطمح يكون من أهدأ وأرقى تطبيقات القراية في العالم، <strong>الاتجاه «ب — السَّكينة»</strong> هو الأقوى كأساس كامل للتطبيق: واجهته المعمارية الهادئة وكبسولات الـ HUD العائمة وشيت الإعدادات المنفصل بـ ٣٥٪ بتخلي القارئ يحس إن الصفحة نفسها هي المساحة الحقيقية والواجهة مجرد أدوات خفيفة بتظهر وتختفي بدون ما تكتم الشاشة.
+      </p>
+      <ul class="rec-points">
+        <li><strong>سهولة فورية لغير التقنيين:</strong> المكتبة بقائمة القراءة الرأسية والكارت الواحد المركز لـ «كمّل القراية» مفهومة في ثانية واحدة، وتشتغل بيد واحدة بسلاسة على أندرويد.</li>
+        <li><strong>جاهزية للمراحل الجاية (الـ AI واللمسات):</strong> الهدوء البصري والأسطح العائمة في «السَّكينة» هتستوعب بسهولة كروت «فين كنا واقفين»، وبطاقات الشخصيات (X-Ray)، وإطارات المشاهد في المرحلة ٤ من غير ما الشاشة تتزحم.</li>
+        <li><strong>دمج مقترح لو حبيت:</strong> ناخد كل نظام <strong>«السَّكينة»</strong> (الألوان التيل والورق، والـ HUD العائم، وشيت الإعدادات، وسهولة المكتبة) ونستعير من <strong>«الوَرّاق»</strong> تفصيلة الكعب العربي للأغلفة المولّدة عشان الكتب في المكتبة تحافظ على إحساس المطبوعة العربية الفاخرة.</li>
+      </ul>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      'use strict';
+      const frames = ['frame-a', 'frame-b', 'frame-c'].map(id => document.getElementById(id));
+
+      function broadcast(msg) {
+        frames.forEach(f => {
+          if (f && f.contentWindow) f.contentWindow.postMessage(msg, '*');
+        });
+      }
+
+      document.querySelectorAll('[data-sync-screen]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const screen = btn.getAttribute('data-sync-screen');
+          document.querySelectorAll('[data-sync-screen]').forEach(b => b.classList.toggle('active', b === btn));
+          broadcast({ type: 'setScreen', screen });
+        });
+      });
+
+      document.querySelectorAll('[data-sync-theme]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const theme = btn.getAttribute('data-sync-theme');
+          document.querySelectorAll('[data-sync-theme]').forEach(b => b.classList.toggle('active', b === btn));
+          broadcast({ type: 'setTheme', theme });
+        });
+      });
+    })();
+  </script>
+</body>
+</html>
