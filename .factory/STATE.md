@@ -11,5 +11,12 @@
 | M4 Release+QA | ⏳ | |
 | Book Lab (أمواج PDF → bundle، تجربة pipeline المرحلة 4) | 🟡 Neon (sohailcollege) + deepseek | ثريد Book Lab · ~/workspace/rewiaty-book-lab |
 
+## الخطة لحد التسليم (قرار سهيل 2026-11-25: «خلّص السيستم كله من غير ما حاجة توقفك»)
+1. M3: إصلاحات Codex (deepseek) ← gates ← تأكيد Codex ← دمج.
+2. **Design (0.5، اتعمل متأخر):** design-explorer على Neon بيطلّع 3 اتجاهات. **الاتجاه الموصى بيه هو اللي هيتطبّق** (سهيل يقدر يغيّره من صفحة المقارنة)، وبعدها مهمة redesign تطبّق الـ tokens والشكل (Hydrogen).
+3. M4: Release APK (`mobile-run`)، وMaestro flows على Redroid (`app-flow`) للـ 5 رحلات، و`proof check`.
+4. QA wave: global-qa، وnovice-ux-qa، وvisual-qa (deepseek، جولة جديدة لكل واحد) + mobile-agent-testers (layla وgrace) ← issues.
+5. إصلاح الـ P1، وre-verify (أقصى حاجة 3 جولات) ← تسليم الـ APK لسهيل ومعاه «أمواج».
+
 ## مستني سهيل
 - (مفيش)
