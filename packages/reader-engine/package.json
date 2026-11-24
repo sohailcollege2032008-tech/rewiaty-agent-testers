@@ -1,0 +1,13 @@
+{
+  "name": "@rewiaty/reader-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test:e2e": "playwright test --config=playwright.config.ts"
+  },
+  "dependencies": {
+    "@rewiaty/book-format": "*"
+  }
+}
