@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rewiaty Reader Engine — Dev Harness</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #111317;
+      color: #e5e7eb;
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      height: 100vh;
+      overflow: hidden;
+    }
+    @media (max-width: 820px) {
+      body {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+      }
+      aside {
+        max-height: 40vh;
+        border-right: none;
+        border-bottom: 1px solid #272b33;
+      }
+    }
+    aside {
+      padding: 16px;
+      background: #181b20;
+      border-right: 1px solid #272b33;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      font-size: 13px;
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 16px;
+      font-weight: 600;
+      color: #f9fafb;
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .field-label {
+      display: flex;
+      justify-content: space-between;
+      color: #9ca3af;
+      font-size: 12px;
+    }
+    select, button, input[type="file"] {
+      background: #22262e;
+      color: #f3f4f6;
+      border: 1px solid #323844;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 13px;
+    }
+    button {
+      cursor: pointer;
+      flex: 1;
+    }
+    button:hover {
+      background: #2c313b;
+    }
+    input[type="range"] {
+      width: 100%;
+    }
+    main {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+    }
+    .topbar {
+      padding: 8px 14px;
+      background: #16191e;
+      border-bottom: 1px solid #272b33;
+      font-size: 12px;
+      color: #9ca3af;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .stage-wrap {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 16px;
+      background: #0d0f12;
+      overflow: hidden;
+    }
+    iframe {
+      width: 100%;
+      max-width: 430px;
+      height: 100%;
+      max-height: 860px;
+      border: 1px solid #2e3440;
+      border-radius: 16px;
+      background: #FAF8F5;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <aside>
+    <h1>Rewiaty Engine Dev</h1>
+
+    <div class="row">
+      <button id="load-ar" type="button">Sample AR</button>
+      <button id="load-en" type="button">Sample EN</button>
+    </div>
+
+    <div class="field">
+      <span class="field-label">Open .md / .txt</span>
+      <input id="file-input" type="file" accept=".md,.markdown,.txt" />
+    </div>
+
+    <div class="field">
+      <span class="field-label">Chapter (TOC)</span>
+      <select id="toc-select"></select>
+    </div>
+
+    <div class="row">
+      <button id="btn-prev" type="button">Prev</button>
+      <button id="btn-next" type="button">Next</button>
+    </div>
+
+    <div class="field">
+      <span class="field-label">Theme</span>
+      <select id="setting-theme">
+        <option value="warm-paper">Warm Paper</option>
+        <option value="sepia">Sepia</option>
+        <option value="charcoal">Charcoal</option>
+        <option value="oled">OLED Night</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <span class="field-label">Font Family</span>
+      <select id="setting-font">
+        <option value="Amiri">Amiri</option>
+        <option value="Noto Naskh Arabic">Noto Naskh Arabic</option>
+        <option value="Scheherazade New">Scheherazade New</option>
+        <option value="IBM Plex Sans Arabic">IBM Plex Sans Arabic</option>
+        <option value="Readex Pro">Readex Pro</option>
+        <option value="Literata">Literata</option>
+        <option value="Merriweather">Merriweather</option>
+        <option value="Inter">Inter</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <div class="field-label"><span>Font Size</span><span id="val-size">20px</span></div>
+      <input id="setting-size" type="range" min="14" max="36" step="1" value="20" />
+    </div>
+
+    <div class="field">
+      <div class="field-label"><span>Line Height</span><span id="val-lh">1.95</span></div>
+      <input id="setting-lh" type="range" min="1.5" max="2.6" step="0.05" value="1.95" />
+    </div>
+
+    <div class="field">
+      <div class="field-label"><span>Word Spacing</span><span id="val-ws">0px</span></div>
+      <input id="setting-ws" type="range" min="-2" max="14" step="1" value="0" />
+    </div>
+
+    <div class="field">
+      <div class="field-label"><span>Paragraph Spacing</span><span id="val-ps">8px</span></div>
+      <input id="setting-ps" type="range" min="0" max="28" step="2" value="8" />
+    </div>
+
+    <div class="field">
+      <div class="field-label"><span>Horizontal Margin</span><span id="val-mh">24px</span></div>
+      <input id="setting-mh" type="range" min="12" max="48" step="2" value="24" />
+    </div>
+
+    <div class="field">
+      <span class="field-label">Font Weight</span>
+      <select id="setting-weight">
+        <option value="300">300 (Light)</option>
+        <option value="400" selected>400 (Regular)</option>
+        <option value="500">500 (Medium)</option>
+        <option value="600">600 (SemiBold)</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <span class="field-label">Alignment</span>
+      <select id="setting-align">
+        <option value="justify">Justify</option>
+        <option value="start">Start</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <span class="field-label">Indent Mode</span>
+      <select id="setting-indent">
+        <option value="classic">Classic Indent</option>
+        <option value="block">Modern Block</option>
+      </select>
+    </div>
+
+    <label class="row" style="cursor: pointer;">
+      <input id="setting-noanim" type="checkbox" />
+      <span>Disable Page Animation (E-ink)</span>
+    </label>
+  </aside>
+
+  <main>
+    <div class="topbar">
+      <span id="status-text">Waiting for reader.html...</span>
+      <span>Tip: Tap edges (RTL: left=next) or swipe</span>
+    </div>
+    <div class="stage-wrap">
+      <iframe id="reader-frame" src="dist/reader.html" title="Rewiaty Reader Engine"></iframe>
+    </div>
+  </main>
+
+  <script src="dist/dev-panel.js"></script>
+</body>
+</html>

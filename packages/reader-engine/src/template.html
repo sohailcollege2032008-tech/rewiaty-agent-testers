@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Rewiaty Reader Engine</title>
+  <!--INLINE_STYLE-->
+</head>
+<body>
+  <div id="reader-root" class="reader-root" dir="rtl">
+    <div id="reader-stage" class="reader-stage">
+      <div id="reader-track" class="reader-track"></div>
+    </div>
+    <div id="footnote-backdrop" class="footnote-backdrop" hidden>
+      <div id="footnote-popover" class="footnote-popover" role="dialog" aria-modal="true" aria-labelledby="footnote-title">
+        <div class="footnote-header">
+          <span id="footnote-title" class="footnote-title"></span>
+          <button id="footnote-close" class="footnote-close" type="button" aria-label="Close">×</button>
+        </div>
+        <div id="footnote-body" class="footnote-body"></div>
+      </div>
+    </div>
+  </div>
+  <!--INLINE_SCRIPT-->
+</body>
+</html>

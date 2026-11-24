@@ -1,0 +1,22 @@
+{
+  "name": "rewiaty",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p packages/book-format/tsconfig.json --noEmit && tsc -p packages/reader-engine/tsconfig.json --noEmit",
+    "test": "vitest run",
+    "build": "npm --workspace=@rewiaty/reader-engine run build",
+    "test:e2e": "playwright test --config=packages/reader-engine/playwright.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.2",
+    "vitest": "^3.1.1"
+  }
+}
