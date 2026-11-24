@@ -1,0 +1,58 @@
+name: Rewiaty Maestro Flows
+
+on:
+  workflow_dispatch:
+    inputs:
+      apk_url:
+        description: URL of the encrypted release APK asset
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  flows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download and decrypt APK
+        env:
+          APK_URL: ${{ inputs.apk_url }}
+          ARTIFACT_PASSPHRASE: ${{ secrets.ARTIFACT_PASSPHRASE }}
+        run: |
+          curl -fsSL -o app.apk.enc "$APK_URL"
+          openssl enc -d -aes-256-cbc -pbkdf2 -in app.apk.enc -out app.apk -pass env:ARTIFACT_PASSPHRASE
+          sha256sum app.apk
+
+      - name: Install Maestro CLI
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+
+      - name: Run 5 Maestro flows on Android API 34 x86_64
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          ram-size: 4096M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash scripts/run_rewiaty_flows.sh
+
+      - name: Upload results artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rewiaty-flows-results
+          path: results/
+          retention-days: 14
