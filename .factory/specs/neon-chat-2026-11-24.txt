@@ -1,0 +1,552 @@
+﻿تصميم قارئ روايات رقمية
+https://gemini.google.com/app/0d75eddd18e8a286
+
+
+User prompt: ايه افضل طريقة او افضل صيغة او افضل فورمات او افضل اسلوب عرض بنعرض بيه الروايات الرقمية يعنى ايه نوع الخط و هكذا وهكذا يعنى وهل ممكن تعملى برومت اديه لل ai agent علشان يعملى تطبيق بيعرض الروايات بسهولة وبسلاسة؟ بحيث التطبيق اديله صيغة md معينة وعلى اساس الصيغة ده هيبدأ يعرض الرواية بتقسيمة الصفحات والتشكيلات المناسبة و الفورماتينج المناسب وبداية كل سطر وهكذا واقدر طبعا اغير ف احجام الخطوط والخلفية و الاضائة و الالوان و الدقة و الخ الخ
+Response: عرض الروايات الرقمية باحترافية (زي Kindle و Apple Books و Moon+ Reader) بيعتمد على مبدأ الـ Reflowable Layout — يعني النص مش ثابت زي الـ PDF، لكنه بيتمدد ويتقسم لصفحات ديناميكياً حسب حجم الشاشة والخط. وصيغة Markdown (.md) مع YAML Frontmatter تعتبر من أذكى الصيغ كـ Source، لأنها خفيفة، قابلة للتعديل، وتقدر تبرمج لها Parser يحولها لتجربة قراءة مطابقة للكتب المطبوعة.
+1. معايير عرض الروايات الرقمية (Typography & UX)
+اختيار الخطوط (Fonts)
+الروايات الطويلة محتاجة خطوط "تختفي قدام العين" عشان متسببش إجهاد، وفي العربي لازم الخط يدعم التشكيل (Tashkeel / OpenType anchors) صح عشان الفتحة والشدة ميركبوش فوق بعض:
+
+
+نوع الرواية / الاستخدام
+	الخط المقترح (عربي)
+	الخط المقترح (إنجليزي)
+	الميزة الأساسية
+	أدب كلاسيكي / تاريخي / فانتازيا
+	Amiri أو Scheherazade New
+	Literata / EB Garamond
+	روح الكتب الورقية، دعم تشكيل ممتاز جداً
+	روايات حديثة / تشويق / عام
+	Noto Naskh Arabic
+	Merriweather / Georgia
+	أريح خط للشاشات، متوازن جداً مع التشكيل
+	لايت نوفلز (Light Novels) / مودرن
+	IBM Plex Sans Arabic أو Readex Pro
+	Inter / Source Sans
+	خط نضيف وعصري، مريح في القراءة السريعة
+	هندسة الفقرات والسطور (Micro-Typography)
+* طول السطر (Measure): أفضل طول مريح للعين هو 55 إلى 75 حرف في السطر (تقريباً max-width: 65ch أو 680px). السطر الأطول من كده بيخلي العين تتوه وهي راجعة لبداية السطر اللي بعده.
+* ارتفاع السطر (Line-Height): في الإنجليزي 1.5–1.6 كفاية، لكن في العربي مع التشكيل لازم يكون 1.85 إلى 2.15 عشان التشكيل ميتقطعش أو يخبط في السطر اللي فوقه.
+* بداية السطر والفقرات (Indentation): في طريقتين بس ومينفعش تخلط بينهم:
+   1. أسلوب الكتاب الورقي: مسافة بادئة أول كل فقرة (text-indent: 1.5em) مع إلغاء المسافة الرأسية بين الفقرات (margin-bottom: 0.2em)، باستثناء أول فقرة بعد عنوان الفصل أو فاصل المشهد (بتبدأ من غير مسافة بادئة).
+   2. أسلوب الويب الحديث: بدون مسافة بادئة (text-indent: 0) مع مسافة رأسية واضحة بين الفقرات (margin-bottom: 1em).
+* فخ قاتل في العربي (letter-spacing): أوعى تضيف letter-spacing لنص عربي؛ ده بيفك تشبيك الحروف ويبوظ الكلمة. للتحكم في "تنفّس" النص العربي استخدم word-spacing فقط.
+* المحاذاة (Alignment): الـ text-align: justify مع text-justify: inter-word بيدي شكل كتاب منظم، لكن على الشاشات الضيقة (الموبايل) ممكن يعمل فراغات بيضا واسعة، فالأفضل تخليها Option يقدر القارئ يبدل بينه وبين محاذاة اليمين (start).
+* الدقة ووضوح الحرف (Crispness & Weight): التحكم في "الدقة" في تطبيقات القراءة بيتم عن طريق حاجتين: استخدام Variable Fonts تسمح بتعديل سُمك الخط بدقة (font-weight من 350 لـ 600 بتدرجات 25، لأن الخطوط الرفيعة بتختفي في الـ Dark Mode)، وتفعيل text-rendering: optimizeLegibility مع خيار التبديل بين antialiased و auto.
+الألوان والإضاءة (Eye-Comfort Themes)
+الأبيض الصريح (#FFFFFF) مع الأسود الصريح (#000000) بيعمل ظاهرة اسمها Halation (وهج وتوهان للحروف). الثيمات القياسية المريحة للعين هي:
+* ورقي دافئ (Warm Paper): خلفية #FAF8F5 — نص #24211D
+* سيبيا (Sepia): خلفية #F4ECD8 — نص #3E3024
+* داكن مريح (Charcoal Dark): خلفية #18181B — نص #D4D4D8
+* أوليد ليلي (OLED Black): خلفية #000000 — نص #A1A1AA
+* التحكم في الإضاءة والدفء: طبقة Overlay فوق الشاشة (pointer-events: none) بتتحكم في التعتيم البرمجي (Dimmer) وفلتر الضوء الأزرق (Warmth tint) بدون ما تحتاج تغير سطوع الجهاز نفسه.
+أسلوب تقسيم الصفحات (Pagination)
+أفضل تجربة بتجمع بين وضعين يبدل بينهم القارئ بضغطة:
+1. وضع الصفحات (Paginated Book Mode): بيتعمل برمجياً بـ CSS Multi-Column Layout (column-width) بحيث المحتوى يتقسم تلقائياً لصفحات حقيقية بدون قص أي سطر بالنص، والتقليب يكون بلمس يمين/شمال الشاشة (Tap Zones) أو السحب (Swipe) أو أسهم الكيبورد، والضغط في النص يظهر ويخفي القوائم (Distraction-Free).
+2. وضع التمرير (Vertical Scroll Mode): للناس اللي بتحب تقرأ Scroll مستمر.
+2. صيغة الـ Markdown المقترحة للروايات
+عشان التطبيق يفهم روايتك صح ويطلعها بتصميم كتاب حقيقي، اعتمد القواعد البسيطة دي في أي ملف .md:
+---
+title: "اسم الرواية"
+author: "اسم الكاتب"
+lang: "ar"
+dir: "rtl"
+---
+
+# الفصل الأول: بداية العاصفة
+
+كانت السماءُ ملبدةً بالغيوم، والريحُ تعصفُ بأوراقِ الشجر...
+
+— «هل تظن أننا سنصل قبل الغروب؟»
+— «لا خيار أمامنا.»
+
+***
+
+> رسالة قديمة عُثر عليها في الدرج:
+> "إذا وصلتك هذه الكلمات، فقد فات الأوان."
+
+## مشهد فرعي (اختياري)
+
+استيقظ في الصباح على صوت المطر...
+
+* --- في الأول: بيانات الرواية (بتعمل غلاف/صفحة عنوان وفهرس تلقائي).
+* #: بداية فصل جديد (في وضع الصفحات بيبدأ من صفحة جديدة أوتوماتيك مع تنسيق عنوان فخم).
+* *** أو --- داخل النص: فاصل مشهد (Scene Break) يتحول لزخرفة أنيقة (✦ ✦ ✦) ويلغي المسافة البادئة للفقرة اللي بعده.
+* >: للرسائل، المذكرات، الفلاش باك، أو الاقتباسات (بتاخد تصميم مميز كأنها ورقة أو اقتباس).
+3. البرومت الجاهز للـ AI Coding Agent
+انسخ البرومت ده واديه لأي AI Coding Agent (مكتوب بالإنجليزية لأن الـ Agents بتنفذ تفاصيل الـ CSS والـ Typography والـ Pagination بدقة أعلى بكتير مع الإنجليزي، مع قواعد صارمة جداً لدعم العربي والـ RTL والتشكيل):
+Act as a Senior Frontend Engineer & Digital Typography Specialist. Build a sleek, offline-first, distraction-free Digital Novel Reader web application (React + TypeScript + Tailwind CSS + Vite) designed specifically to render long-form novels from structured Markdown (`.md`) files with book-grade typography and native Arabic (RTL + Tashkeel/Diacritics) & English (LTR) support.
+
+### 1. Core Markdown Novel Schema & Parser
+Support uploading/dragging any `.md` file (plus include a built-in rich Arabic sample novel with full diacritics/Tashkeel so I can test immediately) using this convention:
+- **YAML Frontmatter** (`title`, `author`, `lang`, `dir`, `coverColor`): Renders an elegant Title Page and sets `dir="rtl"` or `dir="ltr"` automatically (with manual override).
+- **Chapters (`# Heading 1`)**: Automatically populates a slide-out Table of Contents (TOC) drawer. In Paginated Mode, every `#` chapter MUST force a clean page break and render with ornamental book-style chapter spacing.
+- **Sub-headings (`##`)**: Styled as subtle scene/part headers.
+- **Scene Breaks (`***` or `---`)**: Rendered as centered ornamental dividers (e.g., `✦  ✦  ✦`). The very first paragraph immediately following a `#` heading or scene break MUST have `text-indent: 0`.
+- **Letters / Flashbacks / Notes (`>` Blockquotes)**: Styled as distinct inset parchment/quote cards with subtle borders and italic/distinct styling.
+- **Dialogue Enhancement (Optional Toggle)**: Detect lines starting with `—`, `-`, or containing `«...»` / `"..."` to apply subtle readability spacing or gentle tinting if enabled.
+- **Footnotes**: Support Markdown footnotes (`[^1]`) rendered as clean tap-to-view popover tooltips instead of jumping to the bottom of the file.
+
+### 2. Dual Reading Engine (Critical Architecture)
+Build a rock-solid reading viewport supporting two seamless modes:
+1. **True Paginated Mode (Default — Kindle/Apple Books style)**:
+  - Use a responsive CSS Multi-Column pagination engine (`column-width`, `column-gap`, `height: 100%`) that dynamically reflows pages whenever font size, margins, or viewport dimensions change without ever slicing a line of text vertically.
+  - Maintain accurate reading position (percentage/paragraph anchor) when resizing or changing typography settings so the user never loses their place.
+  - **Navigation**: Tap/click left/right screen edges (respecting RTL direction: in RTL, tapping Left goes Next Page and tapping Right goes Previous Page), touch swipe gestures, mouse wheel horizontal step, and Arrow keys (`ArrowLeft`/`ArrowRight`).
+  - **Immersive HUD**: Tapping the center 40% of the screen toggles the top/bottom floating chrome (Header with title/TOC/Settings + Footer with current page / total pages, chapter progress, and scrubber slider).
+2. **Smooth Vertical Scroll Mode**: Continuous scrolling with chapter progress tracking and optional reading-progress bar.
+
+### 3. Arabic & Digital Typography Safeguards (Non-Negotiable)
+- Bundle/load high-craft Google Fonts:
+ - Arabic: `Amiri`, `Noto Naskh Arabic` (variable), `Scheherazade New`, `IBM Plex Sans Arabic`, `Readex Pro` (variable).
+ - Latin: `Literata`, `Merriweather`, `Inter`.
+- **Diacritics (Tashkeel) Protection**: Default Arabic `line-height` to `1.95` (range `1.5` to `2.6`) and ensure `overflow` never clips top/bottom diacritical marks.
+- **NO `letter-spacing` on Arabic**: Never apply CSS `letter-spacing` to Arabic/RTL text (it breaks cursive ligatures). Provide a **`Word Spacing`** slider instead.
+- **Smart Paragraph Formatting**: Provide a clean toggle between "Classic Book Indent" (`text-indent: 1.5em`, tight paragraph gap) and "Modern Block" (`text-indent: 0`, wider paragraph spacing).
+
+### 4. Comprehensive Live Customization Panel
+Include a sleek, non-intrusive bottom-sheet / side drawer with real-time live preview (no page reload) for:
+- **Typography**: Font family selector, Font size slider (`14px`–`36px`), Line height slider, Word spacing slider, Paragraph spacing slider, Font Weight / Boldness slider (`300`–`600` for crispness on different displays), Text rendering crispness toggle (`Subpixel` vs `Antialiased`), Text Alignment (`Right/Start` vs `Justify`), First-line Indent toggle.
+- **Layout**: Page horizontal margins / max reading width (`45ch`–`85ch`), Paginated vs. Scroll mode toggle, Single-page vs. Two-page spread (auto-available on wide desktop/tablet screens).
+- **Themes & Custom Colors**:
+ - 4 eye-comfort presets (never harsh pure white/black by default):
+   1. Warm Paper (`#FAF8F5` bg, `#24211D` text)
+   2. Sepia (`#F4ECD8` bg, `#3E3024` text)
+   3. Charcoal Dark (`#18181B` bg, `#D4D4D8` text)
+   4. OLED Night (`#000000` bg, `#A1A1AA` text)
+ - Custom Background Color & Text Color pickers with live WCAG contrast ratio indicator.
+- **Lighting & Eye Comfort**:
+ - Software Brightness / Dimmer slider (implemented via a `pointer-events: none` fixed overlay).
+ - Warmth / Blue-Light Filter slider (amber warm overlay for night reading).
+
+### 5. Library & Persistence (Offline-First)
+- Store imported `.md` novels, reading positions, bookmarks, text highlights, and user preferences persistently in **IndexedDB / LocalStorage** so the user has a personal shelf of novels that works completely offline.
+- Include quick **Bookmarks**, **In-book Search** (Arabic-aware search that ignores Tashkeel when matching queries!), and **Estimated Reading Time Left** per chapter and for the whole book.
+
+### Implementation Guidelines
+- Keep the UI ultra-minimal, refined, and focused entirely on the reading experience.
+- Ensure smooth 60fps page transitions (with an option to disable animations for instant e-ink feel).
+- Start by scaffolding the project structure, building the Markdown-to-Book parser and the CSS Multi-Column pagination hook carefully (avoiding off-by-one pixel rounding issues in RTL `scrollLeft`), then layer on the customization controls and local library.
+
+نقطة أخيرة في البرومت ده هتفرق معاك جداً: حطيت فيه شرط إن البحث جوه الرواية يكون Tashkeel-insensitive (يعني لو بحثت عن كلمة "علم" يطلعلك "عِلْمٌ" و"عَلِمَ")، وشرط معالجة الـ scrollLeft في الـ RTL عشان أغلب الـ AI Agents بتغلط في اتجاه التقليب العربي لو منبهتهاش.
+تحب نخصص البرومت ده لـ Stack معين شغال بيه (زي Flutter كموبايل أب أو HTML/PWA ملف واحد يشتغل أوفلاين على الموبايل والتابلت)، ولا React + Vite مناسب ليك؟
+________________
+
+
+User prompt: انا بفكر ف ريأكت نيتف بصراحه علشان التفاعل بتاعها بيكون سلس اوى وحلو
+Response: اختيار React Native (مع Expo) ممتاز فعلاً لنعومة الـ Gestures والـ Animations والتحكم في إمكانيات الموبايل الحقيقية زي سطوع الشاشة الفعلي وزراير الصوت.
+لكن قبل ما تدي البرومت للـ AI Agent، فيه نقطة معمارية حاسمة في React Native لازم تحددها له وإلا هيبني التطبيق غلط:
+الفخ الهندسي في تطبيقات القراءة على React Native
+مكون <Text> الأساسي في React Native مفيهوش CSS column-width ولا تقسيم صفحات تلقائي زي المتصفح. لو سبت الـ AI Agent يحاول يقسم الرواية لصفحات باستخدام <Text> و FlatList، هيواجه 3 مشاكل:
+1. السطور هتتقص بالنص بين الصفحات، أو الحسابات هتبوظ أول ما تغير حجم الخط أو تشغل التشكيل.
+2. محاذاة الأطراف (textAlign: 'justify') في العربي جوه <Text> بتعمل فراغات عشوائية ومشوهة.
+3. إعادة حساب الصفحات لرواية 300 صفحة هتعمل تهنيج (Lag) وقت تغيير الخط.
+الحل الاحترافي (Native Shell + Local Reader Engine)
+أقوى تطبيقات القراءة على الموبايل بتشتغل بمعمارية هجينة ذكية:
+* الـ Native Shell (React Native + Reanimated + Gesture Handler): مسؤول عن شاشة المكتبة، القوائم المنزلقة (Bottom Sheets) بسرعة 120fps، فتح ملفات .md من الجهاز، تخزين التقدم والإشارات المرجعية، التحكم في سطوع الهاردوير الفعلي (expo-brightness)، ومنع قفل الشاشة (expo-keep-awake).
+* محرك القراءة الداخلي (Offline Local WebView Engine): شاشة القراءة بتستخدم react-native-webview محلي 100% (بدون إنترنت، بيحمل ملفات الخطوط العربية من assets مباشرة) وبيستخدم محرك CSS Multi-Column Pagination مع postMessage لحظي للتواصل مع React Native. ده بيديك نعومة React Native مع دقة طباعة كتب حقيقية وتشكيل سليم 100%.
+البرومت الجاهز للـ AI Agent (React Native + Expo)
+انسخ البرومت ده واديه للـ Agent:
+Act as a Senior React Native & Mobile UX Engineer. Build a silky-smooth, 120fps, offline-first Digital Novel Reader mobile/tablet app using **React Native (Expo SDK + TypeScript)** designed to import and render long-form novels from structured Markdown (`.md`) files with book-grade Arabic (RTL + Tashkeel/Diacritics) and English (LTR) typography.
+
+### 1. Core Architecture (Hybrid Native + Local Reader Engine)
+Do NOT attempt manual text-height pagination using native `<Text>` components (which breaks Arabic diacritics and causes reflow lag). Instead, implement a clean two-layer architecture:
+1. **Native Shell (React Native + Reanimated v3 + React Native Gesture Handler):**
+  - Library shelf screen, animated bottom-sheet customization drawer, Table of Contents (TOC) modal, search overlay, bookmarks manager, native file picker (`expo-document-picker`), local storage (`expo-file-system` + `AsyncStorage`/`expo-sqlite`), hardware screen brightness (`expo-brightness`), and wake-lock (`expo-keep-awake`).
+2. **High-Precision Local Reader Viewport (`react-native-webview`):**
+  - Renders a self-contained, 100% offline HTML/CSS/JS book engine inside the WebView, loading bundled local Arabic/Latin fonts (`Amiri`, `Noto Naskh Arabic`, `Scheherazade New`, `IBM Plex Sans Arabic`, `Literata`, `Inter`) from app assets.
+  - Communicates bidirectionally with React Native via a typed `window.ReactNativeWebView.postMessage` bridge for instant, zero-flicker live updates when sliders move.
+
+### 2. Markdown Novel Schema & Parser
+Support importing any `.md` file from the device (plus bundle a rich, fully vocalized/Tashkeel Arabic sample novel on first launch) following this structure:
+- **YAML Frontmatter** (`title`, `author`, `lang`, `dir`): Builds the book metadata, cover card in the library, title page, and automatically sets `dir="rtl"` or `dir="ltr"` (with manual override).
+- **Chapters (`# Heading 1`)**: Populates the interactive TOC drawer. In Paginated Mode, every `#` chapter forces a clean page break and renders with ornamental book-style spacing.
+- **Sub-headings (`##`)**: Styled as subtle scene/part headers.
+- **Scene Breaks (`***` or `---`)**: Rendered as centered ornamental dividers (`✦  ✦  ✦`). The very first paragraph immediately after a `#` heading or scene break MUST have `text-indent: 0`.
+- **Letters / Flashbacks / Quotes (`>` Blockquotes)**: Rendered as distinct inset parchment cards with subtle borders.
+- **Footnotes (`[^1]`)**: Interactive tap-to-open native bottom popover showing the footnote text without losing the reading page.
+
+### 3. Pagination, Navigation & Native Mobile Feel
+- **True Paginated Mode (Default):** Uses CSS Multi-Column pagination (`column-width`, `column-gap`, `height: 100vh`) that reflows dynamically on font/margin changes while anchoring the current visible paragraph so the user never loses their reading spot.
+- **Smooth Vertical Scroll Mode:** Seamless toggle for continuous reading.
+- **Gestures & Hardware Controls:**
+ - Horizontal swipe gestures and edge tap zones (RTL-aware: tapping Left edge goes Next Page in Arabic, Right edge goes Previous Page).
+ - Tapping the center 40% toggles the translucent floating Top/Bottom HUD (Book title, TOC, Search, Bookmark button, and a smooth page scrubber slider with percentage & estimated time left).
+ - Support **Volume Up / Volume Down** hardware buttons to turn pages (with a toggle in settings).
+ - Haptic feedback (`expo-haptics`) on bookmarking, chapter transitions, and slider detents.
+
+### 4. Arabic Typography Safeguards (Critical)
+- **Diacritics (Tashkeel) Safety:** Default Arabic `line-height` to `1.95` (adjustable `1.5`–`2.6`) with safe vertical padding so top/bottom vowel marks never clip.
+- **Zero `letter-spacing` on Arabic:** Never apply `letter-spacing` to RTL text (breaks cursive ligatures). Provide a **`Word Spacing`** slider instead.
+- **Paragraph Styles:** Toggle between "Classic Book Indent" (`text-indent: 1.5em`, tight paragraph gap) and "Modern Block" (`text-indent: 0`, generous paragraph gap).
+
+### 5. Live Customization Bottom Sheet (Real-Time Preview)
+Design a sleek, translucent `@gorhom/bottom-sheet` (or Reanimated sheet) with tabbed controls:
+- **Font & Crispness:** Font family picker, Font Size (`14px`–`36px`), Font Weight / Boldness (`300`–`600` using variable font weights for crisp readability), Line Height, Word Spacing, Paragraph Spacing, Text Alignment (`Start` vs `Justify`), First-Line Indent toggle, and Text Rendering sharpness toggle.
+- **Layout:** Horizontal Page Margins, Paginated vs. Scroll mode, Single-page vs. Two-page spread (auto-enabled on landscape tablets).
+- **Themes & Colors:**
+ - 4 eye-comfort presets (avoid harsh pure white/black by default):
+   1. Warm Paper (`#FAF8F5` bg, `#24211D` text)
+   2. Sepia (`#F4ECD8` bg, `#3E3024` text)
+   3. Charcoal Dark (`#18181B` bg, `#D4D4D8` text)
+   4. OLED Night (`#000000` bg, `#A1A1AA` text)
+ - Custom Background & Text color pickers.
+- **Lighting & Eye Care:**
+ - Native Hardware Screen Brightness slider (`expo-brightness`) + Software Extra-Dimmer overlay for dark rooms.
+ - Warmth / Blue-Light Filter slider (amber `pointer-events: none` tint overlay).
+
+### 6. Offline Library & Smart Search
+- Persist imported `.md` files, reading progress (%), bookmarks, text highlights with notes, and user theme presets locally.
+- Include **Tashkeel-insensitive Arabic Search** inside the book (stripping Unicode diacritics `[\u064B-\u065F\u0670]` during matching so searching "قلب" finds "قَلْبٌ" and "قَلْبِي").
+
+### Execution Steps
+1. Scaffold the Expo TypeScript project with clean folder structure (`/src/components`, `/src/reader-engine`, `/src/parser`, `/src/storage`, `/src/theme`).
+2. Build the Markdown-to-HTML book parser and the standalone offline WebView pagination template first, ensuring RTL `scrollLeft` calculations handle negative/positive browser quirks cleanly.
+3. Build the Reanimated Native Shell, library screen, and real-time customization bottom sheet.
+
+نقطة عملية هتوفر عليك وقت وقت التشغيل: لو هتستخدم Expo، خليه يجهز المشروع بـ Expo Dev Client (مش Expo Go العادي) لو هتضيف مكتبة زراير الصوت (react-native-volume-manager)، أما باقي المكتبات (expo-brightness, expo-document-picker, expo-file-system, react-native-webview, reanimated) شغالة مباشرة من غير أي تعقيد.
+تحب نضيف ميزة Text-to-Speech (قراءة صوتية أوفلاين للرواية مع تظليل الجملة المقروءة) في البرومت، ولا تفضل التطبيق يركز على القراءة البصرية بس عشان يفضل خفيف؟
+________________
+
+
+User prompt: بص اعتبرنى عطيته البرومت اللى فات بالفعل وهوا دلوقتى بدا يشتغل ف خلينا نتكلم شوية الاول عقبال ما هوا يجهز الحاجات الاساسية 1 انا فخور جدا انك انتبهت لمشكلة ريأكت نيتف وعايزك تبقى ب الحرص ده ف اى قرارات قادمة 2 عايزك تقترح عليا مميزات اكتر ف التطبيق اكتر و اكتر 3 عايزك تشوفلى لو فى اى تطبيق منافس بيعمل نفس الموضوع سواء مفتوح المصدر او تجارى
+Response: تمام، هنمشي بنفس العقلية الهندسية دي في كل خطوة: نكتشف عنق الزجاجة في الأداء أو العرض قبل ما نكتب سطر كود واحد.
+وقبل ما ندخل في المميزات الجديدة، خد بالك من فخ أداء واحد هيقابلك أول ما تجرب رواية طويلة (مثلاً 300 فصل أو 200 ألف كلمة) على النسخة الأساسية اللي الـ Agent بيبنيها دلوقتي: لو الـ WebView حمل الرواية كلها كملف HTML واحد ضخم، حساب الـ column-width هياخد ثواني ويهنج مع كل تغيير في حجم الخط. الحل المعماري اللي هنطلبه في المرحلة الجاية هو Chapter-Level Virtualization — يعني الـ WebView يرندر الفصل الحالي فقط في الذاكرة (مع كاش لعدد صفحات الفصول اللي فاتت عشان النسبة المئوية تفضل دقيقة)، ولما تقلب آخر صفحة في الفصل ينقلك فوراً للفصل اللي بعده في أجزاء من الثانية.
+1. مميزات إضافية تخلي التطبيق يتفوق على قوارئ الكتب التقليدية
+عشان متلخبطش الـ Agent دلوقتي، سيبك يخلص النسخة الأساسية، وبعدها نقدر نديله المميزات دي كـ Phase 2 متقسمة لـ 3 مستويات:
+أ. مميزات ذكية مخصوصة للروايات الطويلة (Novel-Specific)
+* بطاقات الشخصيات والأماكن (X-Ray / Lore Glossary): تقدر تضيف قسم في آخر ملف الـ .md (أو في الـ YAML Frontmatter) بأسماء الشخصيات وتفاصيلها؛ وأثناء القراءة، بمجرد ما تلمس اسم أي شخصية في النص يطلعلك Popover أنيق: "مين ده؟ دوره إيه؟ وأول ظهور ليه كان في أنهي فصل؟" من غير ما تسيب صفحتك.
+* مسطرة القراءة ووضع التركيز (Reading Ruler & Focus Dimming): وضع بيسيب الفقرة اللي بتقرأها منورة بوضوح ويخفّت سطوع باقي الفقرات اللي فوقها وتحتها، أو يحط خط تتبع خفيف تحت السطر. ميزة ممتازة للقراءة بالليل أو للروايات الدسمة عشان عينك متسرحش.
+* الاستبدال اللحظي للأسماء والمصطلحات (Live Term Replacer): ميزة أساسية في قوارئ الروايات المترجمة؛ تقدر تعمل قواعد (Find & Replace) جوه التطبيق تغير اسم شخصية أو مصطلح اتغيرت ترجمته بين الفصول على مستوى العرض فقط بدون ما تبوظ ملف الـ .md الأصلي.
+* دعم أرشيف الرواية الكامل (.zip / مجلدات الفصول + الصور): بدل ما تحط رواية 1000 فصل في ملف واحد، التطبيق يقبل ملف .zip جواه ملفات الفصول (01.md, 02.md...) ومجلد images/ للخرائط أو رسومات الشخصيات، ويعرض الصور جوه الفصول بحدود ناعمة متناسقة مع ثيم القراءة.
+ب. لمسات تفاعل (UX & Gestures) احترافية
+* سحب الحافة للسطوع (Edge-Swipe Brightness): سحب صباعك لفوق أو لتحت على أقصى يسار الشاشة يغير سطوع الشاشة لحظياً أثناء القراءة (زي مشغلات الفيديو الاحترافية) من غير ما تفتح قائمة الإعدادات.
+* تبديل الثيم التلقائي (Auto Day/Night & Ambient Sensor): يقلب تلقائياً من ثيم الورق الدافئ (Warm Paper) بالنهار لثيم الفحم الداكن (Charcoal/OLED) بالليل حسب الوقت أو حساس الإضاءة في الموبايل.
+* تصدير الاقتباسات كبطاقات (Quote Card Generator): لما تظلل جملة عجبتك في الرواية، يظهرلك زرار يحولها لصورة أنيقة بخلفية ورقية وخط عربي فخم ومكتوب تحتها اسم الرواية والكاتب، جاهزة للمشاركة أو الحفظ، مع تجميع كل اقتباساتك في ملف .md واحد قابل للتصدير.
+ج. الصوتيات والإحصائيات
+* القراءة الصوتية الأوفلاين مع تتبع الجملة (Offline TTS + Karaoke Highlight): ربط expo-speech بالـ WebView بحيث التطبيق يقرأ الرواية بصوت أوفلاين ويظلل الجملة اللي بتتقرأ حالياً سطر بسطر، مع مؤقت نوم (Sleep Timer) يقفل الصوت تدريجياً لو نمت.
+* سرعة القراءة الحقيقية (Adaptive WPM & Streak): التطبيق يحسب سرعتك الفعلية بالكلمة في الدقيقة بناءً على تقليبك الحقيقي للصفحات (مش رقم افتراضي ثابت)، عشان يديك الوقت المتبقي لتخليص الفصل بدقة عالية، مع تقويم يوضح أيام قراءتك.
+2. التطبيقات المنافسة (مفتوحة المصدر وتجارية)
+السوق فيه تطبيقات قوية، لكن مفيش تطبيق معمول Markdown-First ومصمم للروايات العربية وتشكيلها بالعمق اللي بتبنيه. دي أقوى التطبيقات اللي تقدر تستلهم منها أفكار واجهة وتجربة مستخدم:
+
+
+التطبيق
+	النوع
+	المنصات
+	نقاط القوة اللي يستحق تدرسها
+	فين تطبيقك هيتفوق عليه؟
+	Readest
+	مفتوح المصدر (AGPL-3.0)
+	الكل (Android, iOS, Desktop, Web)
+	أحدث وأشيك قارئ مفتوح المصدر (مبني على محرك foliate-js)؛ بيدعم .md و .epub، فيه مسطرة قراءة، تقسيم شاشة لكتابين، ومزامنة.
+	مبني كـ Web wrapper لكل المنصات؛ تطبيقك بـ React Native هيكون أخف وأسرع في اللمس، وأذكى في قواعد الروايات العربية والتشكيل.
+	Foliate
+	مفتوح المصدر (GPL-3.0)
+	Linux
+	المعيار الذهبي في جمال واجهة القراءة وتصميم الكتب الرقمية، وطريقة عرضه للحواشي السفلية (Footnotes Popovers) ممتازة.
+	غير متاح للموبايل أصلاً، ومصمم للـ EPUB مش لملفات الـ Markdown المنظمة.
+	KOReader
+	مفتوح المصدر (GPL-3.0)
+	Android, Kindle, Linux
+	تحكم خرافي في الهوامش، التباعد، وتخصيص الـ CSS الداخلي لأي كتاب.
+	واجهته قديمة ومعقدة وموجهة بالأساس لشاشات الحبر الإلكتروني (E-Ink) مش الموبايلات الحديثة.
+	Legado (阅读)
+	مفتوح المصدر (GPL-3.0)
+	Android
+	أشهر تطبيق مفتوح المصدر لقراءة روايات الويب الطويلة؛ ممتاز في استبدال الأسماء وتقسيم الفصول الضخمة.
+	واجهته مزدحمة وموجهة للروايات الصينية، وتجربته مع العربي والتشكيل ضعيفة.
+	Moon+ Reader Pro
+	تجاري (الأشهر على أندرويد)
+	Android
+	ملك التخصيص؛ سحب الحافة للسطوع، 6 أشكال لمسطرة القراءة، إحصائيات WPM، واستبدال الأسماء.
+	قوائم إعداداته متاهة من كتر الزحمة، ودعمه لصيغة Markdown بدائي جداً.
+	Apple Books / MapleRead
+	تجاري
+	iOS / iPadOS
+	أنعم أنيميشن تقليب صفحات في السوق، وأفضل توازن بصري في المسافات والخطوط.
+	مقفولين على نظام أبل وصيغة EPUB فقط، ومفيش تحكم في التشكيل أو تخصيص متقدم للـ Markdown.
+	لو حابب، أول ما الـ Agent يخلص النسخة الأساسية وتجربها، قولي إيه أكتر 3 أو 4 مميزات من دول عجبوك عشان أكتبلك ليهم Phase 2 Prompt بنفس الدقة المعمارية يدمجهم من غير ما يكسر الكود اللي اتبنى.
+Sources
+1. Readest is a modern, feature-rich ebook reader designed ... - GitHub
+2. Readest: EPUB & PDF Reader - Apps on Google Play
+________________
+
+
+User prompt: لا بصراحه عجبتنى كل اقتراحاتك جدا جدا يعنى معندكش اى اقتراحات تانية لل UX وال UI لانى بعشق الافكار الجديدة فيهم بصراحه
+Response: أجمل حاجة في تطبيقات القراءة إن الـ UX العبقري فيها مش معناه ألوان وزراير كتير، بل العكس: تفاعلات فيزيائية ناعمة تحسسك إنك ماسك كتاب حقيقي في إيدك، وتختفي تماماً أول ما تبدأ تقرأ.
+دي مجموعة أفكار UX/UI مبتكرة جداً مش موجودة في أغلب القوارئ التقليدية، ومع كل فكرة النقطة الهندسية اللي تخليها تشتغل بسلاسة 120fps في React Native:
+1. الإحساس الفيزيائي للكتاب (Tactile Micro-Interactions)
+* شريطة القماش القابلة للسحب (Pull-Down Silk Ribbon): بدل زرار "Bookmark" الممل، تخيل إنك لما تسحب بصباعك لتحت من الزاوية العلوية للشاشة، تنزل معاك شريطة قماش حمراء أو ذهبية بفيزياء ناعمة (Spring Physics باستخدام Reanimated)، وأول ما تعدي نقطة معينة تحس بـ Haptic "تكة" خفيفة وتثبت كـ Bookmark للصفحة. ولو سحبتها لفوق تاني تتشال.
+* سُمك الكتاب الحقيقي على الحواف (Living Page-Edge Stack): على حواف الشاشة (اليمين والشمال) بيكون فيه خطوط رفيعة جداً (2 إلى 6 بكسل بس بلون أغمق سنة من الخلفية) بتمثل "رصة الورق". في بداية الرواية الرصة السميكة بتكون على الشمال (الصفحات المتبقية في العربي) واليمين رفيع جداً، ومع تقدمك في الرواية الرصة بتتنقل تدريجياً لليمين! نظرة واحدة بعينك تعرفك فاضلك قد إيه في الكتاب من غير ما تحتاج تقرأ أرقام ونسب مئوية.
+* حركة "صباعك بين الصفحات" (Finger-Hold Peek): في الكتب الورقية لما الكاتب يجيب سيرة حاجة حصلت من 10 صفحات، بتحط صباعك في صفحتك وتقلب ترجع تتأكد وترجع تاني فوراً. في التطبيق، لما تفتح الـ Timeline وتروح لأي فصل أو صفحة قديمة، يظهرلك زرار عائم صغير شبه دبوس/سهم ("العودة لصفحة 142") بضغطة واحدة يرجعك لمكانك الأصلي، وبمجرد ما تتجاهله وتكمل قراءة في المكان الجديد يختفي لوحده.
+* ملمس الورق الميكروسكوبي (Subtle Paper Grain): في ثيمات Warm Paper و Sepia، إضافة ملمس ورق خفيف جداً (Opacity 3% فقط) بيشيل إحساس "الشاشة البلاستيك" ويدي دفء بصري رهيب.ملاحظة هندسية مهمة: أوعى تخلي الـ Agent يعمل ملمس الورق باستخدام CSS/SVG filter حي زي feTurbulence فوق الـ WebView؛ ده بيدمر فريمات الـ GPU على أندرويد. الحل الصح إنه يستخدم صورة PNG صغيرة جداً (128x128px) متكررة (background-repeat: repeat) بشفافية 3% — استهلاكها للبطارية والـ GPU تقريباً صفر.
+2. ذكاء السياق والتنقل (Spatial & Contextual UX)
+* شاشة "فين كنا واقفين؟" (Smart Re-entry Recap): لو فتحت رواية بقالك أكتر من 3 أيام مفتحتهاش، بدل ما يرميك فجأة في نص حوار وتقعد تفكر مين دول، يظهرلك كارت شفاف أنيق لمدة ثواني (أو لحد ما تلمس الشاشة) يعرضلك: آخر فقرتين قرأتهم قبل ما تقفل + آخر ملحوظة أو Bookmark سيبته، وبضغطة واحدة يتبخر وتكمل قراءة.
+* شريط التقدم الموزون بالفصول (Weighted Chapter Timeline): بدل Slider خطي عادي تحت الشاشة، الشريط يكون متقسم لفواصل تمثل فصول الرواية، وكل قطعة طولها النسبي بيمثل عدد كلمات الفصل الفعلي (الفصل الطويل ياخد مساحة أكبر)، وعليه نقط صغيرة ملونة لأماكن الـ Bookmarks والـ Highlights بتاعتك. وأنت بتسحب صباعك عليه، يظهرلك Tooltip صغير باسم الفصل والسطر الأول منه قبل ما تسيب صباعك.
+* نظرة خاطفة بالـ 2-Finger Hold (Quick-Peek Reference): الروايات (خصوصاً الفانتازيا واللايت نوفلز) بيكون فيها خريطة عالم أو شجرة عائلات أو قائمة مستويات/قدرات. تخيل تقدر تعمل Pin لصورة أو جزء من ملف الـ .md كـ "مرجع سريع"، وأي وقت أثناء القراءة تحط صباعين على الشاشة (أو تسحب من زاوية معينة) يطلعلك المرجع ده شفاف فوق الصفحة، وأول ما تشيل صباعك يختفي وترجع للرواية في نفس اللحظة.
+* قائمة الإعدادات الشفافة النص-شاشة (Live Split Preview Sheet): غلط شائع في تطبيقات القراءة إن قائمة تعديل الخطوط تغطي الشاشة كلها فتضطر تعدل وتقفل القائمة عشان تشوف الشكل. خلي الـ Bottom Sheet ياخد 35% بس من تحت الشاشة وبخلفية شبه شفافة (Frosted Glass خفيف)، بحيث الـ 65% اللي فوق هي صفحتك الحقيقية بتتحدث قدام عينك فوراً وأنت بتحرك السلايدرز.
+3. لمسات عبقرية للمكتبة والنص العربي
+* فلتر التشكيل الذكي (Tashkeel Modes): في الروايات العربية أحياناً التشكيل الكامل بيبقى زحمة وقت القراءة السريعة، وناس بتحب تقرأ بتشكيل "مخفف" أو بدون تشكيل مؤقتاً. تقدر تعمل Toggle بـ 3 أوضاع في لحظة: تشكيل كامل (النص الأصلي) / بدون تشكيل (بيشيل الحركات وقت العرض فقط بدون تعديل الملف الأصلي) / تشكيل الشدّة والتنوين فقط (بيسيب الحركات اللي بتفرق في المعنى ويشيل الباقي!).تحذير هندسي مهم للعربي: لو فكرت مستقبلاً تعمل ميزة "تلوين التشكيل بلون أفتح من الحروف"، أوعى تخلي الـ Agent يلف حروف التشكيل جوه <span> في الـ HTML — ده بيكسر تشبيك الحروف العربية في محركات المتصفحات (WebKit/Blink) ويخلي الحروف تتفصل عن بعض. الفلترة بالـ Regex اللي فوق آمنة 100% ومبتكسرش التشبيك.
+* توليد أغلفة فنية أوتوماتيك (Procedural Book Covers): بما إن ملفاتك .md فغالباً مش هيكون معاها صورة غلاف جاهزة. بدل ما المكتبة تبقى مربعات رمادية مملة، الـ App يعمل Hash من اسم الرواية ويولد غلاف فني مختلف لكل رواية (لوحة ألوان هادية متناسقة + زخرفة هندسية خفيفة في الخلفية + تايبوجرافي عربي فخم لاسم الرواية واسم الكاتب على شكل "كعب كتاب" حقيقي على الرف).
+* مؤقت راحة العين الصامت (Ambient Breathing Cue): بدل التنبيهات المزعجة اللي بتقطع اندماجك، بعد 45 دقيقة قراءة متواصلة، أيقونة صغيرة جداً في أسفل الشاشة (أو هالة خفيفة جداً على الحواف) "تتنفس" بهدوء ثانية وتختفي لتذكيرك تريح عينك 20 ثانية — من غير ما توقفك لو مش عايز.
+* تأثير إخفاء النص بالتلاشي عند التمرير (Edge Fade Mask في وضع الـ Scroll): في وضع الـ Vertical Scroll، بدل ما السطور تتقطع بحدة عند أعلى وأسفل الشاشة، بنحط LinearGradient ناعم جداً بارتفاع 24px فوق وتحت بنفس لون خلفية الثيم الحالي، فالنص يظهر ويختفي بنعومة سينمائية.
+قاعدة ذهبية للـ 120fps قبل ما نضيف أي حاجة من دول
+أي أنيميشن أو تفاعل (زي شريطة الـ Bookmark، سحب الحافة للسطوع، الـ Bottom Sheet، والـ Edge Fade) لازم يعيش في طبقة React Native (Reanimated Worklets) فوق الـ WebView مش جواه، عشان الجسر بين React Native والـ WebView (postMessage) يفضل فاضي وسريع وميحصلش أي تقطيع وأنت بتسحب بصباعك.
+إيه أكتر 3 أفكار من القائمة دي (سواء من المميزات اللي فاتت أو الـ UX ده) حسيت إنهم هيخلوا التطبيق فعلاً "حلم أي قارئ" عشان نرتبهم كـ Roadmap نضيفها خطوة خطوة بعد ما الـ Agent يخلص النسخة الأولى؟
+________________
+
+
+User prompt: للاسف كلهم عجبونى بلا اى استثناء كلها افكار عبقرية حرفيا عادى لو تقول افكار تانية بس ف المجالات التانية غير ال UI UX ؟
+Response: ممتاز، دي المنطقة اللي بتفرق بين "تطبيق شكله حلو" وبين منتج هندسي حقيقي يعيش سنين. دي أقوى الأفكار في 5 مجالات تقنية مختلفة بعيداً تماماً عن الـ UI/UX، ومع كل مجال التفصيلة الهندسية اللي تضمن إنه يشتغل صح:
+1. محرك النصوص والـ Parsing (Text Hygiene & Formats)
+ملفات الروايات العربية على الإنترنت (أو المترجمة) غالباً بتكون متبهدلة تنسيقياً؛ بدل ما تصلح الملفات بإيدك، خلي المحرك يعالجها أوتوماتيك وقت العرض (بدون تعديل ملفك الأصلي):
+* مُنظّف النص العربي التلقائي (Non-Destructive Arabic Polisher): طبقة Regex ذكية في الـ Parser تصلح أخطاء التنسيق الشائعة لحظياً:
+   * إزالة المسافات الغلط قبل علامات الترقيم (مرحبا ، كيف حالك ؟ ← مرحباً، كيف حالك؟).
+   * تحويل علامات التنصيص العادية "..." في الحوارات العربية لأقواس كتب احترافية «...».
+   * دمج السطور المكسورة غلط (Hard-wrapped lines اللي بتيجي من تحويل PDF أو نسخ من مواقع) لفقرات سليمة متصلة.
+* الاستيراد الشامل وتحويله لـ Markdown (Universal Importer): تضيف Pipeline محلي جوه التطبيق يقبل .epub أو .txt ويحولهم أوتوماتيك على الجهاز لملف .md نضيف ومنظم، مع خوارزمية تكتشف عناوين الفصول تلقائياً (زي الفصل الأول، باب، Chapter 1، أو أرقام الفصول) وتبني منها الـ # Headings والفهرس.
+* تثبيت التظليل الذكي (Fuzzy Text Anchoring): لو بتقرأ رواية لسه بتنزل فصولها، أو عدلت غلطة إملائية في ملف الـ .md ورجعت استوردته تاني، التطبيقات العادية بتضيع كل الـ Bookmarks والـ Highlights لأنها بتخزن "رقم الحرف" (Character Offset).الحل الهندسي: استخدم طريقة Quote + Context Anchoring (زي نظام Hypothes.is): خزّن الجملة المظللة + 20 حرف قبلها وبعدها. لو الملف اتعدل أو اتضافت له فصول جديدة، التطبيق يعيد ربط تظليلاتك وملاحظاتك في مكانها الصح بدقة 100%.
+2. الذكاء الاصطناعي "بدون حرق" (Spoiler-Free AI Engine)
+أكبر مشكلة لما تسأل أي AI عن شخصية أو حدث نسيته في رواية هي إنه بيحرقلك الأحداث الجاية. بما إن تطبيقك عارف أنت واقف في أنهي سطر بالظبط، تقدر تبني ميزات عبقرية بنظام BYOK (Bring Your Own API Key) أو موديلات محلية:
+* السؤال المقيّد بمكانك (Strict-Index Q&A): لو نسيت "مين الضابط اللي ظهر في الفصل الرابع ده؟"، التطبيق بيعمل Slice للنص من بداية الرواية لحد الفقرة اللي أنت واقف عندها بس (ولا حرف بعدها)، ويعمل بحث دلالي/سريع في الجزء المقروء فقط ويجاوبك بدون أي احتمال للحرق.
+* بناء موسوعة الشخصيات أوتوماتيك (Auto-Growing X-Ray): بدل ما تكتب بطاقات الشخصيات والأماكن بإيدك في ملف الـ .md، مع كل فصل تخلصه التطبيق يقدر يبعته في الخلفية يحدّث ملف JSON محلي للشخصيات وعلاقاتهم، فكل ما تتقدم في الرواية الموسوعة بتكبر معاك ومبتعرفش غير اللي أنت قرأته بس.
+* المعجم السياقي الأوفلاين (Offline Context Dictionary): دمج قاعدة بيانات SQLite خفيفة ومضغوطة لمعجم عربي (أو إنجليزي-عربي للروايات الإنجليزية) جوه التطبيق؛ ضغطة مطولة على أي كلمة فصحى صعبة تجيبلك معناها فوراً بدون إنترنت. ولو متصل بالنت، يقدر يشرحلك معنى التعبير حسب سياق الجملة نفسها.
+3. هندسة الأداء والبحث الخارق (Core Architecture)
+* محرك بحث فوري عبر المكتبة كلها (SQLite FTS5): لو عملت البحث في الـ JavaScript بالبحث النصي العادي (String.includes) على رواية 400 ألف كلمة (أو 50 رواية)، الـ JS Thread هيهنج.الحل الهندسي: وقت استيراد أي ملف .md، التطبيق يفهرس فصوله مرة واحدة في جدول expo-sqlite باستخدام محرك FTS5 (بنسخة منزوعة التشكيل وموحّدة الهمزات أ/إ/آ -> ا و ة -> ه). النتيجة: تبحث عن جملة أو كلمة في مكتبة فيها 100 رواية والنتائج تطلع في أقل من 15 مللي ثانية.
+* التحديث التفاضلي للفصول (Delta Chapter Parsing): لو عندك رواية ويب طويلة بتضيفلها فصول جديدة في آخر الملف كل أسبوع، التطبيق يحسب Hash لكل فصل (SHA-256 أو xxHash)، ويعمل Re-parse و Re-index للفصول الجديدة أو المتعدلة بس بدل ما يعيد معالجة الرواية من الصفر.
+* حساب وقت القراءة الحقيقي (Active Telemetry Engine): بدل ما يحسب الوقت اللي الشاشة مفتوحة فيه وخلاص (فتلاقي نفسك "قرأت 4 ساعات" وأنت كنت نايم)، اعمل Inactivity Gate: لو مفيش تقليب صفحة أو Scroll لمدة 3 دقايق متواصلة، العداد يقف أوتوماتيك ويحسبلك صافي وقتك الحقيقي وسرعتك الفعلية (WPM) عشان يتوقعلك تاريخ انتهاء الرواية بدقة.
+4. المزامنة ونقل الملفات والمنظومة (Sync & Ecosystem)
+* سيرفر نقل محلي عبر الواي فاي (Local Wi-Fi Drop): تقدر تشغل Micro HTTP Server محلي جوه التطبيق بضغطة زرار يديك رابط زي [http://192.168.1.5:8080](http://192.168.1.5:8080). تفتحه من متصفح اللابتوب وتسحب وترمي (Drag & Drop) ملفات .md أو .zip مباشرة للموبايل أو التابلت بأقصى سرعة واي فاي، من غير كابل USB ولا تليجرام ولا سحابة.
+* المزامنة النظيفة بملفات Sidecar (Obsidian-Friendly): بدل ما تحبس بياناتك جوه قاعدة بيانات مغلقة، خلي لكل رواية ملف صغير جنبها اسمه novel.meta.json (فيه آخر مكان وقفت فيه، الـ Bookmarks، والـ Highlights). ده بيخلي مزامنة تقدمك بين الموبايل والتابلت سهلة جداً (سواء عبر Cloudflare R2 / Supabase / WebDAV أو حتى مزامنة مجلد محلي)، وكمان تقدر بضغطة زرار تصدّر كل اقتباساتك وملاحظاتك لملف .md نضيف يفتح مباشرة في Obsidian أو أي محرر نصوص.
+* مكتبة محمية ببصمة (Biometric Private Shelf): مجلد اختياري مقفول بالبصمة (expo-local-authentication) لو عندك مسودات روايات بتكتبها بنفسك أو ملفات خاصة مش عايز حد يشوفها لو مسك موبايلك.
+5. الهندسة الصوتية والأجواء (Audio & Acoustics)
+* أجواء صوتية متفاعلة مع أحداث الرواية (Markdown-Driven Soundscapes): تقدر تحط تعليقات HTML خفية جوه ملف الـ .md (مبتظهرش في القراءة طبعاً) زي <!-- ambience: rain --> أو <!-- ambience: fireplace -->. لما توصل للفقرة دي، محرك الصوت في التطبيق يعمل Crossfade ناعم جداً ويشغل صوت مطر هادي أو نار مدفأة في الخلفية بصوت واطي (مع زرار كتم سريع)، ولو الرواية مفيهاش التاجز دي تقدر تشغل أي صوت خلفية (مطر، مكتبة، مطر على زجاج) يدوياً.
+* قاموس نُطق للـ TTS (Custom Pronunciation Lexicon): لو هتضيف القراءة الصوتية الأوفلاين (TTS)، أكبر عيب فيها إنها بتنطق أسماء الشخصيات الخيالية أو الكلمات العربية اللي بدون تشكيل غلط. اعمل جدول استبدال صوتي (Phonetic Map) بيشتغل قبل ما النص يروح لمحرك الصوت فقط (مثلاً يحول اسم شخصية مكتوب بدون تشكيل لصيغته المشكّلة صح عشان المحرك ينطقه سليم 100%).
+* التحكم من شاشة القفل والسماعات (Media Session Control): ربط الـ TTS بمكتبة زي react-native-track-player عشان تقدر توقف وتشغل القراءة أو ترجع فقرة من زراير السماعة البلوتوث أو شاشة القفل والموبايل في جيبك.
+نصيحة معمارية قبل ما تتحمس وتضيف كل ده
+أخطر غلطة بتوقع مشاريع الـ Vibe Coding الممتازة هي إنك ترمي 15 ميزة للـ Agent في برومت واحد فيضرب الـ Architecture ويدخل الملفات في بعض. الأصح تمشي بنظام الـ Modules المعزولة:
+1. Core (شغال عليه دلوقتي): Parser + WebView Pagination + Live Typography.
+2. Engine Upgrade (المرحلة 2): SQLite FTS5 + Chapter Virtualization + Arabic Polisher + Fuzzy Anchoring (دول الأساس اللي لو اتبنوا بدري هيمنعوا أي إعادة كتابة بعدين).
+3. Delight & Ecosystem (المرحلة 3): أفكار الـ UX الفيزيائية + Wi-Fi Drop + المزامنة + الـ AI بدون حرق.
+تحب لما الـ Agent يخلص المرحلة الأولى، أجهزلك مخطط قاعدة البيانات (SQLite Schema) والـ Architecture Spec للمرحلة التانية عشان الأساس بتاع التطبيق يطلع صلب ويستحمل كل الإضافات اللي بعد كده من غير Refactoring؟
+________________
+
+
+User prompt: عجبتنى كل اقتراحاتك بجد بدون اى مشكلة كلهم اقتراحات رووعة طب فكر معايا ف الفكرة ده بقى انا معايا رواية بس PDF وانا مش شخص تقنى اقدر احولها ل MD ينفع مع التطبيق او حتى zip حتى لو التطبيق فيه تعليمات وبرومتات اقدر انسخها ل كده ف هيكون متاح ف التطبيق برضو بنظام BYOK بشرط ان النموذج اللى المفتاح بيودى عليه يكون بيدعم تكست وصور ان الايجنت جوا التطبيق يستلم الكتاب PDF ويحوله هوا للصيغ بتاعت التطبيق سواء لو كانت رواية فيها صور ف يقص الصور وانا بالفعل عندى بايب لاين محترم ل قص الصور من الكتب وانشاء نسخة طبق الاصل منهم ك DOCX بس ده مش هنحتاجه اوى يعنى وكمان انا بفضل ان السيستم ده يبقى مدعوم بنماذج سيجمنتيشن محلية برضو تساعد الايجنت شوية مع الحفاظ على نفس ال QA وهيبقى متاح ليا بعد ما احط ال API KEY بتاعى انى اعمل مميزات تانية قبل ما الكتاب يتعمل او بعد ما الكتاب يتعمل ك تعديل اضافى زى المؤثرات الصوتية ده ف اى وقت اخلى الايجنت يحطهالى وهكذا يعنى عايزين التطبيق يبقى سهل على النون تيكنيكال يوزرز عن طريقة انه يوفرلهم فعلا حاجة PLUG AND PLAY يحط الكتاب ف التطبيق مع انه عبارة عن PDF سكانر ويتحول علطول ل رواية داخل التطبيق ب كل مميزاتها الجميلة والرائعة وبرضو حابب يكون فى نظام مزامنة تلقائى بين الاجهزة ب استخدام تسجيل الدخول ب حساب جوجل و نظام نسخ احتياطى برضو و ده يبقى موجود على سيرفر خاص بيا عادى او ممكن زى ما انتا قولت يبقى متاح مزامنة بس من خلال اوبسيديان ب اى طريقة بقى يعنى التطبيق يبقى مربوط ب اوبسيديان فولت و المستخدم اللى الى حد ما تيكنيكال يتصرف و يعمل مزامنه ب فولت اوبسيديان نفسه فاهمنى ؟ وده بينطبق على الصور برضو وممكن كمان نعمل BYOK ل IMAGE GENERATION و ده بيكون حاجة بتخلى الايجنت يعمل لكل رواية الاتى 1 انشاء صور لكل شخصية بناء على كل الصفحات اللى عنها ف الرواية ولو فى اختلاف ف مراحلها العمرية لو الرواية بحكى مراحل عمرية يعنى ف هيكون ليها صورة كل مرحلة عمرية مختلفة وبتتغير ف بروفايل الرواية على حسب دخلنالها من انهى فصل 2 انشاء صور ب نسبة انتشار معينة زى مثلا صورة او صورتين او تلاته لكل فصل والصور ده بتوصف مشاهد معينة ف الرواية او احداث او لحظات وهكذا بحيث فعلا تغذى النشاط البصرى للقارئ 3 يق\ر
+Response: خدت بالي إن نقطة 3 اتقطعت في الآخر (يق\ر) — كمّلها لي في ردك الجاي، وخلينا دلوقتي نمسك الأفكار الجبارة اللي طرحتها ونعملها مراجعة هندسية صارمة (Architecture Audit) عشان متقعش في فخاخ الموبايل اللي بتوقع مشاريع زي دي على أرض الواقع.
+اللي أنت بتوصفه ده مش مجرد قارئ كتب، ده Pipeline تحويل وإثراء ذكي (Book Studio + Reader). ودي الفخاخ الحقيقية في كل جزء من التلاتة، والحل المعماري الصح لكل واحد:
+1. تحويل الـ PDF الممسوح ضوئياً (BYOK + Local Segmentation)
+فكرة إن مستخدم غير تقني يرمي PDF مصوّر (Scanned) والتطبيق يطلعله رواية متنسقة ومقصوصة صورها ومضبوطة تشكيلها فكرة قاتلة فعلاً. لكن تشغيل البايب لاين ده جوه تطبيق موبايل (React Native) فيه 4 فخاخ هندسية خطيرة لازم تتحسب من الأول:
+
+
+الفخ الهندسي على الموبايل
+	اللي هيحصل لو تجاهلناه
+	الحل المعماري الصح
+	حجم التطبيق (APK Bloat)
+	لو حطيت موديل الـ Segmentation (زي DocLayout-YOLO) جوه التطبيق، حجمه هينط من 30MB لـ 150MB+.
+	On-Demand Model Download: التطبيق ينزل خفيف، وأول مرة المستخدم يطلب تحويل PDF ينزل موديل ONNX مضغوط (INT8 ~20MB) مرة واحدة بس في الـ Storage ويشغله بـ onnxruntime-react-native.
+	انهيار الذاكرة (OOM Crash)
+	تحويل PDF 400 صفحة لصور مرة واحدة هيضرب رام الموبايل ويقفل التطبيق.
+	Page-by-Page Streaming: كتابة Expo Native Module صغير (Kotlin PdfRenderer / Swift PDFKit) يرندر صفحة واحدة في المرة؛ يبعتها بنسخة خفيفة (150 DPI) للـ Segmentation + Vision LLM، ولو الموديل اكتشف Figure/Illustration يقصها بدقة عالية (300 DPI) ويمسح الصورة من الرام فوراً.
+	قتل التطبيق في الخلفية (OS Kill)
+	تحويل 300 صفحة بياخد 10–15 دقيقة؛ أندرويد و iOS هيقتلوا العملية أول ما المستخدم يسيب التطبيق ويروح واتساب.
+	Resumable Checkpoint Queue: كل صفحة ليها حالة في SQLite (pending / segmented / transcribed / verified). على أندرويد يشتغل في Foreground Service بإشعار يوضح التقدم، ولو النت فصل أو وصلت لـ Rate Limit (429) يكمل من آخر صفحة وقف عندها من غير ما يضيع ولا سنت من الـ API Key.
+	فواتير الـ API المفاجئة
+	مستخدم يرمي كتاب 600 صفحة ويصدم إنه سحب رصيده في API.
+	Pre-Flight Cost Estimator + Smart Routing: قبل ما يبدأ، التطبيق يحسب عدد الصفحات ويوريه التكلفة التقريبية للـ Token. والأذكى: لو الصفحة فيها طبقة نص نضيفة أصلاً (Digital PDF)، ميبعتش صورة للـ Vision API أصلاً ويبعت النص بس بـ 1/10 التكلفة!
+	معمارية "إضافات ما بعد البناء" (Enrichment Passes)
+عشان تخلي المستخدم يقدر في أي وقت يطلب من الـ Agent "ضيفلي مؤثرات صوتية" أو "طلعلي بطاقات الشخصيات" أو "شكّل الحوارات" من غير ما يبوظ ملف الرواية:
+* أوعى تخلي الـ Agent يعيد كتابة ملف الـ .md كله من الأول (لأنه ممكن يحذف فقرات أو يهلوس في نص الرواية الأصلي!).
+* الحل الصح: خلي الـ Agent يشتغل بنظام Non-Destructive Patching / Metadata Layers. يعني المؤثرات الصوتية مثلاً ترجع كـ JSON فيه { paragraphId: "ch03_p14", ambience: "rain_heavy" }، أو يتعملها حقن برمجي (Deterministic Injection) في مكانها بالظبط من غير ما الـ LLM يلمس حروف الرواية الأصلية.
+2. المزامنة المزدوجة (حساب جوجل + Obsidian Vault)
+دمج المسارين دول مع بعض بيخليك كاسب النوعين: المستخدم العادي (Plug & Play) والمستخدم التقني (Obsidian Power User). لكن عشان الاتنين يشتغلوا على نفس الكود بدون فوضى، لازم تصمم Storage Provider Interface واحد تحته محركين:
+أ. مسار المستخدم العادي (Google Sign-In + سيرفرك الخاص)
+* افصل البيانات التقيلة عن البيانات الخفيفة:
+   * البيانات الخفيفة (تقدم القراءة، الإعدادات، التظليلات، الـ Bookmarks): تتزامن لحظياً (Delta Sync) على قاعدة بياناتك (مثلاً Supabase أو سيرفرك الخاص مع Postgres/SQLite sync).
+   * الملفات التقيلة (.md + صور الفصول والشخصيات): تترفع بـ Content-Addressed Hashing (لو الصورة متغيرتش متترفعش تاني) على Object Storage رخيص زي Cloudflare R2 (مفيش رسوم Egress للتحميل، فمهما المستخدمين فتحوا صور مش هتدفع ثروة).
+ب. مسار مستخدم Obsidian (Local Vault Binding)
+هنا فيه فخين قاتلين على الموبايل لازم تتجنبهم:
+1. قيود نظام الملفات (Scoped Storage):
+   * على Android: لازم تستخدم SAF (Storage Access Framework) عشان المستخدم يختار مجلد الـ Obsidian Vault الخارجي ويديله تصريح دائم، وتتعامل معاه كـ Tree URI.
+   * على iOS: لازم Security-Scoped Bookmarks عشان يقدر يقرأ ويكتب في مجلد iCloud Drive بتاع Obsidian.
+2. فخ تضارب التعديلات (Sync Conflicts) ومسارات الصور:
+   * خلي كل رواية عبارة عن مجلد مستقل جوه الفولت بهيكلة نظيفة متوافقة 100% مع Obsidian:
+Novel_Name/
+├── book.md                 # نص الرواية (يتعدل من Obsidian عادي)
+├── assets/                 # الصور المقصوصة والمولدة بـ AI
+│   ├── ch01_scene01.webp
+│   └── char_ahmad_v1.webp
+└── .reader-state.json      # تقدمك وتظليلاتك والـ X-Ray (مفصول عشان ميحصلش Conflict)
+
+   * استخدم مسارات Markdown قياسية للصور زي ![](assets/ch01_scene01.webp) (وضيف دعم قراءة ![[ch01_scene01.webp]] بتاعة Obsidian في الـ Parser)، وبكده المستخدم يفتح الرواية في Obsidian على اللابتوب يلاقي الصور شغالة، ويفتحها في تطبيقك يلاقيها شغالة، والـ Syncthing / Obsidian Sync يعمل المزامنة لوحده!
+3. محرك توليد الصور بالـ AI (BYOK Image Generation)
+فكرة تطور صور الشخصيات حسب المرحلة العمرية والفصل اللي أنت فيه دي فكرة خرافية ومميزة جداً للسوق. لكن فيها أكبر 3 مشاكل في توليد الصور بالذكاء الاصطناعي ولازم تتحل هندسياً:
+أ. مشكلة ثبات ملامح الشخصية (Character Consistency)
+لو خليت التطبيق يولد صورة مشهد في الفصل 2 وصورة مشهد في الفصل 15 من مجرد وصف نصي، البطل هيطلع بـ 10 وشوش مختلفة وهيفقد المستخدم اندماجه فوراً.
+   * الحل المعماري (Visual Bible + Reference Pipeline):
+   1. تثبيت الـ Art Style للرواية كلها: قبل أي صورة، بيتحدد "Style DNA" موحد للكتاب كله (مثلاً: Painterly moody illustration, warm muted tones, subtle ink lines) ويتحقن أوتوماتيك في كل برومت.
+   2. بناء Character Sheet أولاً: الـ Text Agent يقرأ كل ظهور للشخصية ويطلع جدول زمني لمراحلها:
+{
+ "character": "طارق",
+ "stages": [
+   { "fromChapter": 1, "age": "12", "traits": "شعر أسود مجعد، جلابية قديمة...", "portrait": "char_tarek_s1.webp" },
+   { "fromChapter": 18, "age": "28", "traits": "ندبة فوق الحاجب الأيسر، لحية خفيفة...", "portrait": "char_tarek_s2.webp" }
+ ]
+}
+
+   3. التوليد المرجعي (Reference-Conditioned Generation): لما التطبيق يولد المرحلة العمرية التانية أو يولد صورة مشهد في الفصل 20، مبيبعتش نص بس — بيبعت صورة البورتريه بتاعة المرحلة الحالية كـ Image Reference لموديل التوليد (الموديلات الحديثة زي Gemini Image / GPT-Image / Flux Kontext بتدعم تمرير صور مرجعية للشخصيات عشان تحافظ على نفس الوش واللبس في المشهد).
+ب. بوابة منع الحرق الزمنية (Spoiler-Proof Media Gating)
+مهم جداً إن التطبيق وهو بيحلل الرواية كلها عشان يبني مراحل الشخصيات، ميحرقش حاجة للقارئ:
+      * كل صورة شخصية (وكل سطر وصف في بروفايلها) بيتخزن معاه unlock_chapter.
+      * لما القارئ يضغط على اسم الشخصية وهو في الفصل 5، التطبيق يعمل Query: أحدث مرحلة للشخصية بشرط unlock_chapter <= 5.
+      * بكده يشوف صورة الشخصية وهي طفل بس، وميعرفش إن عنده مرحلة تانية "بندبة وعين مفقودة" في الفصل 30 إلا لما يوصل للفصل 30 فعلاً!
+ج. مشكلة التكلفة والوقت (Lazy Sliding-Window Generation)
+توليد 3 صور لكل فصل في رواية 100 فصل = 300 صورة. لو ولّدتهم كلهم مرة واحدة أول ما الرواية تتضاف، المستخدم هيدفع مبلغ كبير ويستنى نص ساعة، وممكن أصلاً يزهق من الرواية عند الفصل الخامس!
+      * الحل الذكي: خلي التوليد يشتغل بنظام النافذة المنزلقة (Sliding Window) (قابل للتخصيص):
+      * افتراضياً التطبيق يولد صور الفصل الحالي + الفصلين الجايين فقط في الخلفية وأنت بتقرأ، أو يحط Placeholder أنيق جوه الفصل بضغطة زرار "توليد مشهد هذه اللحظة"، مع خيار "توليد الكتاب بالكامل" للي حابب يجهزه مرة واحدة عشان يقرأ أوفلاين.
+كمّل لي نقطة 3 اللي اتقطعت في رسالتك، وقولي كمان: في موضوع تحويل الـ PDF وتوليد الصور، هل تفضل كل الشغل الثقيل ده يحصل 100% على جهاز المستخدم (On-Device) عشان متشيلش أي تكلفة سيرفرات processing، ولا ناوي تخلي سيرفرك الخاص اختياري كـ Worker للي معندوش موبايل قوي؟
+________________
+
+
+User prompt: انا مقولتش انه لازم يشتغل جوا التطبيق نفسه الافضل يشتغل ف باك اند على سيرفر ويتعملها اوبتيمايزيشن كويس يعنى الكتاب هيترفع الاول عالسيرفر هه
+Response: ده قرار معماري أذكى بكتير؛ نقل الشغل التقيل للباك إند هيديك 3 مكاسب فورية: تطبيق الموبايل هيفضل خفيف جداً (أقل من 40MB)، المستخدم يرفع الـ PDF ويقفل التطبيق ويجيله Push Notification أول ما الرواية تجهز، والأهم إنك تقدر تشغّل بايب لاين Python حقيقي (بـ PyMuPDF وموديلات Segmentation حقيقية) أسرع وأدق بكتير من محاولات تشغيله على الموبايل.
+وبنفس مبدأ الحرص المعماري، خلينا نصمم الـ Pipeline الصح ونكشف أخطر 5 فخاخ ممكن تقابلك في الباك إند قبل ما تبدأ فيه:
+1. معمارية الباك إند المثالية (Async Processing Pipeline)
+متعملش أبداً Endpoint واحدة ترفع عليها الـ PDF وتستنى النتيجة؛ تحويل كتاب 300 صفحة بياخد دقائق وأي Proxy أو Load Balancer (زي Cloudflare بحد 100 ثانية) هيفصل الاتصال. المسار الصح يمشي كده:
+[React Native App]
+  │ 1. Request Upload URL
+  ▼
+[API Server (FastAPI)] ──► Returns Presigned URL (Cloudflare R2 / S3)
+  │
+  │ 2. Direct Upload (PDF goes straight to Storage, NOT through API RAM)
+  ▼
+[Object Storage] ──► Triggers Job in [Redis Queue (Celery / ARQ)]
+                                          │
+                                          ▼
+                        [Isolated Python Worker Container]
+                        ├── Step A: Smart Detect (Digital Text vs. Scanned Page)
+                        ├── Step B: Local ONNX Layout Segmentation (Crop Figures @ 300 DPI)
+                        ├── Step C: Async Vision LLM Waves (User's BYOK + QA Pass)
+                        ├── Step D: Image Gen Waves (Character Bible + Scene Art)
+                        └── Step E: Compress all images to WebP + Build Canonical Bundle
+                                          │
+                                          ▼
+[Expo Push Notification + SSE Live Progress] ──► App downloads optimized bundle
+
+2. أخطر 5 فخاخ في الباك إند وحلولها الهندسية
+1. أمان مفاتيح الـ BYOK (Zero-Trust Key Handling)
+ده أخطر جزء لو التطبيق هينزل لمستخدمين غيرك؛ لو حفظت مفاتيح الـ API بتاعت الناس في قاعدة البيانات بشكل عادي، أي تسريب يبقى كارثة، وكمان الناس بتخاف تدي مفتاحها لسيرفر.
+      * الحل الصح: اشتغل بنظام Ephemeral Pass-Through كخيار افتراضي: المفتاح يتبعت مشفر مع طلب تحويل الكتاب، يعيش في الـ RAM/Redis مشفّر بـ AES-256-GCM لمدة مهمة التحويل فقط (TTL) ويتمسح أوتوماتيك أول ما الكتاب يخلص. ولو المستخدم اختار "احفظ مفتاحي للمرات الجاية" يتشفّر بـ Envelope Encryption ولا يُطبع أبداً في أي Logs أو Error Traces.
+2. تكلفة الـ GPU الوهمية (محتاج GPU فعلاً؟)
+ناس كتير بتفتكر إن تشغيل موديل Layout Segmentation زي DocLayout-YOLO محتاج سيرفر GPU غالي.
+      * الحقيقة الهندسية: بما إن عنق الزجاجة الحقيقي في الوقت هو استدعاء الـ Vision LLM عبر الإنترنت (بياخد 3–6 ثواني للصفحة)، فتشغيل موديل الـ Segmentation بنسخة ONNX INT8 على CPU عادي بياخد أقل من 0.4 ثانية للصفحة! يعني سيرفر VPS عادي بـ CPU محترم كافي جداً ويوفر عليك مئات الدولارات شهرياً، بشرط واحد: تفصل حاوية الـ Worker عن حاوية الـ API بـ Docker Resource Limits عشان معالجة الـ PDF متخليش التطبيق يقع أو يبطأ لباقي المستخدمين.
+3. الاستكمال عند الفشل (Page-Level Checkpointing)
+تخيل مستخدم رفع كتاب 400 صفحة، وعند صفحة 320 رصيد الـ API Key بتاعه خلص أو أخد 429 Rate Limit. لو البايب لاين مش محفوظ خطوة بخطوة، هيخسر فلوس الـ 320 صفحة!
+      * الحل الصح: كل صفحة ليها صف في قاعدة البيانات بحالتها (pending, segmented, transcribed, qa_passed, failed) وناتجها محفوظ في الـ Object Storage. لو حصل أي خطأ، الـ Job يقف نظيف ويبعت إشعار للمستخدم: "تم تحويل 320/400 صفحة، الرصيد خلص — اشحن المفتاح واضغط استكمال"، فيكمل من صفحة 321 فوراً.
+4. فخ التخزين والـ Bandwidth (Storage Diet)
+ملف PDF مصوّر واحد ممكن يوصل 150MB، مع 100 صورة مولدة بـ PNG هتوصل 300MB للكتاب الواحد.
+      * الحل الصح:
+      * Auto-Purge للـ PDF الأصلي: بمجرد ما التحويل والـ QA يخلصوا والمستخدم يأكّد أو بعد 24 ساعة، امسح الـ PDF الخام من السيرفر واحتفظ بالنسخة المحولة الخفيفة بس (بتنزل من 150MB لأقل من 5–10MB!).
+      * إجبار صيغة WebP: كل الصور (سواء المقصوصة من الكتاب أو المولدة بالـ AI) تتحول على السيرفر لـ WebP (بجودة 82% وعرض أقصى 1280px) قبل ما تترفع للـ Storage؛ ده بيقلل حجم الصور 75% بدون فرق ملحوظ على شاشة الموبايل.
+      * استخدام Object Storage بدون رسوم تحميل (Zero-Egress): زي Cloudflare R2 عشان تحميل الصور ومزامنتها بين أجهزة المستخدم ميعملكش فاتورة Bandwidth متصاعدة.
+5. العزل التام للكتب (Privacy & Legal Shield)
+ممكن يخطر في بالك فكرة ذكية: "لو مستخدم تاني رفع نفس الـ PDF بنفس الـ Hash، أديله النسخة الجاهزة أوفر عليه تكلفة الـ API!"
+      * تحذير مهم: أوعى تعمل Cross-User Deduplication للكتب المحمية بحقوق نشر. لو شاركت نسخة محولة من كتاب مستخدم مع مستخدم تاني، سيرفرك قانونياً بيتحول من "أداة تحويل شخصية" لـ "منصة توزيع كتب مقرصنة"، وده ممكن يقفلك التطبيق في Google Play و App Store. خلي كل كتاب معزول تماماً جوه مساحة صاحبه (user_id/book_id/).
+3. الميزة الخارقة لوجود الباك إند: "الحزمة الموحدة" (Canonical Book Bundle)
+بما إن السيرفر هو اللي بيبني الكتاب، خليه يطلع دايماً هيكل قياسي واحد (مجلد أو أرشيف) بيخدم التطبيق + المزامنة السحابية + Obsidian في نفس الوقت بدون أي تحويل إضافي:
+book-slug/
+├── book.md                 # نص الرواية النضيف + علامات الصور والمؤثرات الصوتية
+├── manifest.json           # الميتاداتا، الفصول، أسلوب الفن (Style DNA)، إعدادات اللغة
+├── xray.json               # الشخصيات ومراحلها العمرية مربوطة بـ unlock_chapter
+├── annotations.json        # التظليلات والـ Bookmarks (بتتزامن لوحدها كـ Delta)
+└── assets/
+   ├── extracted/          # الصور المقصوصة من الـ PDF (WebP)
+   ├── characters/         # بورتريهات الشخصيات بمراحلها العمرية (WebP)
+   └── scenes/             # مشاهد الفصول المولدة بالـ AI (WebP)
+
+وبكده:
+      * المستخدم العادي (Google Sign-In): التطبيق بيسحب المجلد ده أوتوماتيك من السيرفر ويزامن annotations.json وآخر صفحة في الخلفية.
+      * مستخدم Obsidian: يضغط زرار "ربط بمجلد Vault" فالتطبيق ينزل نفس المجلد ده جوه الفولت بتاعه، ويقدر يعدّل على book.md من اللابتوب والتطبيق يحس بالتعديل فوراً!
+      * ميزات ما بعد البناء (Post-Processing Passes): أي وقت المستخدم يضغط "ضيفلي مؤثرات صوتية" أو "ولّدلي صور للفصل 10"، التطبيق بيبعت Job خفيفة للباك إند، الباك إند يشتغل على book.md المحفوظ هناك ويرجع بس الـ Patch الجديد (xray.json أو الصور الجديدة) عشان التطبيق يعملها Sync في ثانية.
+أعتقد كده الصورة المعمارية بقت متكاملة جداً (Frontend بـ React Native للسرعة والتفاعل + Backend بـ Python/FastAPI للبايب لاين الثقيل + Storage موحد). بالمناسبة، في الرسالة اللي فاتت كانت فيه نقطة رقم 3 في جزء توليد الصور اتقطعت عند كلمة يق\ر — كنت ناوي تضيف إيه فيها؟
+________________
+
+
+User prompt: عجبتنى فكرة البليس هولدر ده وانه يضغط عليها ويعمل المشهد وبيكون البرومت بتاعها جاهز بالفعل بالنسبه للنقطة 3 كنت بقول انه يختار ثم معين او التطبيق يقترح عليه ثيمات وكل ده من خلال الايجنت برضو يعنى بكل اختصار هيكون فى ايجنتيك سيستم شغال طول دورة حياة التطبيق مع متابعة للاستهلاك و ريت ليمتينج و برضو سلايدر بيحدد قوة استخدام ال AI وكل ما القوة زادت كل ما الاستهلاك زاد وهكذا فاهمنى ؟ احنا كده خلينا التطبيق بتاعنا تطبيق هيعيش فعلا ف عصر ال AI Wrappers ومش هيكون مجرد ai wrapper عادى بيعمل اى حاجة وخلاص ده هيكون منتج حقيقى بيشغل ال ai ف دورة حياته وقبل ما يكون رابر اصلا هوا ف الاصل كان تطبيق قراءة روايات بيركز جدا على تجربة المستخدم طيب بما اننا اتكلمنا عن حاجة جديدة خالص ف التطبيق وهيا دمج ال ai ايه رايك نتكلم بقى عن ال ai agentic UX سيستم ؟ اللى بيبشرح دورة حياة الايجنت اللى شغال ف التطبيق عامله ازاى بالنسبه للمستخدم
+Response: أقوى ميزة في التفكير بتاعك إنك بنيت المنتج بالعكس الصح: قارئ روايات استثنائي أولاً، والـ AI يشتغل جواه كـ "مخرج فني ومجلّد كتب صامت" مش كـ شات بوت مزعج.
+في عالم الـ Agentic UX، القاعدة الذهبية لتطبيقات القراءة هي Calm AI (الذكاء الهادئ)؛ يعني المستخدم يحس بـ نتيجة شغل الـ Agent، ويمتلك السيطرة الكاملة عليه، لكن الـ Agent أبداً ميقطعش اندماجه في القصة أو يخضه بفاتورة API مفاجئة.
+خلينا نرسم دورة حياة الـ Agent بالكامل من وجهة نظر المستخدم (End-to-End Agentic UX) ومعاها الفخاخ الهندسية اللي لو معملناش حسابها الـ UX هيبوظ:
+1. بوصلة التحكم: سلايدر قوة الـ AI وحماية الميزانية (The AI Dial)
+بدل ما تغرق المستخدم غير التقني في 25 إعداد ومفتاح، بتجمعله قوة الـ Agent في سلايدر واحد واضح بـ 4 مستويات (قابل للتخصيص للي عايز تفاصيل)، ومع كل مستوى التطبيق يعرضله مؤشر استهلاك واضح:
+
+
+المستوى على السلايدر
+	الاسم المقترح في الواجهة
+	اللي الـ Agent بيعمله تلقائياً
+	استهلاك الـ API
+	0 (مقفول)
+	القارئ النقي (Purist)
+	صفر AI. قراءة أوفلاين صافية وتنسيق يدوي.
+	$0
+	1 (خفيف)
+	الأساسي (Essential)
+	تحويل الـ PDF + تنظيف العربي + اقتراح ثيم القراءة + بحث وموسوعة شخصيات عند الطلب فقط.
+	منخفض جداً
+	2 (متوازن — الافتراضي)
+	المُنسّق (Curated)
+	كل اللي فات + تجهيز Placeholders جاهزة البرومت للمشاهد (تتولّد بالضغط فقط) + تحديث X-Ray + مؤثرات صوتية.
+	متوسط ومحكوم
+	3 (كامل)
+	المُخرج السينمائي (Director's Cut)
+	كل اللي فات + توليد صور الشخصيات بكل مراحلها العمرية + توليد صور المشاهد أوتوماتيك بالنافذة المنزلقة (Sliding Window).
+	مرتفع
+	      * حارس الميزانية (Hard Budget Cap): جنب السلايدر فيه رقم اختياري بيحطه المستخدم: "أقصى صرف للكتاب ده: مثلاً 2$" أو "أقصى عدد صور في اليوم: 15 صورة". بمجرد ما يقرب منه، الـ Agent يهدّي لوحده ويتحول لوضع "عند الطلب" بدل ما يسحب رصيد من وراه.
+2. دورة حياة الـ Agent في عين المستخدم (4 مراحل)
+المرحلة 1: طاولة المخرج الفني (Book Onboarding & Art Direction)
+أول ما المستخدم يرفع PDF أو .md، بدل شاشة "جاري التحميل..." المملة، الـ Agent بياخد عينة ذكية (أول 5 صفحات + الفهرس + 3 صفحات عشوائية من النص) وفي خلال 10 ثواني يعرض للمستخدم بطاقة هوية الكتاب (Book Identity Card):
+      * اقتراح الثيمات البصرية (3 خيارات جاهزة للمعاينة): لو الرواية فانتازيا تاريخية، يقترح ثيم "الرقّ القديم" بخط Amiri ولون تمييز ذهبي مطفي؛ لو سايبر بانك/غموض، يقترح ثيم فحمي داكن بخط IBM Plex ولون تمييز سماوي هادي. المستخدم يلمس أي كارت يعاينه فوراً ويختار (أو يسيب ثيمه الافتراضي).
+      * اختيار الـ Art Style (لو مفعّل توليد الصور): الـ Agent يقترح 3 أساليب رسم تليق بجو الرواية (مثلاً: رسم حبر وفحم / ألوان مائية كلاسيكية / أسلوب لايت نوفل ياباني) مع عينة شكلية، وتصبح دي الـ Style DNA للرواية كلها.
+      * بطاقة التقدير والانطلاق (Pre-Flight Gate): يطلعله سطر واضح: "320 صفحة — تكلفة التحويل التقريبية ~$0.45 — ابدأ؟".
+      * الحركة السحرية (Progressive Streaming): أول ما يضغط "ابدأ"، الـ Agent يدي أولوية قصوى للفصول 1 و 2 و 3. بعد 30 ثانية بس يطلعله إشعار ناعم: "الفصل الأول جاهز — ابدأ القراءة الآن بينما نجهز باقي الكتاب في الخلفية!". كده المستخدم مبيستناش 15 دقيقة عشان يبدأ يقرأ.
+المرحلة 2: القراءة الحية — الذكاء المكاني الصامت (Spatial Micro-UX)
+أثناء القراءة، الـ Agent مش موجود كأيقونة شات عائمة تزعج العين، بل عايش جوه نسيج الصفحة نفسه:
+      * تجربة الـ Scene Placeholder (أجمل تفصيلة في التطبيق): لما توصل للحظة درامية في الفصل، متلاقيش زرار أزرق قبيح مكتوب عليه "Generate Image". بداله هتلاقي إطار كروكي (Sketchbook Frame) ناعم بنفس لون الورق، مكتوب جواه بخط رقيق وصف شعري قصير للمشهد (مقتبس من البرومت الجاهز):"«لحظة المواجهة فوق الجسر الحجري تحت المطر...»" [ ✨ ارسم هذا المشهد ] — وفي الزاوية أيقونة قلم صغيرة لو المستخدم عايز يعدل تفصيلة في البرومت قبل الرسم.
+      * لحظة الضغط: الإطار يعمل أنيميشن Shimmer ناعم، وأنت تقدر تكمل قراءة السطور اللي تحته عادي من غير ما تقف تستنى؛ ولما الصورة تخلص بعد ثواني، تظهر بنعومة (Soft Watercolor Fade-in) بدل ما "تنط" فجأة وتخض العين أو تزق السطر اللي بتقرأه!
+      * إخفاء الإطارات: لو المستخدم مش في مود صور النهارده، بضغطة واحدة في الإعدادات الإطارات دي تتكمش لرمز صغير جداً على الهامش أو تختفي تماماً.
+      * الظهور الزمني للشخصية (Era-Aware Character Card): لما تضغط على اسم شخصية، الكارت اللي بيطلعلك فيه شريط زمني صغير تحت صورته (مفتوح منه بس المراحل اللي وصلتلها في الفصول). ولما تدخل فصل فيه نقلة زمنية والشخصية كبرت، الكارت يظهر عليه لمعة بسيطة ("تحديث مرحلة عمرية جديدة").
+      * المؤثرات الصوتية كهمسة (Ambient Whisper): لما تدخل مشهد مطر أو مقهى، الصوت يدخل بـ Crossfade بطيء جداً على 4 ثواني، وتظهر كبسولة صغيرة شفافة فوق لمدة ثانيتين (🌧️ مطر ليلي — كتم) وتختفي لوحدها.
+المرحلة 3: استوديو التطوير اللاحق (Post-Creation Studio)
+لو المستخدم حوّل الرواية على مستوى 1 (Essential) وقرأ 5 فصول وعجبته جداً، وقرر دلوقتي يزود المتعة:
+      * يفتح استوديو الكتاب (Book Studio) من قائمة الرواية، يلاقي "باقات إثراء" (Enrichment Passes) مستقلة يقدر يشغل أي واحدة منها في أي وقت:
+      * [+] تحليل وإضافة المؤثرات الصوتية للفصول
+      * [+] بناء موسوعة الشخصيات ومراحلها العمرية (X-Ray)
+      * [+] زرع إطارات المشاهد الجاهزة (Scene Placeholders)
+      * [+] اقتراح وتطبيق ثيم قراءة مخصص للرواية
+      * كل Pass منهم بيوريه التكلفة قبل ما يبدأ، ويشتغل في الخلفية على السيرفر كـ Patch يندمج في الكتاب بدون ما يلمس تظليلاته أو مكانه في القراءة.
+المرحلة 4: غرفة القيادة والشفافية (Mission Control & Trust)
+أيقونة صغيرة هادية في شاشة المكتبة (تنبض بنعومة بس لو فيه شغل شغال في الخلفية) بتفتح Agent Activity Drawer فيها:
+      1. المهام الجارية: شريط تقدم حي (Live SSE) لكل كتاب بيتحول أو يتولدله صور، مع أزرار إيقاف مؤقت / استكمال.
+      2. عداد الاستهلاك الحقيقي: استهلكت كام Token / كام دولار على مستوى كل كتاب وعلى مستوى الشهر (مفصول: تحويل نص vs توليد صور).
+      3. الهدوء التام عند الأعطال (Graceful Degradation): لو الـ API Key وصل لـ Rate Limit (429) أو النت فصل، التطبيق أبداً ميطلعش Popup أحمر مزعج يقطع قراءتك. الـ Placeholder بس يكتب جواه بهدوء "في قائمة الانتظار — سيُرسَم عند توفر الاتصال"، ويكمل لوحده لما النت يرجع أو الـ Limit يتجدد.
+3. أربع فخاخ خفية في الـ Agentic UX لازم نحمي الكود منها
+بما إننا ماشيين بمبدأ الحرص الهندسي، دول 4 فخاخ بيقع فيها 90% من تطبيقات الـ AI في الإنتاج:
+      1. فخ "التقليب العشوائي وحرق الرصيد" (Skip-Ahead Burn Trap): تخيل مستخدم فاتح وضع Director's Cut (النافذة المنزلقة) وراح يقلب بسرعة من الفصل 2 للفصل 10 للفصل 40 عشان يتصفح العناوين بس. لو الـ Sliding Window بيشتغل فوراً، هيطلق 40 طلب توليد صور في ثواني ويحرق رصيده!
+      * الحل الهندسي: ضيف Dwell-Time Trigger — محرك الخلفية ميبعتش طلبات توليد صور لفصل معين إلا بعد ما المستخدم يستقر جوه الفصل ده لمدة 30 ثانية قراءة فعلية (أو يقلب فيه صفحتين)، وحط Rate Limiter محلي يمنع إطلاق أكتر من Job واحد في نفس اللحظة.
+      2. فخ "قفزة النص" (Layout Shift Trap): لو الـ Scene Placeholder ارتفاعه صغير (60px) ولما الصورة تتولد ارتفاعها بقى 300px، الصفحات اللي بعدها كلها هتترحل والنص هينط من تحت عين القارئ.
+      * الحل الهندسي: احجز Aspect Ratio ثابت للإطار من الأول (مثلاً 16:9 مطوي لارتفاع ثابت)، أو افتح الصورة الجديدة بسلاسة فقط لما المستخدم يكون لسه شايف الإطار، واعتمد على الـ Paragraph Anchoring في الـ WebView عشان مكان القراءة ميتحركش بكسل واحد.
+      3. فخ "قلة جودة البرومت الجاهز" (Generic Prompts): لو خليت الـ Agent يكتب برومتات الصور للفصل 15 وهو مش شايف الـ Character Bible اللي اتبنت، هيرجع يغلط في شكل البطل.
+      * الحل الهندسي: البرومت المحفوظ جوه الـ Placeholder ميكونش نص خام بس، بل Structured Prompt Object:
+{
+ "scene_caption_ar": "المواجهة فوق الجسر الحجري تحت المطر",
+ "prompt_en": "Wide dramatic shot on a wet stone bridge at midnight...",
+ "characters_present": ["char_tarek@stage_2", "char_salma@stage_1"],
+ "style_ref": "book_style_dna"
+}
+
+وقت ما المستخدم يضغط "ارسم"، السيرفر يجمع الـ prompt_en + الـ style_dna + صور المرجع بتاعة الشخصيات المذكورة بالمرحلة العمرية الصح ويبعتهم لموديل الصور.
+         4. فخ "تسريب الحرق في البرومت المقروء" (Caption Spoilers): أوعى تخلي الكابشن المكتوب جوه الـ Placeholder يحرق مفاجأة الفقرة اللي تحته!
+         * الحل الهندسي: لازم الـ Placeholder يتزرع بعد الفقرة اللي بتوصف الحدث (مش قبلها أبداً)، والكابشن يكون وصفي هادي بدون ذكر نتائج الأحداث اللي لسه جاية.
+النظام اللي رسمناه ده فعلاً بيحوّل التطبيق من "قارئ" لـ تجربة أدبية حية محترمة جداً للوقت والميزانية ولعين القارئ.
+إيه أخبار الـ AI Agent اللي سيبناه يبني المرحلة الأولى بتاعة React Native؟ لو خلّص أو قرب يخلص، تحب نكتب الوثيقة المعمارية (Master Spec) اللي توحّد شكل حزمة الكتاب (Canonical Bundle) وقواعد الـ Agentic UX دي عشان كل مرحلة جاية تتبني على نضيف؟
+________________

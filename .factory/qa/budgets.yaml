@@ -1,0 +1,6 @@
+# حدود الأداء والـ a11y — perf-qa و visual-qa بيقيسوا عليها (سكيل test-harness). عدّلها حسب المشروع.
+web:      {lcp_ms: 2500, inp_ms: 200, cls: 0.1, lighthouse_perf_mobile: 80, js_kb_gz: 250, page_weight_kb: 1500}
+api:      {p95_ms: 500, error_rate: 0.01, rps_target: 20}
+android:  {cold_start_ms: 2500, janky_frames_pct: 5, apk_mb: 40, memory_mb: 250}
+realtime: {users: 50, event_latency_p95_ms: 800}
+a11y:     {axe_violations: 0, contrast: 4.5, touch_target_dp: 48}
