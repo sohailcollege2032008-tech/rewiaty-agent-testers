@@ -131,6 +131,9 @@ export async function loadThemePreference(db?: DatabaseAdapter): Promise<ThemePr
   let hasManualTheme = manualStored === true;
   if (manualStored === null && stored && typeof rawTheme === 'string') {
     // Existing users who chose a non-default theme before automatic scheme tracking keep their choice.
+    // Why (product): `warm-paper` was the old default and is stored for anyone who changed any other
+    // setting, so it does not mean the reader picked it. Those readers get the new system-following
+    // default (Warraq by day, Burnt Paper at night) — the behaviour Sohail chose for the app.
     if (rawTheme === 'charcoal' || rawTheme === 'oled' || rawTheme === 'sepia') {
       hasManualTheme = true;
       await setKv(THEME_MANUAL_KV_KEY, true, db);

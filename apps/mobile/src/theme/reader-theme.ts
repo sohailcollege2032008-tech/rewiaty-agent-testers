@@ -34,19 +34,21 @@ export const LEGACY_THEME_MAP: Record<string, ThemeId> = {
   sepia: 'sepia',
 };
 
+// Why (tech): Object.hasOwn, not `in` — `in` also matches prototype keys ("toString"), which would let a
+// corrupted stored id pass as a theme and crash the registry lookup.
 export function migrateThemeId(raw: unknown): ThemeId | null {
   if (typeof raw !== 'string') return null;
-  if (raw in THEME_REGISTRY) {
+  if (Object.hasOwn(THEME_REGISTRY, raw)) {
     return raw as ThemeId;
   }
-  if (raw in LEGACY_THEME_MAP) {
+  if (Object.hasOwn(LEGACY_THEME_MAP, raw)) {
     return LEGACY_THEME_MAP[raw]!;
   }
   return null;
 }
 
 export function isLegacyThemeId(raw: unknown): boolean {
-  return typeof raw === 'string' && raw in LEGACY_THEME_MAP && !(raw in THEME_REGISTRY);
+  return typeof raw === 'string' && Object.hasOwn(LEGACY_THEME_MAP, raw) && !(Object.hasOwn(THEME_REGISTRY, raw));
 }
 
 export function resolveSystemTheme(colorScheme: ColorSchemeName | null | undefined): ThemeId {

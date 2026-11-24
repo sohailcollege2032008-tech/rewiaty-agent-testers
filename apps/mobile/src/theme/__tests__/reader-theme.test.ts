@@ -108,4 +108,15 @@ describe('reader-theme registry, migration & responsive layout', () => {
     expect(tabletLandscape.settingsPanelWidth).toBe(348);
     expect(tabletLandscape.readerMaxReadingWidthCh).toBe(54);
   });
+
+  it('maps every legacy id and rejects prototype-like or unknown ids', () => {
+    expect(migrateThemeId('warm-paper')).toBe('warraq');
+    expect(migrateThemeId('charcoal')).toBe('burnt-paper');
+    expect(migrateThemeId('oled')).toBe('oled-crimson');
+    expect(migrateThemeId('sepia')).toBe('sepia');
+    for (const bad of ['toString', 'constructor', '__proto__', 'hasOwnProperty', 'nope', '', 42, null, undefined]) {
+      expect(migrateThemeId(bad)).toBeNull();
+    }
+    expect(getAppThemeTokens('toString', 'dark').id).toBe('burnt-paper');
+  });
 });
