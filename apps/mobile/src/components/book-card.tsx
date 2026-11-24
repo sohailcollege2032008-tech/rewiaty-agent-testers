@@ -3,20 +3,28 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { cubicBezier } from 'react-native-reanimated';
 
 import { BookCover } from './book-cover';
-import type { BookLibraryRecord } from '@/types/reader';
+import { TYPOGRAPHY } from '@/theme/layout';
+import { getAppThemeTokens } from '@/theme/reader-theme';
+import type { BookLibraryRecord, ThemeId } from '@/types/reader';
 
 export type BookCardProps = {
   book: BookLibraryRecord;
+  theme?: ThemeId;
+  isTablet?: boolean;
   onPress: (book: BookLibraryRecord) => void;
   onLongPress: (book: BookLibraryRecord) => void;
 };
 
-const PRESS_EASING = cubicBezier(0.23, 1, 0.32, 1);
+const PRESS_EASING = cubicBezier(0.22, 1, 0.36, 1);
 
-export function BookCard({ book, onPress, onLongPress }: BookCardProps) {
+export function BookCard({ book, theme, isTablet = false, onPress, onLongPress }: BookCardProps) {
   const [pressed, setPressed] = useState(false);
+  const palette = getAppThemeTokens(theme);
   const pct = Math.max(0, Math.min(100, Math.round(book.progress * 100)));
-  const isRtl = book.dir === 'rtl';
+  const isRtl = book.dir !== 'ltr';
+  const titleScale = isTablet ? TYPOGRAPHY.scale.tileTitleTablet : TYPOGRAPHY.scale.tileTitle;
+
+  const statusText = pct === 100 ? 'مكتملة' : pct === 0 ? 'جديدة' : `${pct}%`;
 
   return (
     <Pressable
@@ -30,43 +38,88 @@ export function BookCard({ book, onPress, onLongPress }: BookCardProps) {
       onPressOut={() => setPressed(false)}
       delayLongPress={450}
       pressRetentionOffset={16}
+      style={styles.pressable}
     >
       <Animated.View
         style={[
-          styles.card,
+          styles.tile,
           {
             transitionProperty: 'transform',
-            transitionDuration: '120ms',
+            transitionDuration: '140ms',
             transitionTimingFunction: PRESS_EASING,
           },
-          pressed && styles.cardPressed,
+          pressed && styles.tilePressed,
         ]}
       >
-        <BookCover title={book.title} author={book.author} coverColor={book.coverColor} />
-        <View style={styles.meta}>
-          <View style={styles.textBlock}>
-            <Text
-              style={[styles.title, { writingDirection: isRtl ? 'rtl' : 'ltr' }]}
-              numberOfLines={2}
-            >
-              {book.title}
-            </Text>
-            {book.author ? (
-              <Text
-                style={[styles.author, { writingDirection: isRtl ? 'rtl' : 'ltr' }]}
-                numberOfLines={1}
-              >
-                {book.author}
-              </Text>
-            ) : null}
-          </View>
+        <View style={styles.coverBox}>
+          <BookCover
+            title={book.title}
+            author={book.author}
+            coverColor={book.coverColor}
+            dir={book.dir}
+            theme={theme}
+            variant="tile"
+          />
+        </View>
 
-          <View style={styles.progressSection}>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${pct}%` }]} />
-            </View>
-            <Text style={styles.progressLabel}>{pct}%</Text>
+        <Text
+          style={[
+            styles.title,
+            {
+              color: palette.text,
+              fontFamily: TYPOGRAPHY.displayFont,
+              fontSize: titleScale.fontSize,
+              lineHeight: titleScale.lineHeight,
+              writingDirection: isRtl ? 'rtl' : 'ltr',
+            },
+          ]}
+          numberOfLines={2}
+        >
+          {book.title}
+        </Text>
+
+        {book.author ? (
+          <Text
+            style={[
+              styles.author,
+              {
+                color: palette.muted,
+                fontFamily: TYPOGRAPHY.uiFont,
+                fontSize: isTablet ? 13 : 12,
+                writingDirection: isRtl ? 'rtl' : 'ltr',
+              },
+            ]}
+            numberOfLines={1}
+          >
+            {book.author}
+          </Text>
+        ) : (
+          <View style={styles.authorSpacer} />
+        )}
+
+        <View style={styles.footRow}>
+          <View style={[styles.hairTrack, { backgroundColor: palette.border }]}>
+            <View
+              style={[
+                styles.hairFill,
+                {
+                  width: `${pct}%`,
+                  backgroundColor: palette.accent,
+                },
+              ]}
+            />
           </View>
+          <Text
+            style={[
+              styles.pctLabel,
+              {
+                color: palette.muted,
+                fontFamily: TYPOGRAPHY.uiFont,
+              },
+            ]}
+          >
+            {statusText}
+          </Text>
         </View>
       </Animated.View>
     </Pressable>
@@ -74,68 +127,50 @@ export function BookCard({ book, onPress, onLongPress }: BookCardProps) {
 }
 
 const styles = StyleSheet.create({
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    padding: 14,
-    borderRadius: 14,
-    borderCurve: 'continuous',
-    backgroundColor: '#FFFDF9',
-    borderWidth: 1,
-    borderColor: '#E8E0D4',
-    boxShadow: '0 2px 6px rgba(36, 33, 29, 0.05)',
+  pressable: {
+    flex: 1,
+  },
+  tile: {
+    flex: 1,
     transform: [{ scale: 1 }],
   },
-  cardPressed: {
-    transform: [{ scale: 0.98 }],
+  tilePressed: {
+    transform: [{ translateY: 1 }, { scale: 0.985 }],
   },
-  meta: {
-    flex: 1,
-    minHeight: 96,
-    justifyContent: 'space-between',
-    paddingVertical: 2,
-  },
-  textBlock: {
-    gap: 4,
+  coverBox: {
+    width: '100%',
+    marginBottom: 10,
   },
   title: {
-    fontSize: 17,
-    lineHeight: 24,
     fontWeight: '700',
-    color: '#24211D',
     textAlign: 'right',
+    marginBottom: 2,
   },
   author: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: '#6E675F',
     textAlign: 'right',
+    marginBottom: 8,
   },
-  progressSection: {
+  authorSpacer: {
+    height: 18,
+  },
+  footRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginTop: 8,
+    gap: 8,
   },
-  progressTrack: {
+  hairTrack: {
     flex: 1,
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: '#EFE8DC',
+    height: 2,
+    borderRadius: 1,
     overflow: 'hidden',
   },
-  progressFill: {
+  hairFill: {
     height: '100%',
-    borderRadius: 999,
-    backgroundColor: '#8B5A2B',
+    borderRadius: 1,
   },
-  progressLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6E675F',
+  pctLabel: {
+    fontSize: 11,
+    fontWeight: '500',
     fontVariant: ['tabular-nums'],
-    minWidth: 34,
-    textAlign: 'left',
   },
 });

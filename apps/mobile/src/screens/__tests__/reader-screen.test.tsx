@@ -1,6 +1,7 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { useKeepAwake } from 'expo-keep-awake';
-import { Linking, Platform } from 'react-native';
+import * as ReactNative from 'react-native';
+import { Dimensions, Linking, Platform } from 'react-native';
 
 import { ReaderScreen } from '@/screens/reader-screen';
 import { readAssetText, readBookBundle, saveBookReaderState } from '@/storage/bundle';
@@ -8,9 +9,10 @@ import { touchBookOpened } from '@/storage/database';
 import { ensureOfflineFontsDir } from '@/storage/font-assets';
 import {
   DEFAULT_SETTINGS,
-  loadReaderSettings,
+  loadThemePreference,
   resetReaderSettings,
   saveReaderSettings,
+  selectManualTheme,
 } from '@/storage/settings-store';
 
 const mockBack = jest.fn();
@@ -77,13 +79,17 @@ jest.mock('@/storage/settings-store', () => {
   const actual = jest.requireActual('@/storage/settings-store');
   return {
     ...actual,
+    loadThemePreference: jest.fn(),
     loadReaderSettings: jest.fn(),
     saveReaderSettings: jest.fn(),
+    selectManualTheme: jest.fn(),
     resetReaderSettings: jest.fn(),
   };
 });
 
 describe('ReaderScreen', () => {
+  let colorSchemeSpy: jest.SpyInstance;
+
   beforeEach(() => {
     jest.useRealTimers();
     jest.clearAllMocks();
@@ -92,12 +98,22 @@ describe('ReaderScreen', () => {
     capturedOnMessage = undefined;
     capturedWebViewProps = undefined;
 
+    Dimensions.set({
+      window: { width: 390, height: 844, scale: 2, fontScale: 1 },
+      screen: { width: 390, height: 844, scale: 2, fontScale: 1 },
+    });
+    colorSchemeSpy = jest.spyOn(ReactNative, 'useColorScheme').mockReturnValue('light');
+
     (readAssetText as jest.Mock).mockResolvedValue('<html><body>reader</body></html>');
     (touchBookOpened as jest.Mock).mockResolvedValue(undefined);
     (saveBookReaderState as jest.Mock).mockResolvedValue(undefined);
     (ensureOfflineFontsDir as jest.Mock).mockResolvedValue('file:///mock/cache/rewiaty-fonts/');
-    (loadReaderSettings as jest.Mock).mockResolvedValue({ ...DEFAULT_SETTINGS });
+    (loadThemePreference as jest.Mock).mockResolvedValue({
+      settings: { ...DEFAULT_SETTINGS },
+      hasManualTheme: false,
+    });
     (saveReaderSettings as jest.Mock).mockResolvedValue({ ...DEFAULT_SETTINGS });
+    (selectManualTheme as jest.Mock).mockResolvedValue({ ...DEFAULT_SETTINGS });
     (resetReaderSettings as jest.Mock).mockResolvedValue({ ...DEFAULT_SETTINGS });
     (readBookBundle as jest.Mock).mockResolvedValue({
       book: {
@@ -129,6 +145,7 @@ describe('ReaderScreen', () => {
   });
 
   afterEach(() => {
+    colorSchemeSpy.mockRestore();
     jest.useRealTimers();
   });
 
@@ -187,6 +204,26 @@ describe('ReaderScreen', () => {
     expect(loadPayload.anchor).toEqual({ blockId: 'ch01_p0003', charOffset: 12 });
     expect(loadPayload.settings).toEqual(DEFAULT_SETTINGS);
     expect(loadPayload.fontBaseUrl).toBe('file:///mock/cache/rewiaty-fonts/');
+  });
+
+  it('automatically uses burnt-paper when system colorScheme is dark and no manual theme is set', async () => {
+    colorSchemeSpy.mockReturnValue('dark');
+    await renderLoadedReader();
+
+    const loadPayload = JSON.parse(postedToWebView[0]!);
+    expect(loadPayload.settings.theme).toBe('burnt-paper');
+  });
+
+  it('respects manual theme override even when system colorScheme is dark', async () => {
+    colorSchemeSpy.mockReturnValue('dark');
+    (loadThemePreference as jest.Mock).mockResolvedValue({
+      settings: { ...DEFAULT_SETTINGS, theme: 'sepia' },
+      hasManualTheme: true,
+    });
+    await renderLoadedReader();
+
+    const loadPayload = JSON.parse(postedToWebView[0]!);
+    expect(loadPayload.settings.theme).toBe('sepia');
   });
 
   it('debounces position saves by 500ms', async () => {
@@ -275,6 +312,7 @@ describe('ReaderScreen', () => {
 
     await fireEvent.press(getByTestId('reader-settings-button'));
     expect(getByTestId('reader-settings-sheet-host')).toBeTruthy();
+    expect(queryByTestId('reader-settings-side-panel')).toBeNull();
 
     await fireEvent.press(getByTestId('settings-font-size-inc'));
     expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
@@ -282,11 +320,12 @@ describe('ReaderScreen', () => {
       partial: { fontSize: 21 },
     });
 
-    await fireEvent.press(getByTestId('theme-option-oled'));
+    await fireEvent.press(getByTestId('theme-option-oled-crimson'));
     expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
       type: 'settings',
-      partial: { theme: 'oled' },
+      partial: { theme: 'oled-crimson' },
     });
+    expect(selectManualTheme).toHaveBeenCalledWith('oled-crimson');
 
     await fireEvent.press(getByTestId('font-option-Readex Pro'));
     expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
@@ -303,7 +342,7 @@ describe('ReaderScreen', () => {
     expect(saveReaderSettings).toHaveBeenLastCalledWith(
       expect.objectContaining({
         fontSize: 21,
-        theme: 'oled',
+        theme: 'oled-crimson',
         fontFamily: 'Readex Pro',
         disableAnimation: true,
       }),
@@ -315,5 +354,48 @@ describe('ReaderScreen', () => {
         expect.objectContaining({ backgroundColor: 'rgba(0, 0, 0, 0.96)' }),
       ]),
     );
+  });
+
+  it('sends spread="auto" and renders settings as a side panel on landscape tablet', async () => {
+    Dimensions.set({
+      window: { width: 1366, height: 1024, scale: 2, fontScale: 1 },
+      screen: { width: 1366, height: 1024, scale: 2, fontScale: 1 },
+    });
+
+    const { getByTestId } = await renderLoadedReader();
+
+    const loadPayload = JSON.parse(postedToWebView[0]!);
+    expect(loadPayload.settings.spread).toBe('auto');
+    expect(loadPayload.settings.maxReadingWidth).toBe(54);
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+
+    await fireEvent.press(getByTestId('reader-settings-button'));
+    expect(getByTestId('reader-settings-side-panel')).toBeTruthy();
+  });
+
+  it('uses tablet portrait maxReadingWidth=62 and bottom sheet in portrait tablet', async () => {
+    Dimensions.set({
+      window: { width: 1024, height: 1366, scale: 2, fontScale: 1 },
+      screen: { width: 1024, height: 1366, scale: 2, fontScale: 1 },
+    });
+
+    const { getByTestId, queryByTestId } = await renderLoadedReader();
+
+    const loadPayload = JSON.parse(postedToWebView[0]!);
+    expect(loadPayload.settings.spread).toBeUndefined();
+    expect(loadPayload.settings.maxReadingWidth).toBe(62);
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+
+    await fireEvent.press(getByTestId('reader-settings-button'));
+    expect(getByTestId('mock-bottom-sheet')).toBeTruthy();
+    expect(queryByTestId('reader-settings-side-panel')).toBeNull();
   });
 });

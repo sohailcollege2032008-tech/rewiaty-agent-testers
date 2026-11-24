@@ -37,7 +37,7 @@ appId: com.rewiaty.app
 - tapOn: "حَجَرُ الْمَاءِ"
 - extendedWaitUntil:
     notVisible:
-      id: "reader-loading"
+      id: "reader-loading-overlay"
     timeout: 20000
 - waitForAnimationToEnd
 - tapOn:

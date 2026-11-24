@@ -2,9 +2,12 @@ import { type DatabaseAdapter } from '@/storage/database';
 import {
   DEFAULT_SETTINGS,
   SETTINGS_KV_KEY,
+  THEME_MANUAL_KV_KEY,
   loadReaderSettings,
+  loadThemePreference,
   resetReaderSettings,
   saveReaderSettings,
+  selectManualTheme,
   updateReaderSettings,
 } from '@/storage/settings-store';
 
@@ -41,13 +44,63 @@ describe('settings-store', () => {
     db = createKvTestDb();
   });
 
-  it('returns DEFAULT_SETTINGS when kv is empty (Arabic lineHeight 1.95)', async () => {
+  it('returns DEFAULT_SETTINGS when kv is empty (warraq theme, Arabic lineHeight 1.95)', async () => {
     const settings = await loadReaderSettings(db);
     expect(settings).toEqual(DEFAULT_SETTINGS);
     expect(settings.fontFamily).toBe('Amiri');
     expect(settings.lineHeight).toBe(1.95);
-    expect(settings.theme).toBe('warm-paper');
+    expect(settings.theme).toBe('warraq');
     expect(settings.marginVertical).toBeGreaterThanOrEqual(16);
+  });
+
+  it('migrates legacy theme IDs stored in reader_settings_v1', async () => {
+    const cases = [
+      { legacy: 'warm-paper', expected: 'warraq', expectedManual: false },
+      { legacy: 'charcoal', expected: 'burnt-paper', expectedManual: true },
+      { legacy: 'oled', expected: 'oled-crimson', expectedManual: true },
+      { legacy: 'sepia', expected: 'sepia', expectedManual: true },
+    ] as const;
+
+    for (const testCase of cases) {
+      const localDb = createKvTestDb();
+      await localDb.runAsync(
+        'INSERT INTO kv (key, value) VALUES (?, ?)',
+        SETTINGS_KV_KEY,
+        JSON.stringify({ fontSize: 22, theme: testCase.legacy }),
+      );
+
+      const pref = await loadThemePreference(localDb);
+      expect(pref.settings.theme).toBe(testCase.expected);
+      expect(pref.settings.fontSize).toBe(22);
+      expect(pref.hasManualTheme).toBe(testCase.expectedManual);
+
+      const persisted = await localDb.getFirstAsync<{ value: string }>(
+        'SELECT value FROM kv WHERE key = ?',
+        SETTINGS_KV_KEY,
+      );
+      expect(JSON.parse(persisted!.value).theme).toBe(testCase.expected);
+    }
+  });
+
+  it('tracks manual theme selection and clears override on reset', async () => {
+    const initial = await loadThemePreference(db);
+    expect(initial.hasManualTheme).toBe(false);
+
+    await selectManualTheme('oled-crimson', db);
+    const afterManual = await loadThemePreference(db);
+    expect(afterManual.settings.theme).toBe('oled-crimson');
+    expect(afterManual.hasManualTheme).toBe(true);
+
+    const manualRow = await db.getFirstAsync<{ value: string }>(
+      'SELECT value FROM kv WHERE key = ?',
+      THEME_MANUAL_KV_KEY,
+    );
+    expect(JSON.parse(manualRow!.value)).toBe(true);
+
+    const reset = await resetReaderSettings(db);
+    expect(reset).toEqual(DEFAULT_SETTINGS);
+    const afterReset = await loadThemePreference(db);
+    expect(afterReset.hasManualTheme).toBe(false);
   });
 
   it('persists partial updates to SQLite kv and reloads across sessions', async () => {
@@ -110,7 +163,7 @@ describe('settings-store', () => {
   });
 
   it('resets back to DEFAULT_SETTINGS', async () => {
-    await saveReaderSettings({ ...DEFAULT_SETTINGS, theme: 'oled', fontSize: 30 }, db);
+    await saveReaderSettings({ ...DEFAULT_SETTINGS, theme: 'oled-crimson', fontSize: 30 }, db);
     const reset = await resetReaderSettings(db);
     expect(reset).toEqual(DEFAULT_SETTINGS);
     expect(await loadReaderSettings(db)).toEqual(DEFAULT_SETTINGS);

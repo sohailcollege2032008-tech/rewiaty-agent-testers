@@ -1,12 +1,20 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, type DimensionValue } from 'react-native';
 import Svg, { Circle, G, Line, Path, Polygon, Rect } from 'react-native-svg';
 
 import { resolveCoverPalette, type CoverPatternVariant } from '@/storage/cover';
+import { TYPOGRAPHY } from '@/theme/layout';
+import { getAppThemeTokens } from '@/theme/reader-theme';
+import type { ThemeId } from '@/types/reader';
 
 export type BookCoverProps = {
   title: string;
   author?: string | null;
   coverColor?: string | null;
+  dir?: 'rtl' | 'ltr';
+  theme?: ThemeId;
+  variant?: 'hero' | 'tile' | 'compact';
+  width?: DimensionValue;
+  height?: DimensionValue;
 };
 
 function CoverGeometricSvg({
@@ -21,81 +29,178 @@ function CoverGeometricSvg({
       pointerEvents="none"
       width="100%"
       height="100%"
-      viewBox="0 0 72 104"
+      viewBox="0 0 120 176"
+      preserveAspectRatio="none"
       style={StyleSheet.absoluteFill}
     >
-      <Rect
-        x={9}
-        y={5}
-        width={58}
-        height={94}
-        rx={3}
-        fill="none"
-        stroke={strokeColor}
-        strokeOpacity={0.38}
-        strokeWidth={0.8}
-      />
-
       {pattern === 'diamonds' ? (
-        <G stroke={strokeColor} strokeOpacity={0.2} strokeWidth={0.75} fill="none">
-          <Polygon points="38,14 54,32 38,50 22,32" />
-          <Polygon points="38,54 54,72 38,90 22,72" />
-          <Circle cx={38} cy={52} r={10} />
+        <G stroke={strokeColor} strokeOpacity={0.22} strokeWidth={0.9} fill="none">
+          <Polygon points="60,26 98,88 60,150 22,88" />
+          <Polygon points="60,46 86,88 60,130 34,88" />
+          <Circle cx={60} cy={88} r={14} />
         </G>
       ) : null}
 
       {pattern === 'octagon' ? (
-        <G stroke={strokeColor} strokeOpacity={0.2} strokeWidth={0.75} fill="none">
-          <Rect x={24} y={38} width={28} height={28} />
-          <Rect
-            x={24}
-            y={38}
-            width={28}
-            height={28}
-            transform="rotate(45 38 52)"
-          />
-          <Circle cx={38} cy={52} r={6} />
+        <G stroke={strokeColor} strokeOpacity={0.22} strokeWidth={0.9} fill="none">
+          <Circle cx={60} cy={88} r={42} />
+          <Circle cx={60} cy={88} r={28} />
+          <Line x1={60} y1={32} x2={60} y2={144} />
+          <Line x1={18} y1={88} x2={102} y2={88} />
         </G>
       ) : null}
 
       {pattern === 'arch' ? (
-        <G stroke={strokeColor} strokeOpacity={0.22} strokeWidth={0.8} fill="none">
-          <Path d="M16,92 L16,34 Q38,10 60,34 L60,92" />
-          <Path d="M22,88 L22,38 Q38,20 54,38 L54,88" />
+        <G stroke={strokeColor} strokeOpacity={0.24} strokeWidth={1} fill="none">
+          <Path d="M22 152 V64 A38 38 0 0 1 98 64 V152" />
+          <Path d="M34 152 V70 A26 26 0 0 1 86 70 V152" />
         </G>
       ) : null}
 
       {pattern === 'lattice' ? (
-        <G stroke={strokeColor} strokeOpacity={0.18} strokeWidth={0.7} fill="none">
-          <Line x1={12} y1={24} x2={64} y2={76} />
-          <Line x1={64} y1={24} x2={12} y2={76} />
-          <Line x1={12} y1={44} x2={64} y2={96} />
-          <Line x1={64} y1={44} x2={12} y2={96} />
+        <G stroke={strokeColor} strokeOpacity={0.2} strokeWidth={0.8} fill="none">
+          <Rect x={26} y={54} width={68} height={68} />
+          <Rect x={26} y={54} width={68} height={68} transform="rotate(45 60 88)" />
+          <Circle cx={60} cy={88} r={12} />
         </G>
       ) : null}
     </Svg>
   );
 }
 
-export function BookCover({ title, author, coverColor }: BookCoverProps) {
-  const palette = resolveCoverPalette(title, coverColor);
+export function BookCover({
+  title,
+  author,
+  coverColor,
+  dir = 'rtl',
+  theme,
+  variant = 'tile',
+  width,
+  height,
+}: BookCoverProps) {
+  const themeTokens = getAppThemeTokens(theme);
+  const palette = resolveCoverPalette(title, coverColor, themeTokens.coverPalettes);
+  const isRtl = dir !== 'ltr';
+
+  const spineWidth = variant === 'hero' ? 10 : variant === 'compact' ? 7 : 9;
+  const titleFontSize = variant === 'hero' ? 18 : variant === 'compact' ? 12 : 16;
+  const titleLineHeight = variant === 'hero' ? 26 : variant === 'compact' ? 17 : 23;
+  const authorFontSize = variant === 'hero' ? 10.5 : variant === 'compact' ? 8.5 : 10;
+
+  const sizeStyle =
+    variant === 'tile'
+      ? { width: width ?? ('100%' as const), aspectRatio: 2 / 2.9 }
+      : {
+          width: width ?? (variant === 'hero' ? 108 : 72),
+          height: height ?? (variant === 'hero' ? 158 : 104),
+        };
 
   return (
-    <View testID="book-cover" style={[styles.cover, { backgroundColor: palette.bg }]}>
+    <View
+      testID="book-cover"
+      style={[
+        styles.cover,
+        sizeStyle,
+        {
+          backgroundColor: palette.bg,
+          borderColor: themeTokens.coverRim,
+          borderTopRightRadius: isRtl ? 2 : 4,
+          borderBottomRightRadius: isRtl ? 2 : 4,
+          borderTopLeftRadius: isRtl ? 4 : 2,
+          borderBottomLeftRadius: isRtl ? 4 : 2,
+        },
+      ]}
+    >
       <CoverGeometricSvg pattern={palette.pattern} strokeColor={palette.border} />
-      <View style={[styles.spine, { backgroundColor: palette.spine }]} />
-      <View style={[styles.spineCrease, { backgroundColor: palette.border }]} />
-      <View style={styles.inner}>
+
+      {/* Arabic cloth spine sits on the RIGHT; LTR spine sits on the LEFT */}
+      <View
+        pointerEvents="none"
+        style={[
+          styles.spineBand,
+          {
+            width: spineWidth,
+            backgroundColor: palette.spine,
+            right: isRtl ? 0 : undefined,
+            left: isRtl ? undefined : 0,
+          },
+        ]}
+      />
+      <View
+        pointerEvents="none"
+        style={[
+          styles.spineCreaseHighlight,
+          {
+            right: isRtl ? spineWidth - 2 : undefined,
+            left: isRtl ? undefined : spineWidth - 2,
+          },
+        ]}
+      />
+
+      {/* Subtle page-block highlight on the fore-edge */}
+      <View
+        pointerEvents="none"
+        style={[
+          styles.foreEdge,
+          {
+            left: isRtl ? 0 : undefined,
+            right: isRtl ? undefined : 0,
+            backgroundColor: themeTokens.isDark
+              ? 'rgba(255, 250, 240, 0.22)'
+              : 'rgba(255, 252, 245, 0.36)',
+          },
+        ]}
+      />
+
+      {/* Inner embossed gilt frame */}
+      <View
+        pointerEvents="none"
+        style={[
+          styles.innerFrame,
+          {
+            borderColor: palette.border,
+            right: isRtl ? spineWidth + 5 : 8,
+            left: isRtl ? 8 : spineWidth + 5,
+          },
+        ]}
+      />
+
+      <View
+        style={[
+          styles.inner,
+          {
+            paddingRight: isRtl ? spineWidth + 8 : 10,
+            paddingLeft: isRtl ? 10 : spineWidth + 8,
+          },
+        ]}
+      >
         <Text style={[styles.ornament, { color: palette.accent }]}>✦</Text>
         <Text
-          style={[styles.title, { color: palette.text, writingDirection: 'rtl' }]}
+          style={[
+            styles.title,
+            {
+              color: palette.text,
+              fontSize: titleFontSize,
+              lineHeight: titleLineHeight,
+              fontFamily: TYPOGRAPHY.displayFont,
+              writingDirection: isRtl ? 'rtl' : 'ltr',
+            },
+          ]}
           numberOfLines={3}
         >
           {title}
         </Text>
         {author ? (
           <Text
-            style={[styles.author, { color: palette.accent, writingDirection: 'rtl' }]}
+            style={[
+              styles.author,
+              {
+                color: palette.accent,
+                fontSize: authorFontSize,
+                fontFamily: TYPOGRAPHY.uiFont,
+                writingDirection: isRtl ? 'rtl' : 'ltr',
+              },
+            ]}
             numberOfLines={1}
           >
             {author}
@@ -110,45 +215,57 @@ export function BookCover({ title, author, coverColor }: BookCoverProps) {
 
 const styles = StyleSheet.create({
   cover: {
-    width: 72,
-    height: 104,
-    borderRadius: 8,
-    borderCurve: 'continuous',
+    borderWidth: 1,
     overflow: 'hidden',
-    flexDirection: 'row',
-    boxShadow: '0 3px 8px rgba(0, 0, 0, 0.16)',
+    position: 'relative',
+    boxShadow: '-3px 6px 14px rgba(25, 19, 14, 0.20)',
   },
-  spine: {
-    width: 7,
-    opacity: 0.9,
+  spineBand: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    opacity: 0.72,
   },
-  spineCrease: {
-    width: 1,
-    opacity: 0.35,
+  spineCreaseHighlight: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 1.5,
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
+  },
+  foreEdge: {
+    position: 'absolute',
+    top: 2,
+    bottom: 2,
+    width: 2,
+  },
+  innerFrame: {
+    position: 'absolute',
+    top: 8,
+    bottom: 8,
+    borderWidth: 1,
+    opacity: 0.25,
   },
   inner: {
     flex: 1,
-    paddingHorizontal: 7,
-    paddingVertical: 10,
+    paddingVertical: 12,
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   ornament: {
     fontSize: 9,
-    opacity: 0.9,
+    opacity: 0.82,
   },
   title: {
-    fontSize: 11,
-    lineHeight: 15,
     fontWeight: '700',
     textAlign: 'center',
+    paddingHorizontal: 3,
   },
   author: {
-    fontSize: 8.5,
     textAlign: 'center',
-    opacity: 0.92,
+    opacity: 0.84,
   },
   authorSpacer: {
-    height: 8,
+    height: 10,
   },
 });

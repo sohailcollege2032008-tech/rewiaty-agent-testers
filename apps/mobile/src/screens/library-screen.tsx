@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -9,17 +9,32 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Circle, Path } from 'react-native-svg';
 
 import { BookCard } from '@/components/book-card';
+import { BookCover } from '@/components/book-cover';
 import { deleteBookBundle, ensureSampleBookSeeded } from '@/storage/bundle';
 import { listBooks } from '@/storage/database';
 import { pickAndImportBook } from '@/storage/importer';
+import { RADIUS, SPACING, TYPOGRAPHY, useResponsiveLayout } from '@/theme/layout';
+import { THEME_LIST, THEME_OPTIONS } from '@/theme/reader-theme';
+import { useAppTheme } from '@/theme/use-app-theme';
 import type { BookLibraryRecord } from '@/types/reader';
+
+type GridItem = BookLibraryRecord | { readonly __spacer: true; readonly id: string };
+
+function isSpacerItem(item: GridItem): item is { readonly __spacer: true; readonly id: string } {
+  return '__spacer' in item && item.__spacer === true;
+}
 
 export function LibraryScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const layout = useResponsiveLayout();
+  const { themeId, tokens: palette, selectTheme, refreshTheme } = useAppTheme();
+
   const [books, setBooks] = useState<BookLibraryRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
@@ -44,8 +59,9 @@ export function LibraryScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      void refreshTheme();
       void refreshBooks();
-    }, [refreshBooks]),
+    }, [refreshBooks, refreshTheme]),
   );
 
   const handleImport = async () => {
@@ -65,6 +81,12 @@ export function LibraryScreen() {
     } finally {
       setImporting(false);
     }
+  };
+
+  const handleCycleTheme = () => {
+    const idx = THEME_LIST.findIndex((t) => t.id === themeId);
+    const next = THEME_LIST[(idx + 1) % THEME_LIST.length] ?? THEME_LIST[0]!;
+    void selectTheme(next.id);
   };
 
   const handleOpenBook = (book: BookLibraryRecord) => {
@@ -100,68 +122,546 @@ export function LibraryScreen() {
     );
   };
 
+  const heroBook = books[0] ?? null;
+  const shelfBooks = useMemo(() => books.slice(1), [books]);
+  const gridColumns = layout.libraryColumns;
+
+  const gridData: GridItem[] = useMemo(() => {
+    if (shelfBooks.length === 0) return [];
+    const remainder = shelfBooks.length % gridColumns;
+    if (remainder === 0) return shelfBooks;
+    const padded: GridItem[] = [...shelfBooks];
+    for (let i = 0; i < gridColumns - remainder; i++) {
+      padded.push({ __spacer: true, id: `__spacer_${i}` });
+    }
+    return padded;
+  }, [shelfBooks, gridColumns]);
+
+  const horizontalPadding = layout.isTablet ? (layout.isTabletLandscape ? 48 : 36) : 24;
+  const brandScale = layout.isTablet
+    ? TYPOGRAPHY.scale.libraryBrandTablet
+    : TYPOGRAPHY.scale.libraryBrand;
+  const heroTitleScale = layout.isTablet
+    ? TYPOGRAPHY.scale.heroTitleTablet
+    : TYPOGRAPHY.scale.heroTitle;
+  const shelfTitleScale = layout.isTablet
+    ? TYPOGRAPHY.scale.shelfTitleTablet
+    : TYPOGRAPHY.scale.shelfTitle;
+
+  const renderHeroHeader = () => {
+    if (!heroBook) return null;
+    const heroPct = Math.max(0, Math.min(100, Math.round(heroBook.progress * 100)));
+    const isHeroRtl = heroBook.dir !== 'ltr';
+
+    return (
+      <View>
+        <Pressable
+          testID={`book-card-${heroBook.id}`}
+          onPress={() => handleOpenBook(heroBook)}
+          onLongPress={() => handleLongPressBook(heroBook)}
+          delayLongPress={450}
+          accessibilityRole="button"
+          accessibilityLabel={heroBook.title}
+          accessibilityHint="افتح الكتاب أو اضغط مطولاً للحذف"
+          style={[
+            styles.heroSpread,
+            layout.isTablet && styles.heroSpreadTablet,
+            { borderBottomColor: palette.border },
+          ]}
+        >
+          <View
+            style={[
+              styles.heroCoverWrap,
+              {
+                width: layout.heroCoverSize.width,
+                height: layout.heroCoverSize.height,
+              },
+            ]}
+          >
+            <BookCover
+              title={heroBook.title}
+              author={heroBook.author}
+              coverColor={heroBook.coverColor}
+              dir={heroBook.dir}
+              theme={themeId}
+              variant="hero"
+              width={layout.heroCoverSize.width}
+              height={layout.heroCoverSize.height}
+            />
+          </View>
+
+          <View style={styles.heroInfo}>
+            <View>
+              <View style={styles.heroStateRow}>
+                <View style={styles.heroState}>
+                  <View style={[styles.heroDot, { backgroundColor: palette.accent }]} />
+                  <Text
+                    style={[
+                      styles.heroStateText,
+                      { color: palette.accent, fontFamily: TYPOGRAPHY.uiFont },
+                    ]}
+                  >
+                    قراءة حالية
+                  </Text>
+                </View>
+
+                {layout.isTablet ? (
+                  <View
+                    style={[
+                      styles.heroModeTag,
+                      {
+                        backgroundColor: palette.surface,
+                        borderColor: palette.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.heroModeTagText,
+                        { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
+                      ]}
+                    >
+                      {layout.isTabletLandscape
+                        ? 'يفتح بوضع صفحتين جنب بعض'
+                        : 'يفتح بصفحة مريحة وهوامش واسعة'}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+
+              <Text
+                style={[
+                  styles.heroTitle,
+                  {
+                    color: palette.text,
+                    fontFamily: TYPOGRAPHY.displayFont,
+                    fontSize: heroTitleScale.fontSize,
+                    lineHeight: heroTitleScale.lineHeight,
+                    writingDirection: isHeroRtl ? 'rtl' : 'ltr',
+                  },
+                ]}
+                numberOfLines={2}
+              >
+                {heroBook.title}
+              </Text>
+
+              {heroBook.author ? (
+                <Text
+                  style={[
+                    styles.heroAuthor,
+                    {
+                      color: palette.muted,
+                      fontFamily: TYPOGRAPHY.uiFont,
+                      fontSize: layout.isTablet ? 15 : 13,
+                      writingDirection: isHeroRtl ? 'rtl' : 'ltr',
+                    },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {heroBook.author}
+                </Text>
+              ) : null}
+            </View>
+
+            <View style={styles.heroBottom}>
+              <View style={styles.heroProgressWrap}>
+                <View style={[styles.hairTrack, { backgroundColor: palette.border }]}>
+                  <View
+                    style={[
+                      styles.hairFill,
+                      {
+                        width: `${heroPct}%`,
+                        backgroundColor: palette.accent,
+                      },
+                    ]}
+                  />
+                </View>
+                <View style={styles.heroMetaRow}>
+                  <Text
+                    style={[
+                      styles.heroPctLabel,
+                      { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
+                    ]}
+                  >
+                    {`${heroPct}%`}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.heroStatusLabel,
+                      { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
+                    ]}
+                  >
+                    {heroPct === 0 ? 'لم تبدأ بعد' : heroPct === 100 ? 'مكتملة' : 'مقروء'}
+                  </Text>
+                </View>
+              </View>
+
+              <Pressable
+                testID="continue-reading-button"
+                onPress={() => handleOpenBook(heroBook)}
+                style={({ pressed }) => [
+                  styles.continueCta,
+                  { backgroundColor: palette.ctaBg },
+                  pressed && styles.pressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="كمّل القراية"
+              >
+                <Text
+                  style={[
+                    styles.continueCtaText,
+                    { color: palette.ctaText, fontFamily: TYPOGRAPHY.uiFont },
+                  ]}
+                >
+                  كمّل القراية
+                </Text>
+                <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                  <Path
+                    d="M15 18l-6-6 6-6"
+                    stroke={palette.ctaText}
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </Svg>
+              </Pressable>
+            </View>
+          </View>
+        </Pressable>
+
+        {shelfBooks.length > 0 ? (
+          <View style={styles.shelfHead}>
+            <Text
+              style={[
+                styles.shelfTitle,
+                {
+                  color: palette.text,
+                  fontFamily: TYPOGRAPHY.displayFont,
+                  fontSize: shelfTitleScale.fontSize,
+                  lineHeight: shelfTitleScale.lineHeight,
+                },
+              ]}
+            >
+              رفّ الكتب
+            </Text>
+            <Text
+              style={[
+                styles.shelfCount,
+                { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
+              ]}
+            >
+              {`${books.length} روايات`}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    );
+  };
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <View style={styles.headerTextWrap}>
-          <Text style={styles.headerTitle}>روايتي</Text>
-          <Text style={styles.headerSubtitle}>مكتبتك الشخصية</Text>
+    <View
+      testID="library-screen"
+      style={[
+        styles.container,
+        {
+          backgroundColor: palette.bg,
+          paddingTop: insets.top,
+        },
+      ]}
+    >
+      <StatusBar style={palette.isDark ? 'light' : 'dark'} />
+
+      {/* Editorial Header */}
+      <View
+        style={[
+          styles.header,
+          {
+            paddingHorizontal: horizontalPadding,
+            paddingTop: layout.isTablet ? 20 : 14,
+            paddingBottom: layout.isTablet ? 18 : 14,
+            borderBottomColor: palette.border,
+            backgroundColor: palette.bg,
+          },
+        ]}
+      >
+        <View style={styles.brandLockup}>
+          <Svg
+            width={layout.isTablet ? 30 : 26}
+            height={layout.isTablet ? 30 : 26}
+            viewBox="0 0 26 26"
+            fill="none"
+          >
+            <Path
+              d="M4.5 5.5C8.5 5.5 11.2 6.8 13 8.8C14.8 6.8 17.5 5.5 21.5 5.5V19.8C17.6 19.8 14.9 20.8 13 22.5C11.1 20.8 8.4 19.8 4.5 19.8V5.5Z"
+              stroke={palette.text}
+              strokeWidth={1.5}
+              strokeLinejoin="round"
+            />
+            <Path d="M13 8.8V22.5" stroke={palette.text} strokeWidth={1.3} />
+            <Path
+              d="M17.2 5.7V13.2L15.4 11.7L13.6 13.2V7.9"
+              fill={palette.ribbon}
+            />
+          </Svg>
+          <Text
+            style={[
+              styles.brandName,
+              {
+                color: palette.text,
+                fontFamily: TYPOGRAPHY.displayFont,
+                fontSize: brandScale.fontSize,
+                lineHeight: brandScale.lineHeight,
+              },
+            ]}
+          >
+            روايتي
+          </Text>
+          {layout.isTablet ? (
+            <View style={[styles.brandDivider, { borderStartColor: palette.border }]}>
+              <Text
+                style={[
+                  styles.brandSub,
+                  { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
+                ]}
+              >
+                {`مكتبة الوَرّاق · ${books.length} كتب`}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
-        <Pressable
-          testID="import-book-button"
-          onPress={() => void handleImport()}
-          disabled={importing}
-          style={({ pressed }) => [
-            styles.importBtn,
-            pressed && styles.importBtnPressed,
-            importing && styles.importBtnDisabled,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="استيراد كتاب جديد"
-        >
-          <Text style={styles.importBtnText}>{importing ? 'جاري الاستيراد...' : '+ استيراد'}</Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          {layout.isTablet ? (
+            <View
+              style={[
+                styles.themePillGroup,
+                {
+                  backgroundColor: palette.surface,
+                  borderColor: palette.border,
+                },
+              ]}
+            >
+              {THEME_OPTIONS.map((t) => {
+                const active = themeId === t.id;
+                return (
+                  <Pressable
+                    key={t.id}
+                    testID={`library-theme-pill-${t.id}`}
+                    onPress={() => void selectTheme(t.id)}
+                    style={[
+                      styles.themePillBtn,
+                      active && { backgroundColor: palette.surfaceElevated },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text
+                      style={[
+                        styles.themePillText,
+                        {
+                          color: active ? palette.accent : palette.muted,
+                          fontWeight: active ? '600' : '500',
+                          fontFamily: TYPOGRAPHY.uiFont,
+                        },
+                      ]}
+                    >
+                      {t.labelAr}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : (
+            <Pressable
+              testID="library-theme-toggle"
+              onPress={handleCycleTheme}
+              style={({ pressed }) => [
+                styles.iconBtn,
+                { borderColor: palette.border },
+                pressed && { backgroundColor: palette.surface },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="تبديل المظهر"
+            >
+              <Svg width={17} height={17} viewBox="0 0 24 24" fill="none">
+                {palette.isDark ? (
+                  <Path
+                    d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"
+                    stroke={palette.text}
+                    strokeWidth={1.7}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                ) : (
+                  <>
+                    <Circle cx={12} cy={12} r={4} stroke={palette.text} strokeWidth={1.7} />
+                    <Path
+                      d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+                      stroke={palette.text}
+                      strokeWidth={1.7}
+                      strokeLinecap="round"
+                    />
+                  </>
+                )}
+              </Svg>
+            </Pressable>
+          )}
+
+          <Pressable
+            testID="import-book-button"
+            onPress={() => void handleImport()}
+            disabled={importing}
+            style={({ pressed }) => [
+              styles.importBtn,
+              {
+                borderColor: palette.accent,
+                backgroundColor: pressed ? palette.accent : 'transparent',
+              },
+              importing && styles.importBtnDisabled,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="استيراد كتاب جديد"
+          >
+            {({ pressed }) => (
+              <Text
+                style={[
+                  styles.importBtnText,
+                  {
+                    color: pressed ? palette.ctaText : palette.accent,
+                    fontFamily: TYPOGRAPHY.uiFont,
+                  },
+                ]}
+              >
+                {importing ? 'جاري الاستيراد...' : layout.isTablet ? '+ استيراد رواية' : '+ استيراد'}
+              </Text>
+            )}
+          </Pressable>
+        </View>
       </View>
 
       {loading ? (
-        <View style={styles.centerState}>
-          <ActivityIndicator size="large" color="#8B5A2B" />
-          <Text style={styles.stateText}>جاري تحضير المكتبة...</Text>
+        <View testID="library-loading-state" style={styles.centerState}>
+          <ActivityIndicator size="large" color={palette.accent} />
+          <Text style={[styles.stateText, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}>
+            جاري تحضير المكتبة...
+          </Text>
         </View>
       ) : errorMsg ? (
-        <View style={styles.centerState}>
-          <Text style={styles.errorText} selectable>
-            {errorMsg}
-          </Text>
-          <Pressable onPress={() => void refreshBooks()} style={styles.retryBtn}>
-            <Text style={styles.retryBtnText}>إعادة المحاولة</Text>
-          </Pressable>
+        <View testID="library-error-state" style={styles.centerState}>
+          <View
+            style={[
+              styles.errorCard,
+              {
+                backgroundColor: palette.surface,
+                borderColor: palette.border,
+              },
+            ]}
+          >
+            <Text style={[styles.errorOrnament, { color: palette.danger }]}>✦</Text>
+            <Text
+              style={[
+                styles.errorText,
+                { color: palette.danger, fontFamily: TYPOGRAPHY.uiFont },
+              ]}
+              selectable
+            >
+              {errorMsg}
+            </Text>
+            <Pressable
+              testID="library-retry-button"
+              onPress={() => void refreshBooks()}
+              style={({ pressed }) => [
+                styles.retryBtn,
+                { backgroundColor: palette.ctaBg },
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.retryBtnText,
+                  { color: palette.ctaText, fontFamily: TYPOGRAPHY.uiFont },
+                ]}
+              >
+                إعادة المحاولة
+              </Text>
+            </Pressable>
+          </View>
         </View>
       ) : (
-        <FlatList
+        <FlatList<GridItem>
+          key={`library-grid-${gridColumns}`}
           testID="library-book-list"
-          data={books}
+          data={gridData}
+          numColumns={gridColumns}
           keyExtractor={(item) => item.id}
+          ListHeaderComponent={renderHeroHeader() ?? undefined}
+          columnWrapperStyle={
+            gridColumns > 1
+              ? [styles.gridRow, { gap: layout.isTablet ? 24 : 18 }]
+              : undefined
+          }
           contentContainerStyle={[
             styles.listContent,
-            { paddingBottom: Math.max(insets.bottom, 20) + 12 },
+            {
+              paddingHorizontal: horizontalPadding,
+              paddingTop: layout.isTablet ? 28 : 22,
+              paddingBottom: Math.max(insets.bottom, 24) + 16,
+              gap: layout.isTablet ? 26 : 22,
+            },
           ]}
-          renderItem={({ item }) => (
-            <BookCard
-              book={item}
-              onPress={handleOpenBook}
-              onLongPress={handleLongPressBook}
-            />
-          )}
+          renderItem={({ item }) => {
+            if (isSpacerItem(item)) {
+              return <View style={styles.gridSpacer} />;
+            }
+            return (
+              <BookCard
+                book={item}
+                theme={themeId}
+                isTablet={layout.isTablet}
+                onPress={handleOpenBook}
+                onLongPress={handleLongPressBook}
+              />
+            );
+          }}
           ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyOrnament}>✦</Text>
-              <Text style={styles.emptyTitle}>المكتبة فارغة</Text>
-              <Text style={styles.emptyHint}>
-                اضغط «+ استيراد» لإضافة رواية بصيغة .md أو .txt
-              </Text>
-            </View>
+            books.length === 0 ? (
+              <View testID="library-empty-state" style={styles.emptyState}>
+                <Text style={[styles.emptyOrnament, { color: palette.accent }]}>✦</Text>
+                <Text
+                  style={[
+                    styles.emptyTitle,
+                    { color: palette.text, fontFamily: TYPOGRAPHY.displayFont },
+                  ]}
+                >
+                  المكتبة فارغة
+                </Text>
+                <Text
+                  style={[
+                    styles.emptyHint,
+                    { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
+                  ]}
+                >
+                  اضغط «+ استيراد» لإضافة رواية بصيغة .md أو .txt
+                </Text>
+                <Pressable
+                  onPress={() => void handleImport()}
+                  style={({ pressed }) => [
+                    styles.emptyCta,
+                    { backgroundColor: palette.ctaBg },
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.emptyCtaText,
+                      { color: palette.ctaText, fontFamily: TYPOGRAPHY.uiFont },
+                    ]}
+                  >
+                    استيراد كتابك الأول
+                  </Text>
+                </Pressable>
+              </View>
+            ) : undefined
           }
         />
       )}
@@ -172,55 +672,193 @@ export function LibraryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAF8F5',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5DDD0',
-    backgroundColor: '#FAF8F5',
   },
-  headerTextWrap: {
-    gap: 2,
+  brandLockup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
-  headerTitle: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: '#24211D',
+  brandName: {
+    fontWeight: '700',
     textAlign: 'right',
   },
-  headerSubtitle: {
+  brandDivider: {
+    paddingStart: 12,
+    borderStartWidth: 1,
+  },
+  brandSub: {
     fontSize: 13,
-    color: '#6E675F',
-    textAlign: 'right',
   },
-  importBtn: {
-    minHeight: 44,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    borderCurve: 'continuous',
-    backgroundColor: '#8B5A2B',
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  themePillGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    padding: 3,
+    borderWidth: 1,
+    borderRadius: 8,
+  },
+  themePillBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 5,
+  },
+  themePillText: {
+    fontSize: 12,
+  },
+  iconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.button,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  importBtnPressed: {
-    opacity: 0.84,
+  importBtn: {
+    height: 38,
+    paddingHorizontal: 13,
+    borderRadius: RADIUS.button,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   importBtnDisabled: {
     opacity: 0.6,
   },
   importBtnText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFDF9',
+    fontSize: 13,
+    fontWeight: '600',
   },
   listContent: {
-    padding: 16,
+    flexGrow: 1,
+  },
+  gridRow: {
+    alignItems: 'flex-start',
+  },
+  gridSpacer: {
+    flex: 1,
+  },
+  heroSpread: {
+    flexDirection: 'row',
+    gap: 18,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+  },
+  heroSpreadTablet: {
+    gap: 28,
+    paddingBottom: 30,
+    alignItems: 'center',
+  },
+  heroCoverWrap: {
+    flexShrink: 0,
+  },
+  heroInfo: {
+    flex: 1,
+    justifyContent: 'space-between',
+    paddingVertical: 2,
+    minWidth: 0,
+    gap: 10,
+  },
+  heroStateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 6,
+  },
+  heroState: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  heroDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  heroStateText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+  },
+  heroModeTag: {
+    paddingHorizontal: 9,
+    paddingVertical: 2,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  heroModeTagText: {
+    fontSize: 11,
+  },
+  heroTitle: {
+    fontWeight: '700',
+    textAlign: 'right',
+    marginBottom: 3,
+  },
+  heroAuthor: {
+    textAlign: 'right',
+  },
+  heroBottom: {
     gap: 12,
+  },
+  heroProgressWrap: {
+    gap: 6,
+  },
+  hairTrack: {
+    width: '100%',
+    height: 2,
+    borderRadius: 1,
+    overflow: 'hidden',
+  },
+  hairFill: {
+    height: '100%',
+  },
+  heroMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  heroPctLabel: {
+    fontSize: 11.5,
+    fontVariant: ['tabular-nums'],
+  },
+  heroStatusLabel: {
+    fontSize: 11.5,
+  },
+  continueCta: {
+    alignSelf: 'flex-start',
+    height: 38,
+    paddingHorizontal: 16,
+    borderRadius: RADIUS.button,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  continueCtaText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  shelfHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginTop: SPACING.lg,
+  },
+  shelfTitle: {
+    fontWeight: '700',
+  },
+  shelfCount: {
+    fontSize: 12,
+    fontVariant: ['tabular-nums'],
   },
   centerState: {
     flex: 1,
@@ -230,46 +868,67 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   stateText: {
-    fontSize: 15,
-    color: '#6E675F',
+    fontSize: 14.5,
+  },
+  errorCard: {
+    width: '100%',
+    maxWidth: 360,
+    padding: 22,
+    borderRadius: RADIUS.card,
+    borderWidth: 1,
+    alignItems: 'center',
+    gap: 12,
+  },
+  errorOrnament: {
+    fontSize: 20,
   },
   errorText: {
-    fontSize: 15,
-    color: '#991B1B',
+    fontSize: 14.5,
     textAlign: 'center',
+    lineHeight: 22,
   },
   retryBtn: {
-    minHeight: 44,
-    paddingHorizontal: 18,
-    borderRadius: 10,
-    backgroundColor: '#8B5A2B',
+    minHeight: 42,
+    paddingHorizontal: 20,
+    borderRadius: RADIUS.button,
     justifyContent: 'center',
   },
   retryBtnText: {
-    color: '#FFFDF9',
-    fontWeight: '700',
-    fontSize: 14,
+    fontWeight: '600',
+    fontSize: 13.5,
   },
   emptyState: {
     paddingVertical: 72,
     paddingHorizontal: 24,
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   emptyOrnament: {
     fontSize: 24,
-    color: '#8B5A2B',
     marginBottom: 4,
   },
   emptyTitle: {
-    fontSize: 19,
+    fontSize: 22,
     fontWeight: '700',
-    color: '#24211D',
   },
   emptyHint: {
     fontSize: 14,
-    color: '#6E675F',
     textAlign: 'center',
     lineHeight: 22,
+    maxWidth: 320,
+  },
+  emptyCta: {
+    marginTop: 8,
+    height: 40,
+    paddingHorizontal: 18,
+    borderRadius: RADIUS.button,
+    justifyContent: 'center',
+  },
+  emptyCtaText: {
+    fontSize: 13.5,
+    fontWeight: '600',
+  },
+  pressed: {
+    opacity: 0.78,
   },
 });

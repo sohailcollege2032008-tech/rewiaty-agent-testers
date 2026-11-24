@@ -7,7 +7,7 @@ appId: com.rewiaty.app
 - tapOn: "حَجَرُ الْمَاءِ"
 - extendedWaitUntil:
     notVisible:
-      id: "reader-loading"
+      id: "reader-loading-overlay"
     timeout: 20000
 - waitForAnimationToEnd
 # Center tap -> Settings -> OLED Night -> Font Amiri -> Font Size
@@ -21,10 +21,10 @@ appId: com.rewiaty.app
     id: "reader-settings-button"
 - extendedWaitUntil:
     visible:
-      id: "theme-option-oled"
+      id: "theme-option-oled-crimson"
     timeout: 5000
 - tapOn:
-    id: "theme-option-oled"
+    id: "theme-option-oled-crimson"
 - tapOn:
     id: "font-option-Readex Pro"
 - waitForAnimationToEnd

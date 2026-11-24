@@ -3,11 +3,11 @@ appId: com.rewiaty.app
 # Workflow fires ACTION_VIEW intent for edge-cases.md right before invoking this flow
 - extendedWaitUntil:
     notVisible:
-      id: "reader-loading"
+      id: "reader-loading-overlay"
     timeout: 20000
 - waitForAnimationToEnd
 - assertNotVisible:
-    id: "reader-error"
+    id: "reader-error-state"
 - takeScreenshot: "01-opened-from-intent"
 - tapOn:
     point: "50%,50%"

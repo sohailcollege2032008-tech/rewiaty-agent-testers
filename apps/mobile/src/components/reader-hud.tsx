@@ -8,12 +8,14 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Path } from 'react-native-svg';
 
+import { TYPOGRAPHY } from '@/theme/layout';
 import { getAppThemeTokens } from '@/theme/reader-theme';
 import type { ThemeId } from '@/types/reader';
 import { PageScrubber } from './page-scrubber';
 
-const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
+const EASE_OUT = Easing.bezier(0.22, 1, 0.36, 1);
 
 export type ReaderHudProps = {
   visible: boolean;
@@ -21,6 +23,10 @@ export type ReaderHudProps = {
   chapterTitle: string;
   page: number;
   pageCount: number;
+  chapterCount?: number;
+  isBookmarked?: boolean;
+  isTablet?: boolean;
+  isTabletLandscape?: boolean;
   dir: 'rtl' | 'ltr';
   theme?: ThemeId;
   onBack: () => void;
@@ -35,6 +41,10 @@ export function ReaderHud({
   chapterTitle,
   page,
   pageCount,
+  chapterCount,
+  isBookmarked = false,
+  isTablet = false,
+  isTabletLandscape = false,
   dir,
   theme,
   onBack,
@@ -81,8 +91,9 @@ export function ReaderHud({
         pointerEvents={barPointerEvents}
         style={[
           styles.header,
+          isTablet && styles.headerTablet,
           {
-            paddingTop: Math.max(insets.top, 12),
+            paddingTop: Math.max(insets.top, isTablet ? 14 : 12),
             backgroundColor: palette.hudBg,
             borderBottomColor: palette.border,
           },
@@ -95,22 +106,64 @@ export function ReaderHud({
           hitSlop={10}
           style={({ pressed }) => [
             styles.iconBtn,
-            { backgroundColor: palette.chipActiveBg },
-            pressed && styles.btnPressed,
+            isTablet && styles.iconBtnTablet,
+            pressed && { backgroundColor: palette.accentSoft },
           ]}
           accessibilityRole="button"
           accessibilityLabel="رجوع إلى المكتبة"
         >
-          <Text style={[styles.btnText, { color: palette.accent }]}>رجوع</Text>
+          <Svg width={19} height={19} viewBox="0 0 24 24" fill="none">
+            <Path
+              d="M9 18l6-6-6-6"
+              stroke={palette.text}
+              strokeWidth={1.8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </Svg>
+          {isTablet ? (
+            <Text style={[styles.btnText, { color: palette.text, fontFamily: TYPOGRAPHY.uiFont }]}>
+              المكتبة
+            </Text>
+          ) : null}
         </Pressable>
 
-        <Text
-          testID="reader-book-title"
-          style={[styles.bookTitle, { color: palette.text }]}
-          numberOfLines={1}
-        >
-          {bookTitle}
-        </Text>
+        <View style={styles.titleCenterWrap}>
+          <Text
+            testID="reader-book-title"
+            style={[
+              styles.bookTitle,
+              {
+                color: palette.text,
+                fontFamily: TYPOGRAPHY.displayFont,
+                fontSize: isTablet ? 21 : 18,
+              },
+            ]}
+            numberOfLines={1}
+          >
+            {bookTitle}
+          </Text>
+          {isTablet ? (
+            <View
+              style={[
+                styles.modePill,
+                {
+                  backgroundColor: palette.surface,
+                  borderColor: palette.border,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.modePillText,
+                  { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
+                ]}
+              >
+                {isTabletLandscape ? 'كتاب مفتوح · صفحتان' : 'تابلت · صفحة واحدة'}
+              </Text>
+            </View>
+          ) : null}
+        </View>
 
         <View style={styles.actionsRow}>
           <Pressable
@@ -119,13 +172,25 @@ export function ReaderHud({
             hitSlop={10}
             style={({ pressed }) => [
               styles.iconBtn,
-              { backgroundColor: palette.chipActiveBg },
-              pressed && styles.btnPressed,
+              isTablet && styles.iconBtnTablet,
+              pressed && { backgroundColor: palette.accentSoft },
             ]}
             accessibilityRole="button"
             accessibilityLabel="الفهرس"
           >
-            <Text style={[styles.btnText, { color: palette.accent }]}>الفهرس</Text>
+            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M4 6h16M4 12h11M4 18h14"
+                stroke={palette.text}
+                strokeWidth={1.8}
+                strokeLinecap="round"
+              />
+            </Svg>
+            {isTablet ? (
+              <Text style={[styles.btnText, { color: palette.text, fontFamily: TYPOGRAPHY.uiFont }]}>
+                الفهرس
+              </Text>
+            ) : null}
           </Pressable>
 
           <Pressable
@@ -134,13 +199,28 @@ export function ReaderHud({
             hitSlop={10}
             style={({ pressed }) => [
               styles.iconBtn,
-              { backgroundColor: palette.chipActiveBg },
-              pressed && styles.btnPressed,
+              isTablet && styles.iconBtnTablet,
+              pressed && { backgroundColor: palette.accentSoft },
             ]}
             accessibilityRole="button"
             accessibilityLabel="إعدادات القراءة"
           >
-            <Text style={[styles.btnText, { color: palette.accent }]}>الإعدادات</Text>
+            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M4 20h16M6 16l4-12 4 12M7.5 12h5"
+                stroke={palette.accent}
+                strokeWidth={1.8}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </Svg>
+            {isTablet ? (
+              <Text
+                style={[styles.btnText, { color: palette.accent, fontFamily: TYPOGRAPHY.uiFont }]}
+              >
+                المظهر والخط
+              </Text>
+            ) : null}
           </Pressable>
         </View>
       </Animated.View>
@@ -150,37 +230,55 @@ export function ReaderHud({
         pointerEvents={barPointerEvents}
         style={[
           styles.footer,
+          isTablet && styles.footerTablet,
           {
-            paddingBottom: Math.max(insets.bottom, 14),
+            paddingBottom: Math.max(insets.bottom, 18),
             backgroundColor: palette.hudBg,
             borderTopColor: palette.border,
           },
           bottomStyle,
         ]}
       >
-        <View style={styles.footerInfoRow}>
-          <Text
-            testID="reader-chapter-title"
-            style={[styles.chapterTitle, { color: palette.muted }]}
-            numberOfLines={1}
-          >
-            {chapterTitle}
-          </Text>
-          <Text
-            testID="reader-page-counter"
-            style={[styles.pageCounter, { color: palette.text }]}
-          >
-            {`صفحة ${page} من ${pageCount}`}
-          </Text>
-        </View>
+        <View style={[styles.footerInner, isTablet && styles.footerInnerTablet]}>
+          <View style={styles.footerInfoRow}>
+            <Text
+              testID="reader-chapter-title"
+              style={[
+                styles.chapterTitle,
+                { color: palette.text, fontFamily: TYPOGRAPHY.uiFont },
+              ]}
+              numberOfLines={1}
+            >
+              {chapterTitle}
+            </Text>
+            <Text
+              testID="reader-page-counter"
+              style={[
+                styles.pageCounter,
+                { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
+              ]}
+            >
+              {`صفحة ${page} من ${pageCount}`}
+            </Text>
+          </View>
 
-        <PageScrubber
-          page={page}
-          pageCount={pageCount}
-          dir={dir}
-          theme={theme}
-          onSeekPage={onSeekPage}
-        />
+          <PageScrubber
+            page={page}
+            pageCount={pageCount}
+            dir={dir}
+            theme={theme}
+            onSeekPage={onSeekPage}
+          />
+
+          <View style={styles.footerSubRow}>
+            <Text style={[styles.subText, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}>
+              {chapterCount ? `${chapterCount} فصول` : 'القراءة الحالية'}
+            </Text>
+            <Text style={[styles.subText, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}>
+              {isBookmarked ? 'الصفحة محفوظة بالشريطة' : 'اضغط الشريطة لحفظ الصفحة'}
+            </Text>
+          </View>
+        </View>
       </Animated.View>
     </View>
   );
@@ -196,52 +294,78 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
-    paddingHorizontal: 14,
+    gap: 8,
+    paddingHorizontal: 16,
     paddingBottom: 12,
-    backgroundColor: 'rgba(250, 248, 245, 0.96)',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5DDD0',
-    boxShadow: '0 2px 10px rgba(0, 0, 0, 0.08)',
+  },
+  headerTablet: {
+    paddingHorizontal: 28,
+    paddingBottom: 14,
   },
   actionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
   },
   iconBtn: {
-    minWidth: 52,
-    minHeight: 44,
-    paddingHorizontal: 10,
-    borderRadius: 10,
+    minWidth: 40,
+    minHeight: 40,
+    paddingHorizontal: 8,
+    borderRadius: 6,
     borderCurve: 'continuous',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(139, 90, 43, 0.1)',
+    gap: 6,
   },
-  btnPressed: {
-    opacity: 0.72,
+  iconBtnTablet: {
+    paddingHorizontal: 11,
+    borderRadius: 7,
   },
   btnText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#8B5A2B',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  titleCenterWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    minWidth: 0,
   },
   bookTitle: {
-    flex: 1,
-    fontSize: 16,
     fontWeight: '700',
-    color: '#24211D',
     textAlign: 'center',
+    flexShrink: 1,
+  },
+  modePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  modePillText: {
+    fontSize: 11.5,
+    fontWeight: '500',
   },
   footer: {
-    gap: 8,
-    paddingHorizontal: 18,
-    paddingTop: 12,
-    backgroundColor: 'rgba(250, 248, 245, 0.96)',
+    paddingHorizontal: 20,
+    paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: '#E5DDD0',
-    boxShadow: '0 -2px 10px rgba(0, 0, 0, 0.08)',
+  },
+  footerTablet: {
+    paddingHorizontal: 48,
+    paddingTop: 16,
+  },
+  footerInner: {
+    width: '100%',
+    gap: 8,
+  },
+  footerInnerTablet: {
+    maxWidth: 900,
+    alignSelf: 'center',
   },
   footerInfoRow: {
     flexDirection: 'row',
@@ -251,15 +375,22 @@ const styles = StyleSheet.create({
   },
   chapterTitle: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '600',
-    color: '#6E675F',
     textAlign: 'right',
   },
   pageCounter: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#24211D',
+    fontSize: 12,
+    fontWeight: '500',
     fontVariant: ['tabular-nums'],
+  },
+  footerSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  subText: {
+    fontSize: 11,
   },
 });

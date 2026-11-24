@@ -7,7 +7,7 @@ appId: com.rewiaty.app
 - tapOn: "حَجَرُ الْمَاءِ"
 - extendedWaitUntil:
     notVisible:
-      id: "reader-loading"
+      id: "reader-loading-overlay"
     timeout: 20000
 - waitForAnimationToEnd
 # Jump to Chapter 2 via TOC
@@ -93,7 +93,7 @@ appId: com.rewiaty.app
 - tapOn: "حَجَرُ الْمَاءِ"
 - extendedWaitUntil:
     notVisible:
-      id: "reader-loading"
+      id: "reader-loading-overlay"
     timeout: 20000
 - waitForAnimationToEnd
 - takeScreenshot: "03-ch2-after-reopen"
