@@ -23,6 +23,12 @@ export type ReaderSettings = {
   disableAnimation: boolean;
   maxReadingWidth: number; // ch (45..85)
   dirOverride?: 'auto' | 'rtl' | 'ltr';
+  /**
+   * Two-page (open book) spread on wide landscape viewports.
+   * - 'auto' (default): spread whenever the viewport is >= 900px wide and wider than tall.
+   * - 'single': never spread, even on a tablet in landscape.
+   */
+  spread?: 'auto' | 'single';
 };
 
 export type ThemeTokens = {
@@ -94,6 +100,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   disableAnimation: false,
   maxReadingWidth: 68,
   dirOverride: 'auto',
+  spread: 'auto',
 };
 
 export type RNToWebMessage =
@@ -146,6 +153,8 @@ export type WebToRNMessage =
       chapterPage: number;
       chapterPageCount: number;
       bookProgress: number;
+      /** true when the reader is showing a two-page open-book spread. */
+      spread: boolean;
     }
   | {
       type: 'tap';

@@ -113,6 +113,17 @@
       background: #FAF8F5;
       box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
     }
+    /* Let the reader fill the harness in landscape so the two-page spread is testable */
+    @media (min-aspect-ratio: 1/1) {
+      iframe {
+        max-width: 100%;
+        max-height: 100%;
+        border-radius: 10px;
+      }
+      .stage-wrap {
+        padding: 10px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -211,6 +222,14 @@
       <select id="setting-indent">
         <option value="classic">Classic Indent</option>
         <option value="block">Modern Block</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <span class="field-label">Spread</span>
+      <select id="setting-spread">
+        <option value="auto">Auto (two pages in landscape)</option>
+        <option value="single">Single page</option>
       </select>
     </div>
 
