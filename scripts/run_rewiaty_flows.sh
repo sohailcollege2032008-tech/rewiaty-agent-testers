@@ -123,14 +123,21 @@ fi
 
 # 5. open-with-telegram (clean state -> VIEW intent on edge-cases.md -> Maestro verifies book opened)
 adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
-MEDIA_ID="$(adb shell content query --uri content://media/external/file --projection _id --where "_display_name='edge-cases.md'" 2>/dev/null | sed -n 's/.*_id=\([0-9]*\).*/\1/p' | head -n 1 | tr -d '\r')"
-if [ -n "$MEDIA_ID" ]; then
-  INTENT_URI="content://media/external/file/${MEDIA_ID}"
-else
-  INTENT_URI="file:///storage/emulated/0/Download/edge-cases.md"
+# Why (tech): Telegram / file managers hand over a content:// URI with a read grant; file:// between apps
+# is blocked since Android 7. So we index the pushed file in MediaStore and send its content:// URI.
+adb shell content call --uri content://media --method scan_volume --arg external_primary >/dev/null 2>&1 || true
+sleep 3
+MEDIA_ID=""
+for coll in downloads file; do
+  MEDIA_ID="$(adb shell content query --uri "content://media/external/${coll}" --projection _id --where "_display_name='edge-cases.md'" 2>/dev/null | sed -n 's/.*_id=\([0-9]*\).*/\1/p' | head -n 1 | tr -d '\r')"
+  if [ -n "$MEDIA_ID" ]; then INTENT_URI="content://media/external/${coll}/${MEDIA_ID}"; break; fi
+done
+if [ -z "$MEDIA_ID" ]; then
+  echo "ERROR: edge-cases.md not indexed in MediaStore; refusing to fall back to file:// (not a real-world path)" | tee results/logs/open-with-intent.txt
+  INTENT_URI=""
 fi
-echo "Triggering ACTION_VIEW with URI: $INTENT_URI" | tee results/logs/open-with-intent.txt
-adb shell am start -W -a android.intent.action.VIEW -t text/markdown -d "$INTENT_URI" --grant-read-uri-permission "$APP_ID" \
+echo "Triggering ACTION_VIEW with URI: $INTENT_URI" | tee -a results/logs/open-with-intent.txt
+[ -n "$INTENT_URI" ] && adb shell am start -W -a android.intent.action.VIEW -t text/markdown -d "$INTENT_URI" --grant-read-uri-permission "$APP_ID" \
   >> results/logs/open-with-intent.txt 2>&1 || true
 sleep 2
 run_flow "open-with-telegram" || true
