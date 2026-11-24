@@ -116,7 +116,7 @@
 - [x] سكيلز Expo وRN الرسمية متحمّلة
 - [ ] Release APK بـ mobile-run
 - [ ] Maestro flows على Redroid (الـ 5 رحلات اللي في flows.yaml)
-- [ ] ريبو mobile-agent-testers شغال على OpenCode Go (deepseek)
+- [x] ريبو mobile-agent-testers شغال على OpenCode Go (deepseek): demo لقى 14 issue ومن غير فلوس
 - [ ] جولة QA: global-qa، وnovice-ux-qa، وvisual-qa
 - بوابات: [ ] كود · [ ] اختبار · [ ] مراجعة · [ ] جهاز · [ ] QA
 
