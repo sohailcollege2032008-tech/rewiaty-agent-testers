@@ -1,0 +1,2259 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="paper">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>روايتي — الاتجاه ب: السَّكينة</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=Literata:ital,opsz,wght@0,7..72,300..600;1,7..72,400&family=Merriweather:wght@300;400;700&family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Readex+Pro:wght@300;400;500;600;700&family=Scheherazade+New:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #FAF8F5;
+      --surface: #F2EFE9;
+      --surface-elevated: #FFFFFF;
+      --hud-bg: rgba(255, 255, 255, 0.88);
+      --sheet-bg: rgba(255, 255, 255, 0.93);
+      --text: #1F2421;
+      --muted: #646E68;
+      --border: rgba(31, 36, 33, 0.08);
+      --accent: #1F5E5B;
+      --accent-soft: rgba(31, 94, 91, 0.10);
+      --accent-text: #FFFFFF;
+      --quote-bg: rgba(31, 94, 91, 0.045);
+      --quote-border: rgba(31, 94, 91, 0.45);
+      --page-edge: rgba(31, 94, 91, 0.22);
+      --ribbon: #1F5E5B;
+      --grain-opacity: 0.028;
+      --shadow-soft: 0 8px 26px rgba(31, 36, 33, 0.07), 0 1px 3px rgba(31, 36, 33, 0.04);
+
+      --ui-font: 'Readex Pro', 'IBM Plex Sans Arabic', sans-serif;
+      --display-font: 'Readex Pro', sans-serif;
+      --read-font: 'Noto Naskh Arabic', 'Amiri', serif;
+      --read-size: 19px;
+      --read-lh: 1.98;
+      --read-ws: 0px;
+      --read-weight: 400;
+      --read-align: justify;
+      --read-indent: 1.4em;
+      --read-pgap: 9px;
+      --margin-h: 24px;
+      --margin-v: 24px;
+      --page-turn-ms: 220ms;
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+      --ribbon-spring: cubic-bezier(0.28, 1.42, 0.58, 1);
+    }
+
+    html[data-theme="sepia"] {
+      --bg: #F4ECD8;
+      --surface: #EBE1C8;
+      --surface-elevated: #FAF4E5;
+      --hud-bg: rgba(250, 244, 229, 0.91);
+      --sheet-bg: rgba(250, 244, 229, 0.95);
+      --text: #362D23;
+      --muted: #756756;
+      --border: rgba(54, 45, 35, 0.10);
+      --accent: #286159;
+      --accent-soft: rgba(40, 97, 89, 0.11);
+      --accent-text: #FAF4E5;
+      --quote-bg: rgba(40, 97, 89, 0.055);
+      --quote-border: rgba(40, 97, 89, 0.48);
+      --page-edge: rgba(86, 72, 54, 0.25);
+      --ribbon: #286159;
+      --grain-opacity: 0.032;
+      --shadow-soft: 0 8px 24px rgba(54, 45, 35, 0.09);
+    }
+
+    html[data-theme="charcoal"] {
+      --bg: #16181A;
+      --surface: #1F2225;
+      --surface-elevated: #262A2E;
+      --hud-bg: rgba(34, 38, 42, 0.88);
+      --sheet-bg: rgba(34, 38, 42, 0.94);
+      --text: #D8DCDF;
+      --muted: #8C969C;
+      --border: rgba(216, 220, 223, 0.09);
+      --accent: #5CA8A3;
+      --accent-soft: rgba(92, 168, 163, 0.15);
+      --accent-text: #101414;
+      --quote-bg: rgba(92, 168, 163, 0.07);
+      --quote-border: rgba(92, 168, 163, 0.50);
+      --page-edge: rgba(216, 220, 223, 0.14);
+      --ribbon: #5CA8A3;
+      --grain-opacity: 0;
+      --shadow-soft: 0 10px 28px rgba(0, 0, 0, 0.34);
+    }
+
+    html[data-theme="oled"] {
+      --bg: #000000;
+      --surface: #101214;
+      --surface-elevated: #171A1D;
+      --hud-bg: rgba(20, 23, 26, 0.90);
+      --sheet-bg: rgba(18, 21, 24, 0.95);
+      --text: #A6AFB4;
+      --muted: #626C72;
+      --border: rgba(255, 255, 255, 0.08);
+      --accent: #4D9691;
+      --accent-soft: rgba(77, 150, 145, 0.16);
+      --accent-text: #000000;
+      --quote-bg: rgba(77, 150, 145, 0.08);
+      --quote-border: rgba(77, 150, 145, 0.45);
+      --page-edge: rgba(166, 175, 180, 0.12);
+      --ribbon: #4D9691;
+      --grain-opacity: 0;
+      --shadow-soft: 0 10px 28px rgba(0, 0, 0, 0.55);
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      letter-spacing: 0 !important;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      font-family: var(--ui-font);
+      background: #EAE7E1;
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden;
+    }
+
+    body.embed { background: var(--bg); }
+
+    .stage-wrapper {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      padding: 16px;
+    }
+
+    body.embed .stage-wrapper { padding: 0; gap: 0; }
+
+    .standalone-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid rgba(31, 36, 33, 0.08);
+      border-radius: 999px;
+      box-shadow: 0 6px 20px rgba(31, 36, 33, 0.06);
+    }
+
+    body.embed .standalone-bar { display: none; }
+    @media (max-width: 440px) { .stage-wrapper { padding: 0; } .standalone-bar { display: none; } }
+
+    .sb-btn {
+      border: none;
+      background: transparent;
+      color: #5C6560;
+      font-family: var(--ui-font);
+      font-size: 11.5px;
+      font-weight: 500;
+      padding: 5px 11px;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+
+    .sb-btn.active {
+      background: #1F5E5B;
+      color: #FFFFFF;
+    }
+
+    .sb-sep {
+      width: 1px;
+      height: 15px;
+      background: rgba(31, 36, 33, 0.12);
+    }
+
+    .phone {
+      position: relative;
+      width: 390px;
+      height: 844px;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+      border-radius: 32px;
+      box-shadow: 0 24px 64px rgba(31, 36, 33, 0.15), 0 0 0 1px rgba(31, 36, 33, 0.06);
+      transition: background-color 220ms var(--ease-out), color 220ms var(--ease-out);
+      user-select: none;
+    }
+
+    body.embed .phone {
+      width: 100vw;
+      height: 100vh;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    @media (max-width: 440px) {
+      .phone {
+        width: 100vw;
+        height: 100vh;
+        border-radius: 0;
+        box-shadow: none;
+      }
+    }
+
+    .paper-grain {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 90;
+      opacity: var(--grain-opacity);
+      background-repeat: repeat;
+      background-size: 128px 128px;
+    }
+
+    .screen {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      background: var(--bg);
+    }
+
+    .screen.active { display: flex; }
+
+    /* ===================== LIBRARY SCREEN (Direction B: Architectural Spatial Calm) ===================== */
+    .lib-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 48px 20px 14px;
+    }
+
+    .brand-lockup {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+
+    .brand-name {
+      font-family: var(--display-font);
+      font-size: 21px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .lib-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .circle-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface-elevated);
+      color: var(--text);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+      transition: transform 150ms var(--ease-out);
+    }
+
+    .circle-btn:active { transform: scale(0.94); }
+
+    .pill-import {
+      height: 38px;
+      padding: 0 15px;
+      border-radius: 999px;
+      border: none;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-family: var(--ui-font);
+      font-size: 12.5px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+
+    .lib-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 20px 36px;
+      scrollbar-width: none;
+    }
+
+    .lib-scroll::-webkit-scrollbar { display: none; }
+
+    /* Soft Sculpted Single-Focus Active Card */
+    .active-card {
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 18px;
+      box-shadow: var(--shadow-soft);
+      cursor: pointer;
+      transition: transform 180ms var(--ease-out);
+    }
+
+    .active-card:active { transform: scale(0.985); }
+
+    .active-top {
+      display: flex;
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    .active-cover-box {
+      width: 90px;
+      height: 130px;
+      flex-shrink: 0;
+    }
+
+    .active-meta {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-width: 0;
+    }
+
+    .active-title {
+      font-family: var(--display-font);
+      font-size: 19px;
+      font-weight: 600;
+      line-height: 1.4;
+      margin: 0 0 2px;
+      color: var(--text);
+    }
+
+    .active-author {
+      font-size: 12.5px;
+      color: var(--muted);
+      margin: 0;
+    }
+
+    .active-ch {
+      font-size: 12px;
+      color: var(--accent);
+      margin-top: 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .ring-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 10px;
+      gap: 10px;
+    }
+
+    .soft-bar {
+      flex: 1;
+      height: 5px;
+      border-radius: 999px;
+      background: var(--surface);
+      overflow: hidden;
+    }
+
+    .soft-bar-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: var(--accent);
+      transition: width 300ms var(--ease-out);
+    }
+
+    .pct-chip {
+      font-size: 11.5px;
+      font-weight: 500;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .active-foot {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .time-left {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .primary-pill {
+      height: 38px;
+      padding: 0 18px;
+      border-radius: 999px;
+      border: none;
+      background: var(--accent);
+      color: var(--accent-text);
+      font-family: var(--ui-font);
+      font-size: 13px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    /* Calm Vertical Reading Queue */
+    .queue-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 26px 4px 12px;
+    }
+
+    .queue-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin: 0;
+      color: var(--text);
+    }
+
+    .queue-count {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .queue-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .queue-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 12px;
+      border-radius: 18px;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: transform 160ms var(--ease-out);
+    }
+
+    .queue-row:active { transform: scale(0.985); }
+
+    .queue-cover-box {
+      width: 52px;
+      height: 74px;
+      flex-shrink: 0;
+    }
+
+    .queue-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .queue-book-title {
+      font-size: 14.5px;
+      font-weight: 600;
+      color: var(--text);
+      margin: 0 0 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .queue-book-author {
+      font-size: 12px;
+      color: var(--muted);
+      margin: 0 0 10px;
+    }
+
+    .queue-prog {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* Modern Minimalist Procedural Cover (Direction B) */
+    .mod-cover {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      border-radius: 11px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 10px;
+      box-shadow: 0 6px 14px rgba(0, 0, 0, 0.11);
+    }
+
+    .queue-cover-box .mod-cover {
+      border-radius: 8px;
+      padding: 6px;
+    }
+
+    .mod-cover-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .mod-cover-title {
+      position: relative;
+      z-index: 2;
+      font-family: var(--display-font);
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.35;
+      text-align: right;
+    }
+
+    .queue-cover-box .mod-cover-title {
+      font-size: 8.5px;
+      line-height: 1.3;
+    }
+
+    /* ===================== READER SCREEN ===================== */
+    .reader-screen { background: var(--bg); }
+
+    /* Stepped Architectural Page-Edge Stack */
+    .edge-stack {
+      position: absolute;
+      top: 26px;
+      bottom: 26px;
+      z-index: 8;
+      pointer-events: none;
+      transition: width 220ms var(--ease-out);
+      background-image: repeating-linear-gradient(
+        to left,
+        var(--page-edge) 0px,
+        var(--page-edge) 1px,
+        transparent 1px,
+        transparent 2.2px
+      );
+    }
+
+    .edge-stack.right { right: 0; width: 2px; border-radius: 2px 0 0 2px; }
+    .edge-stack.left { left: 0; width: 6px; border-radius: 0 2px 2px 0; }
+
+    /* Sleek Modern Silk Ribbon (tucked cleanly above text) */
+    .silk-ribbon-zone {
+      position: absolute;
+      top: 0;
+      left: 16px;
+      width: 36px;
+      height: 62px;
+      z-index: 25;
+      cursor: pointer;
+      display: flex;
+      justify-content: center;
+    }
+
+    .silk-ribbon {
+      width: 16px;
+      height: 13px;
+      border-radius: 0 0 6px 6px;
+      background: var(--ribbon);
+      opacity: 0.35;
+      transition: height 320ms var(--ribbon-spring), opacity 180ms;
+      position: relative;
+    }
+
+    .silk-ribbon.pinned {
+      height: 42px;
+      opacity: 0.96;
+      box-shadow: 0 5px 12px rgba(31, 94, 91, 0.25);
+    }
+
+    .running-head {
+      position: absolute;
+      top: 16px;
+      left: 56px;
+      right: 24px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 10.5px;
+      color: var(--muted);
+      opacity: 0.6;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .running-foot {
+      position: absolute;
+      bottom: 13px;
+      left: 24px;
+      right: 24px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 10.5px;
+      color: var(--muted);
+      opacity: 0.68;
+      font-variant-numeric: tabular-nums;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .page-clip {
+      position: absolute;
+      top: 52px;
+      bottom: 38px;
+      left: var(--margin-h);
+      right: var(--margin-h);
+      overflow: hidden;
+      z-index: 4;
+    }
+
+    .columns-track {
+      height: 100%;
+      width: 100%;
+      column-fill: auto;
+      direction: rtl;
+      will-change: transform;
+      transition: transform var(--page-turn-ms) var(--ease-out);
+
+      font-family: var(--read-font);
+      font-size: var(--read-size);
+      line-height: var(--read-lh);
+      word-spacing: var(--read-ws);
+      font-weight: var(--read-weight);
+      text-align: var(--read-align);
+      color: var(--text);
+      font-kerning: normal;
+      font-variant-ligatures: contextual common-ligatures;
+      text-rendering: optimizeLegibility;
+    }
+
+    .columns-track.e-ink { transition: none !important; }
+    .chapter-sec { break-before: column; }
+    .chapter-sec:first-child { break-before: auto; }
+
+    .ch-head {
+      break-inside: avoid;
+      break-after: avoid;
+      text-align: start;
+      padding: 14px 0 14px;
+      margin-bottom: 14px;
+    }
+
+    .ch-title {
+      margin: 0;
+      font-family: var(--display-font);
+      font-size: 1.18em;
+      line-height: 1.55;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .ch-line {
+      width: 34px;
+      height: 2.5px;
+      border-radius: 999px;
+      background: var(--accent);
+      margin-top: 10px;
+      opacity: 0.85;
+    }
+
+    .scene-h2 {
+      margin: 1em 0 0.5em;
+      font-family: var(--display-font);
+      font-size: 1em;
+      line-height: 1.6;
+      font-weight: 600;
+      color: var(--accent);
+      break-inside: avoid;
+      break-after: avoid;
+    }
+
+    .novel-p {
+      margin: 0 0 var(--read-pgap) 0;
+      text-indent: var(--read-indent);
+      orphans: 2;
+      widows: 2;
+    }
+
+    .novel-p.no-indent, .novel-p.dialogue { text-indent: 0; }
+
+    .scene-break {
+      margin: 1em 0;
+      text-align: center;
+      color: var(--accent);
+      font-size: 0.8em;
+      break-inside: avoid;
+      text-indent: 0;
+      opacity: 0.72;
+    }
+
+    .novel-quote {
+      margin: 0.9em 0;
+      padding: 0.75em 1em;
+      background: var(--quote-bg);
+      border-radius: 12px;
+      font-size: 0.94em;
+      text-indent: 0;
+      break-inside: avoid;
+    }
+
+    .fn-btn {
+      display: inline-block;
+      border: none;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-family: var(--ui-font);
+      font-size: 0.62em;
+      font-weight: 600;
+      line-height: 1.2;
+      padding: 1px 6px;
+      border-radius: 999px;
+      vertical-align: super;
+      margin-inline: 2px;
+      cursor: pointer;
+    }
+
+    .tap-zones {
+      position: absolute;
+      inset: 0;
+      z-index: 12;
+      display: flex;
+      pointer-events: none;
+    }
+
+    .tap-zone { height: 100%; pointer-events: auto; cursor: pointer; }
+    .tap-right { width: 29%; }
+    .tap-center { width: 42%; }
+    .tap-left { width: 29%; }
+
+    /* Finger-Hold Peek Floating Pill */
+    .peek-pill {
+      position: absolute;
+      bottom: 50px;
+      right: 18px;
+      z-index: 22;
+      height: 36px;
+      padding: 0 15px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface-elevated);
+      color: var(--accent);
+      font-family: var(--ui-font);
+      font-size: 12px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: var(--shadow-soft);
+      cursor: pointer;
+      opacity: 0;
+      transform: translateY(10px);
+      pointer-events: none;
+      transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out);
+    }
+
+    .peek-pill.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+
+    /* ===================== HUD OVERLAY (Direction B: Detached Floating Capsules) ===================== */
+    .hud-header {
+      position: absolute;
+      top: 42px;
+      left: 14px;
+      right: 14px;
+      z-index: 30;
+      height: 54px;
+      padding: 0 8px;
+      border-radius: 999px;
+      background: var(--hud-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-soft);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      opacity: 0;
+      transform: translateY(-18px) scale(0.97);
+      pointer-events: none;
+      transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out);
+    }
+
+    .reader-screen.hud-open .hud-header {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      pointer-events: auto;
+    }
+
+    .hud-icon-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 999px;
+      border: none;
+      background: transparent;
+      color: var(--text);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 150ms, color 150ms;
+    }
+
+    .hud-icon-btn:hover { background: var(--accent-soft); color: var(--accent); }
+
+    .hud-book-title {
+      flex: 1;
+      text-align: center;
+      font-size: 14.5px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .hud-header-group { display: flex; align-items: center; gap: 2px; }
+
+    .hud-footer {
+      position: absolute;
+      bottom: 16px;
+      left: 14px;
+      right: 14px;
+      z-index: 30;
+      padding: 15px 18px 14px;
+      border-radius: 22px;
+      background: var(--hud-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-soft);
+      opacity: 0;
+      transform: translateY(20px) scale(0.97);
+      pointer-events: none;
+      transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out);
+    }
+
+    .reader-screen.hud-open .hud-footer {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      pointer-events: auto;
+    }
+
+    .hud-meta-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .hud-ch-name {
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .hud-page-pill {
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .timeline-wrap {
+      position: relative;
+      padding: 12px 0 8px;
+      cursor: pointer;
+      touch-action: none;
+    }
+
+    .scrub-tooltip {
+      position: absolute;
+      bottom: 42px;
+      right: 0;
+      left: 0;
+      margin: 0 auto;
+      width: 280px;
+      padding: 10px 14px;
+      border-radius: 16px;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-soft);
+      opacity: 0;
+      transform: translateY(6px);
+      pointer-events: none;
+      transition: opacity 150ms, transform 150ms;
+      z-index: 40;
+    }
+
+    .scrub-tooltip.show { opacity: 1; transform: translateY(0); }
+
+    .tt-top {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 3px;
+    }
+
+    .tt-snippet {
+      font-family: var(--read-font);
+      font-size: 12.5px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Pill-Segmented Weighted Chapter Timeline */
+    .timeline-segments {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 6px;
+      width: 100%;
+      position: relative;
+    }
+
+    .tl-seg {
+      height: 6px;
+      background: var(--surface);
+      border-radius: 999px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .tl-seg-fill {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      right: 0;
+      background: var(--accent);
+      border-radius: 999px;
+      width: 0%;
+    }
+
+    .tl-marker {
+      position: absolute;
+      top: 50%;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      transform: translate(50%, -50%);
+      background: var(--accent);
+      border: 2px solid var(--surface-elevated);
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    .tl-thumb {
+      position: absolute;
+      top: 50%;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--surface-elevated);
+      border: 3px solid var(--accent);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+      transform: translate(50%, -50%);
+      pointer-events: none;
+      z-index: 4;
+    }
+
+    .hud-foot-sub {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 6px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* ===================== 35% FLOATING SETTINGS SHEET (Direction B) ===================== */
+    .settings-sheet {
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      bottom: 10px;
+      height: 34.5%; /* ~291px, detached floating card with 65% live page above */
+      z-index: 45;
+      background: var(--sheet-bg);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      box-shadow: var(--shadow-soft);
+      display: flex;
+      flex-direction: column;
+      transform: translateY(115%);
+      transition: transform 250ms var(--ease-out);
+    }
+
+    .reader-screen.settings-open .settings-sheet { transform: translateY(0); }
+
+    .sheet-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px 8px;
+      gap: 10px;
+    }
+
+    .pill-tabs {
+      display: flex;
+      flex: 1;
+      background: var(--surface);
+      padding: 3px;
+      border-radius: 999px;
+    }
+
+    .sheet-tab {
+      flex: 1;
+      border: none;
+      background: transparent;
+      font-family: var(--ui-font);
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+      padding: 6px 8px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: background 160ms, color 160ms;
+    }
+
+    .sheet-tab.active {
+      background: var(--surface-elevated);
+      color: var(--accent);
+      font-weight: 600;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.07);
+    }
+
+    .sheet-close {
+      width: 32px;
+      height: 32px;
+      border-radius: 999px;
+      border: none;
+      background: var(--surface);
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .sheet-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 16px 14px;
+      scrollbar-width: none;
+    }
+
+    .sheet-body::-webkit-scrollbar { display: none; }
+
+    .tab-pane { display: none; }
+    .tab-pane.active { display: flex; flex-direction: column; gap: 12px; }
+
+    .font-strip {
+      display: flex;
+      gap: 7px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .font-strip::-webkit-scrollbar { display: none; }
+
+    .font-chip {
+      flex-shrink: 0;
+      padding: 7px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .font-chip.active {
+      background: var(--accent);
+      color: var(--accent-text);
+      border-color: var(--accent);
+    }
+
+    .ctrl-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .ctrl-label {
+      font-size: 12px;
+      color: var(--muted);
+      min-width: 74px;
+    }
+
+    .ctrl-val {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      min-width: 34px;
+      text-align: left;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stepper {
+      display: inline-flex;
+      align-items: center;
+      background: var(--surface);
+      border-radius: 999px;
+      padding: 2px;
+    }
+
+    .step-btn {
+      width: 36px;
+      height: 30px;
+      border-radius: 999px;
+      border: none;
+      background: var(--surface-elevated);
+      color: var(--text);
+      font-family: var(--ui-font);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    }
+
+    .step-readout {
+      min-width: 38px;
+      text-align: center;
+      font-size: 12.5px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .range-input {
+      flex: 1;
+      accent-color: var(--accent);
+      height: 4px;
+      cursor: pointer;
+    }
+
+    .seg-group {
+      display: flex;
+      flex: 1;
+      background: var(--surface);
+      padding: 3px;
+      border-radius: 999px;
+    }
+
+    .seg-btn {
+      flex: 1;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-family: var(--ui-font);
+      font-size: 11.5px;
+      font-weight: 500;
+      padding: 6px 6px;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+
+    .seg-btn.active {
+      background: var(--surface-elevated);
+      color: var(--accent);
+      font-weight: 600;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    }
+
+    /* Circular Theme Orbs */
+    .theme-orbs {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      padding-top: 4px;
+    }
+
+    .orb-btn {
+      border: none;
+      background: transparent;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+      padding: 4px;
+    }
+
+    .orb-circle {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--read-font);
+      font-size: 16px;
+      font-weight: 700;
+      transition: transform 160ms var(--ease-out), border-color 160ms;
+    }
+
+    .orb-btn.active .orb-circle {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+      transform: scale(1.06);
+    }
+
+    .orb-label {
+      font-size: 11px;
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 2px;
+    }
+
+    .switch {
+      position: relative;
+      width: 42px;
+      height: 24px;
+      border-radius: 999px;
+      border: none;
+      background: var(--surface);
+      cursor: pointer;
+      transition: background 180ms;
+    }
+
+    .switch::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      right: 3px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--surface-elevated);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+      transition: transform 180ms var(--ease-out);
+    }
+
+    .switch.on { background: var(--accent); }
+    .switch.on::after { transform: translateX(-18px); }
+
+    /* TOC & Footnote */
+    .drawer-backdrop {
+      position: absolute;
+      inset: 0;
+      z-index: 60;
+      background: rgba(16, 20, 20, 0.36);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 200ms;
+    }
+
+    .drawer-backdrop.open { opacity: 1; pointer-events: auto; }
+
+    .toc-drawer {
+      position: absolute;
+      top: 12px;
+      bottom: 12px;
+      right: 12px;
+      width: 82%;
+      border-radius: 24px;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-soft);
+      display: flex;
+      flex-direction: column;
+      transform: translateX(110%);
+      transition: transform 250ms var(--ease-out);
+    }
+
+    .drawer-backdrop.open .toc-drawer { transform: translateX(0); }
+
+    .toc-head {
+      padding: 20px 18px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .toc-head h3 { margin: 0; font-size: 17px; font-weight: 600; }
+
+    .toc-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 6px 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .toc-item {
+      border: none;
+      background: transparent;
+      width: 100%;
+      text-align: right;
+      padding: 12px 14px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      cursor: pointer;
+      color: var(--text);
+      font-family: var(--ui-font);
+    }
+
+    .toc-item.active { background: var(--accent-soft); color: var(--accent); }
+    .toc-item-title { font-size: 13.5px; font-weight: 600; line-height: 1.45; }
+    .toc-item-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .toc-page { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+    .fn-modal {
+      position: absolute;
+      inset: 0;
+      z-index: 70;
+      background: rgba(16, 20, 20, 0.34);
+      display: flex;
+      align-items: flex-end;
+      padding: 14px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 180ms;
+    }
+
+    .fn-modal.open { opacity: 1; pointer-events: auto; }
+
+    .fn-card {
+      width: 100%;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 16px 18px;
+      box-shadow: var(--shadow-soft);
+    }
+
+    .fn-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .fn-card-body {
+      font-family: var(--read-font);
+      font-size: 15.5px;
+      line-height: 1.9;
+      color: var(--text);
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="stage-wrapper">
+    <div class="standalone-bar">
+      <button class="sb-btn active" data-go-screen="library">١. المكتبة</button>
+      <button class="sb-btn" data-go-screen="reader">٢. القراية</button>
+      <button class="sb-btn" data-go-screen="hud">٣. الـ HUD</button>
+      <button class="sb-btn" data-go-screen="settings">٤. الإعدادات ٣٥٪</button>
+      <span class="sb-sep"></span>
+      <button class="sb-btn" data-go-theme="paper">ورق</button>
+      <button class="sb-btn" data-go-theme="sepia">سيبيا</button>
+      <button class="sb-btn" data-go-theme="charcoal">فحمي</button>
+      <button class="sb-btn" data-go-theme="oled">ليل</button>
+    </div>
+
+    <div class="phone" id="phone">
+      <div class="paper-grain" id="paperGrain"></div>
+
+      <!-- SCREEN 1: LIBRARY -->
+      <section class="screen active" id="screen-library">
+        <header class="lib-header">
+          <div class="brand-lockup">
+            <!-- Custom Abstract Horizon-Arcs Mark -->
+            <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true">
+              <circle cx="13" cy="13" r="10.5" stroke="var(--accent)" stroke-width="1.5" opacity="0.28"/>
+              <path d="M5.5 15.5C8 12.2 10.6 11 13 11C15.4 11 18 12.2 20.5 15.5" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round"/>
+              <path d="M8 18.5C9.8 16.6 11.4 15.8 13 15.8C14.6 15.8 16.2 16.6 18 18.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <span class="brand-name">روايتي</span>
+          </div>
+          <div class="lib-actions">
+            <button class="circle-btn" id="libThemeToggle" aria-label="تبديل المظهر">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            </button>
+            <button class="pill-import" id="importDemoBtn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              <span>إضافة كتاب</span>
+            </button>
+          </div>
+        </header>
+
+        <div class="lib-scroll">
+          <!-- Single-Focus Active Card -->
+          <article class="active-card" id="heroBook">
+            <div class="active-top">
+              <div class="active-cover-box" id="heroCoverMount"></div>
+              <div class="active-meta">
+                <div>
+                  <h1 class="active-title">حَجَرُ الْمَاءِ</h1>
+                  <p class="active-author">روايتي</p>
+                  <div class="active-ch" id="heroChapterLabel">الفصل الثاني: صوت الماء القديم</div>
+                </div>
+                <div class="ring-row">
+                  <div class="soft-bar"><div class="soft-bar-fill" id="heroProgressFill" style="width:38%"></div></div>
+                  <span class="pct-chip" id="heroPctLabel">٣٨٪</span>
+                </div>
+              </div>
+            </div>
+            <div class="active-foot">
+              <span class="time-left">متبقّي ٤٢ دقيقة تقريبًا</span>
+              <button class="primary-pill" id="continueReadingBtn">
+                <span>كمّل القراية</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+              </button>
+            </div>
+          </article>
+
+          <div class="queue-head">
+            <h2 class="queue-title">قائمة القراءة</h2>
+            <span class="queue-count">٤ روايات</span>
+          </div>
+
+          <div class="queue-list" id="queueList"></div>
+        </div>
+      </section>
+
+      <!-- SCREEN 2, 3, 4: READER + FLOATING CAPSULE HUD + 35% FLOATING SHEET -->
+      <section class="screen reader-screen" id="screen-reader">
+        <div class="edge-stack right" id="edgeRight" aria-hidden="true"></div>
+        <div class="edge-stack left" id="edgeLeft" aria-hidden="true"></div>
+
+        <div class="silk-ribbon-zone" id="ribbonZone" role="button" aria-label="علامة مرجعية">
+          <div class="silk-ribbon" id="silkRibbon"></div>
+        </div>
+
+        <div class="running-head">
+          <span>حَجَرُ الْمَاءِ</span>
+          <span id="runningChapter">الفصل الأول: المفتاح الصدئ</span>
+        </div>
+
+        <div class="page-clip" id="pageClip">
+          <div class="columns-track" id="columnsTrack"></div>
+        </div>
+
+        <div class="running-foot">
+          <span id="runningPageNum">١ / ١٨</span>
+          <span id="runningPct">٦٪</span>
+        </div>
+
+        <div class="tap-zones">
+          <div class="tap-zone tap-right" id="tapPrev" aria-label="السابق"></div>
+          <div class="tap-zone tap-center" id="tapCenter" aria-label="الأدوات"></div>
+          <div class="tap-zone tap-left" id="tapNext" aria-label="التالي"></div>
+        </div>
+
+        <button class="peek-pill" id="peekPill">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+          <span id="peekText">ارجع لصفحة ٣</span>
+        </button>
+
+        <!-- FLOATING CAPSULE HEADER -->
+        <header class="hud-header" id="hudHeader">
+          <button class="hud-icon-btn" id="btnBackLib" aria-label="المكتبة">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
+          <div class="hud-book-title">حَجَرُ الْمَاءِ</div>
+          <div class="hud-header-group">
+            <button class="hud-icon-btn" id="btnOpenToc" aria-label="الفهرس">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h10M4 18h14"/></svg>
+            </button>
+            <button class="hud-icon-btn" id="btnOpenSettings" aria-label="الإعدادات">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
+          </div>
+        </header>
+
+        <!-- FLOATING DOCK FOOTER -->
+        <footer class="hud-footer" id="hudFooter">
+          <div class="hud-meta-line">
+            <span class="hud-ch-name" id="hudChapterTitle">الفصل الأول: المفتاح الصدئ</span>
+            <span class="hud-page-pill" id="hudPageCounter">١ من ١٨</span>
+          </div>
+
+          <div class="timeline-wrap" id="timelineWrap">
+            <div class="scrub-tooltip" id="scrubTooltip">
+              <div class="tt-top">
+                <span id="ttChapter">الفصل الأول</span>
+                <span id="ttPage">صفحة ١</span>
+              </div>
+              <div class="tt-snippet" id="ttSnippet">كَانَتْ نُورُ تَعْرِفُ الْبَحْرَ قَبْلَ أَنْ تَعْرِفَ اسْمَهُ...</div>
+            </div>
+            <div class="timeline-segments" id="timelineSegments"></div>
+            <div class="tl-thumb" id="tlThumb"></div>
+          </div>
+
+          <div class="hud-foot-sub">
+            <span>شريط الفصول الموزون</span>
+            <span id="hudBookmarkStatus">اسحب الشريطة لحفظ الصفحة</span>
+          </div>
+        </footer>
+
+        <!-- 35% FLOATING SETTINGS SHEET -->
+        <aside class="settings-sheet" id="settingsSheet" aria-label="إعدادات القراءة">
+          <div class="sheet-head">
+            <div class="pill-tabs" role="tablist">
+              <button class="sheet-tab active" data-tab="font" role="tab">الخط</button>
+              <button class="sheet-tab" data-tab="layout" role="tab">التخطيط</button>
+              <button class="sheet-tab" data-tab="theme" role="tab">المظهر</button>
+            </div>
+            <button class="sheet-close" id="btnCloseSettings" aria-label="إغلاق">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+
+          <div class="sheet-body">
+            <div class="tab-pane active" id="pane-font">
+              <div class="font-strip" id="fontStrip"></div>
+
+              <div class="ctrl-row">
+                <span class="ctrl-label">الحجم</span>
+                <div class="stepper">
+                  <button class="step-btn" id="sizeDec">-</button>
+                  <span class="step-readout" id="sizeReadout">١٩</span>
+                  <button class="step-btn" id="sizeInc">+</button>
+                </div>
+                <div class="seg-group" style="max-width:132px">
+                  <button class="seg-btn" data-weight="300">خفيف</button>
+                  <button class="seg-btn active" data-weight="400">عادي</button>
+                  <button class="seg-btn" data-weight="600">سميك</button>
+                </div>
+              </div>
+
+              <div class="ctrl-row">
+                <span class="ctrl-label">الأسطر</span>
+                <input class="range-input" id="lhRange" type="range" min="1.5" max="2.6" step="0.05" value="1.98" />
+                <span class="ctrl-val" id="lhVal">١.٩٨</span>
+              </div>
+
+              <div class="ctrl-row">
+                <span class="ctrl-label">الكلمات</span>
+                <input class="range-input" id="wsRange" type="range" min="0" max="6" step="0.5" value="0" />
+                <span class="ctrl-val" id="wsVal">٠</span>
+              </div>
+            </div>
+
+            <div class="tab-pane" id="pane-layout">
+              <div class="ctrl-row">
+                <span class="ctrl-label">المحاذاة</span>
+                <div class="seg-group">
+                  <button class="seg-btn active" data-align="justify">مضبوط</button>
+                  <button class="seg-btn" data-align="right">يمين</button>
+                </div>
+              </div>
+
+              <div class="ctrl-row">
+                <span class="ctrl-label">الفقرات</span>
+                <div class="seg-group">
+                  <button class="seg-btn active" data-indent="classic">بمسافة بادئة</button>
+                  <button class="seg-btn" data-indent="block">فقرات متباعدة</button>
+                </div>
+              </div>
+
+              <div class="ctrl-row">
+                <span class="ctrl-label">الهوامش</span>
+                <div class="seg-group">
+                  <button class="seg-btn" data-margin="16">ضيّق</button>
+                  <button class="seg-btn active" data-margin="24">متوازن</button>
+                  <button class="seg-btn" data-margin="34">واسع</button>
+                </div>
+              </div>
+
+              <div class="toggle-row">
+                <span class="ctrl-label" style="min-width:auto">تقليب فوري بلا حركة</span>
+                <button class="switch" id="eInkToggle" role="switch" aria-checked="false"></button>
+              </div>
+            </div>
+
+            <div class="tab-pane" id="pane-theme">
+              <div class="theme-orbs">
+                <button class="orb-btn active" data-set-theme="paper">
+                  <span class="orb-circle" style="background:#FAF8F5;color:#1F2421;">ض</span>
+                  <span class="orb-label">ورق دافئ</span>
+                </button>
+                <button class="orb-btn" data-set-theme="sepia">
+                  <span class="orb-circle" style="background:#F4ECD8;color:#362D23;">ض</span>
+                  <span class="orb-label">سيبيا</span>
+                </button>
+                <button class="orb-btn" data-set-theme="charcoal">
+                  <span class="orb-circle" style="background:#16181A;color:#D8DCDF;">ض</span>
+                  <span class="orb-label">فحمي</span>
+                </button>
+                <button class="orb-btn" data-set-theme="oled">
+                  <span class="orb-circle" style="background:#000000;color:#A6AFB4;">ض</span>
+                  <span class="orb-label">ليل OLED</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <!-- TOC FLOATING DRAWER -->
+        <div class="drawer-backdrop" id="tocBackdrop">
+          <div class="toc-drawer">
+            <div class="toc-head">
+              <h3>الفهرس</h3>
+              <button class="sheet-close" id="btnCloseToc" aria-label="إغلاق">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div class="toc-list" id="tocList"></div>
+          </div>
+        </div>
+
+        <!-- FOOTNOTE POPOVER -->
+        <div class="fn-modal" id="fnModal">
+          <div class="fn-card">
+            <div class="fn-card-head">
+              <span id="fnTitle">حاشية ١</span>
+              <button class="sheet-close" id="fnClose" aria-label="إغلاق">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <p class="fn-card-body" id="fnBody"></p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const AR_DIGITS = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
+      const toAr = n => String(n).replace(/[0-9]/g, d => AR_DIGITS[+d]);
+
+      const FOOTNOTES = {
+        '1': 'الصَّدَفَةُ الْبَيْضَاءُ: صَدَفٌ صَغِيرٌ يَظْهَرُ فِي رَأْسِ الْمِلْحِ مَرَّةً وَاحِدَةً فِي كُلِّ عَشْرِ سِنِينَ، وَيَقُولُ النَّاسُ إِنَّهُ يَحْمِلُ صَوْتَ آخِرِ مَنْ غَرِقَ فِي الْمَدِّ. وَالْحَقِيقَةُ أَنَّهُ يَحْمِلُ صَوْتَ الْمَاءِ فَقَطْ، وَالنَّاسُ هُمُ الَّذِينَ يُضِيفُونَ إِلَيْهِ مَا يَخَافُونَ أَنْ يَنْسَوْهُ.',
+        '2': 'الْحِفْظُ: فِي كِتَابِ الْقَرْيَةِ الْقَدِيمِ، كَانَ الْحِفْظُ يُعْنَى بِهِ إِبْقَاءُ الشَّيْءِ فِي مَكَانِهِ. أَمَّا فِي هَذِهِ الْحِكَايَةِ، فَالْحِفْظُ يُعْنَى بِهِ مَعْرِفَةُ الْمَكَانِ الَّذِي ذَهَبَ إِلَيْهِ الشَّيْءُ.'
+      };
+
+      const CHAPTERS = [
+        {
+          id: 'ch1',
+          title: 'الْفَصْلُ الْأَوَّلُ: الْمِفْتَاحُ الصَّدِئُ',
+          shortTitle: 'الفصل الأول: المفتاح الصدئ',
+          snippet: 'كَانَتْ نُورُ تَعْرِفُ الْبَحْرَ قَبْلَ أَنْ تَعْرِفَ اسْمَهُ.',
+          words: 310,
+          blocks: [
+            { type: 'p', noIndent: true, text: 'كَانَتْ نُورُ تَعْرِفُ الْبَحْرَ قَبْلَ أَنْ تَعْرِفَ اسْمَهُ. كَبِرَتْ عَلَى صَوْتِهِ كَمَا يَكْبَرُ الطِّفْلُ عَلَى صَوْتِ أُمِّهِ: لَا تَنْتَبِهُ إِلَيْهِ إِلَّا حِينَ يَغِيبُ. وَفِي قَرْيَةِ رَأْسِ الْمِلْحِ كَانَ الْبَحْرُ يَغِيبُ مَرَّتَيْنِ فِي الْيَوْمِ: مَرَّةً عِنْدَمَا يَنْسَحِبُ الْمَدُّ فَتَبْقَى الصُّخُورُ عَارِيَةً كَأَسْنَانٍ قَدِيمَةٍ، وَمَرَّةً عِنْدَمَا يَنَامُ الْجَدُّ سَلْمَانُ فَيَسْكُتُ الْبَيْتُ كُلُّهُ.' },
+            { type: 'p', text: 'كَانَ الْبَيْتُ قَدِيمًا، سَقْفُهُ مِنْ خَشَبٍ لَوْنُهُ لَوْنُ الشَّايِ الْمُنْسَكِبِ، وَجُدْرَانُهُ تَحْمِلُ بَقَايَا مِلْحٍ لَا يَذُوبُ. وَفِي وَسَطِ الْبَيْتِ بَابٌ صَغِيرٌ لَا يُؤَدِّي إِلَى شَيْءٍ إِلَّا إِلَى دَرَجٍ هَابِطٍ، وَالدَّرَجُ يُؤَدِّي إِلَى بِئْرٍ مَسْدُودٍ بِحَجَرٍ مُسْتَدِيرٍ كَبِيرٍ. قَالَ لَهَا الْجَدُّ مَرَّةً، وَهُوَ يَغْسِلُ شَبَكَةً فِي الْفِنَاءِ: «هَذِهِ الْبِئْرُ لَيْسَتْ بِئْرَ مَاءٍ، يَا نُورُ. هِيَ بِئْرُ صَوْتٍ، وَالصَّوْتُ إِذَا خَرَجَ لَا يَعُودُ».' },
+            { type: 'p', text: 'ضَحِكَتْ نُورُ يَوْمَهَا، لِأَنَّ الْجَدَّ كَانَ يَقُولُ أَشْيَاءَ غَرِيبَةً كَثِيرَةً، وَكَانَتْ تَظُنُّ أَنَّ الْغَرَابَةَ عَادَةٌ مِنْ عَادَاتِ الْكِبَرِ مِثْلَ بَطْءِ الْخُطْوَةِ وَطُولِ الْحِكَايَةِ. لَكِنَّهَا لَمْ تَنْسَ الْجُمْلَةَ. بَقِيَتْ فِي رَأْسِهَا كَحَبَّةِ رَمْلٍ فِي حِذَاءٍ ضَيِّقٍ، لَا تُؤْلِمُ كَثِيرًا، وَلَكِنَّهَا لَا تَخْتَفِي.' },
+            { type: 'p', text: 'فِي مَسَاءِ يَوْمِ الْخَمِيسِ، بَيْنَمَا كَانَ الْجَدُّ نَائِمًا وَالْمَطَرُ يَضْرِبُ النَّوَافِذَ ضَرْبًا خَفِيفًا، فَتَحَتْ نُورُ خِزَانَةَ الْجَدِّ الْعُلْيَا. وَجَدَتْ صُنْدُوقًا مِنْ صَفِيحٍ أَصْفَرَ، وَتَحْتَهُ مِفْتَاحًا نُحَاسِيًّا طَوِيلًا مُلْتَفًّا عَلَيْهِ خَيْطٌ أَحْمَرُ بَالٍ، وَوَرَقَةً مَطْوِيَّةً كُتِبَ عَلَيْهَا بِخَطِّ الْجَدِّ:' },
+            { type: 'quote', text: '«لَا تَفْتَحِي الْبِئْرَ يَا نُورُ. لَيْسَ لِأَنَّ فِيهَا شَيْئًا مُخِيفًا، بَلْ لِأَنَّ فِيهَا شَيْئًا لَا يَحْتَمِلُ أَنْ يَرَاهُ أَحَدٌ غَيْرِي».' },
+            { type: 'p', noIndent: true, text: 'قَرَأَتِ الْجُمْلَةَ ثَلَاثَ مَرَّاتٍ. فِي الْمَرَّةِ الْأُولَى خَافَتْ. وَفِي الثَّانِيَةِ غَضِبَتْ. وَفِي الثَّالِثَةِ أَدْرَكَتْ أَنَّ الْجُمْلَةَ لَيْسَتْ تَحْذِيرًا، بَلْ اعْتِرَافٌ. وَالِاعْتِرَافُ، إِذَا وَصَلَ إِلَى طِفْلٍ، يَتَحَوَّلُ فَوْرًا إِلَى دَعْوَةٍ.' },
+            { type: 'p', text: 'أَدْخَلَتِ الْمِفْتَاحَ. دَارَ بِلَا صَوْتٍ، ثُمَّ سَقَطَ الْحَجَرُ إِلَى الدَّاخِلِ كَأَنَّهُ كَانَ يَنْتَظِرُ. وَانْبَعَثَ مِنَ الْبِئْرِ هَوَاءٌ بَارِدٌ، لَا رِيحَ تُرَابٍ وَلَا رَائِحَةَ عَفَنٍ، بَلْ رَائِحَةُ مَطَرٍ عَلَى حَجَرٍ سَاخِنٍ. رَائِحَةٌ لَهَا ذِكْرَى، وَالذِّكْرَى لَيْسَتْ لِنُورِ.' }
+          ]
+        },
+        {
+          id: 'ch2',
+          title: 'الْفَصْلُ الثَّانِي: صَوْتُ الْمَاءِ الْقَدِيمِ',
+          shortTitle: 'الفصل الثاني: صوت الماء القديم',
+          snippet: 'فِي الصَّبَاحِ كَانَ الْجَدُّ فِي الْفِنَاءِ كَالْعَادَةِ، يُصْلِحُ شَبَكَةً...',
+          words: 375,
+          blocks: [
+            { type: 'p', noIndent: true, text: 'فِي الصَّبَاحِ كَانَ الْجَدُّ فِي الْفِنَاءِ كَالْعَادَةِ، يُصْلِحُ شَبَكَةً لَا تَحْتَاجُ إِصْلَاحًا. وَكَانَتْ نُورُ تُرَاقِبُ يَدَيْهِ، تَنْتَظِرُ أَنْ تَرْتَجِفَ، أَوْ أَنْ يَسْأَلَهَا عَنِ الْمِفْتَاحِ. لَكِنَّهُ لَمْ يَسْأَلْ. قَالَ فَقَطْ، وَهُوَ يَنْظُرُ إِلَى الْبَحْرِ:' },
+            { type: 'p', dialogue: true, text: '— الْيَوْمَ الْمَاءُ هَادِئٌ. هَذَا لَا يَحْدُثُ كَثِيرًا فِي آخِرِ الْخَرِيفِ.' },
+            { type: 'p', dialogue: true, text: '— جَدِّي، قَالَتْ نُورُ، وَجَلَسَتْ أَمَامَهُ عَلَى الْحَجَرِ: لِمَاذَا لَا نَفْتَحُ الْبِئْرَ؟' },
+            { type: 'p', text: 'تَوَقَّفَتْ يَدَاهُ. لَمْ يَرْفَعْ رَأْسَهُ. سَكَتَ طَوِيلًا، ثُمَّ قَالَ وَصَوْتُهُ أَخْفَضُ مِنْ صَوْتِ الْبَحْرِ: «يَا نُورُ، فِي هَذِهِ الْقَرْيَةِ كَانَتْ ثَلَاثَةُ آبَارٍ: بِئْرُ الشُّرْبِ، وَبِئْرُ الْمِلْحِ، وَبِئْرٌ ثَالِثَةٌ لَا يَعْرِفُهَا إِلَّا الَّذِينَ سَمِعُوا. النَّاسُ كَانُوا يَأْتُونَ بِأَصْوَاتِهِمْ إِلَيْهَا كَمَا يَأْتُونَ بِأَمْوَالِهِمْ إِلَى الْبَنْكِ، وَيَقُولُونَ لِلْبِئْرِ: احْفَظِيهِ».' },
+            { type: 'h2', text: 'مَشْهَدٌ: الْغُرْفَةُ الْمُطْفَأَةُ' },
+            { type: 'p', noIndent: true, text: 'لَمْ تَكُنْ غُرْفَةً تَحْتَ الْأَرْضِ بِمَعْنَى السَّجْنِ. كَانَتْ أَشْبَهَ بِقَاعَةِ اجْتِمَاعٍ صَغِيرَةٍ نَسِيَهَا النَّاسُ: أَرْضُهَا مِنْ حَصًى نَاعِمٍ، وَجُدْرَانُهَا مِنْ طِينٍ مَضْرُوبٍ عَلَيْهِ أَصْدَافٌ، وَفِي وَسَطِهَا حَجَرٌ أَزْرَقُ بِحَجْمِ رَأْسِ طِفْلٍ يَجْلِسُ عَلَى قَاعِدَةٍ مِنْ خَشَبٍ أَسْوَدَ.' },
+            { type: 'p', text: 'وَعَلَى الْجُدْرَانِ، بِخُطُوطٍ مُتَقَاطِعَةٍ، كَانَتْ هُنَاكَ أَسْمَاءٌ مَحْفُورَةٌ فِي الطِّينِ بِأَصَابِعَ: «سَعِيد»، «أُمُّ خَلِيل»، «الْحَاجَّةُ زَيْنَب»، «صَوْتُ الْعُرْسِ، سَنَةَ ٤٢». وَفِي الرُّكْنِ الْبَعِيدِ كَانَ اسْمٌ وَاحِدٌ: «مَرْيَم». تَوَقَّفَ قَلْبُهَا. مَرْيَمُ كَانَ اسْمَ أُمِّهَا.' },
+            { type: 'break' },
+            { type: 'p', noIndent: true, text: 'فِي الصَّبَاحِ وَجَدَهَا الْجَدُّ نَائِمَةً عَلَى الدَّرَجِ الْحَجَرِيِّ، وَالْمِصْبَاحُ بَيْنَ يَدَيْهَا انْطَفَأَ، وَعَلَى وَجْهِهَا أَثَرُ دُمُوعٍ جَفَّفَهَا التُّرَابُ. لَمْ يَصْرُخْ. جَلَسَ عَلَى الدَّرَجَةِ الَّتِي فَوْقَهَا، وَبَقِيَ صَامِتًا حَتَّى فَتَحَتْ عَيْنَيْهَا.' }
+          ]
+        },
+        {
+          id: 'ch3',
+          title: 'الْفَصْلُ الثَّالِثُ: مَا قَالَهُ الْحَجَرُ',
+          shortTitle: 'الفصل الثالث: ما قاله الحجر',
+          snippet: 'فِي الْمَسَاءِ الثَّالِثِ، جَاءَتْ نُورُ إِلَى الْغُرْفَةِ وَمَعَهَا دَفْتَرٌ...',
+          words: 265,
+          blocks: [
+            { type: 'p', noIndent: true, text: 'فِي الْمَسَاءِ الثَّالِثِ، جَاءَتْ نُورُ إِلَى الْغُرْفَةِ وَمَعَهَا كُرْسِيٌّ صَغِيرٌ وَقَلَمٌ وَدَفْتَرٌ. قَرَّرَتْ أَنْ تَكُونَ عَالِمَةً، لَا خَائِفَةً. الْعُلَمَاءُ يَكْتُبُونَ مَا يَرَوْنَ، وَالْخَائِفُونَ يَكْتُبُونَ مَا يَتَخَيَّلُونَ. وَالْفَرْقُ بَيْنَهُمَا، كَمَا قَالَتْ لَهَا مُعَلِّمَةُ الْعُلُومِ، هُوَ الدَّفْتَرُ.' },
+            { type: 'p', text: 'نَبَضَ الْحَجَرُ نَبْضَتَيْنِ. وَفِي الثَّالِثَةِ، تَكَلَّمَ. لَمْ يَكُنْ صَوْتًا يَخْرُجُ مِنْ حَجَرٍ، بَلْ صَوْتًا يَخْرُجُ مِنْ دَاخِلِ رَأْسِهَا: «أَنَا لَا أَتَكَلَّمُ. أَنَا أُعِيدُ. الَّذِي تَسْمَعِينَهُ هُوَ الَّذِي سَمِعْتُهُ. وَالَّذِي سَمِعْتُهُ هُوَ الَّذِي تُرِكَ لِي».' },
+            { type: 'quote', text: 'يَا بِنْتَ الْمَاءِ، إِنَّ الصَّوْتَ الْمَحْفُوظَ لَيْسَ ذِكْرَى. الذِّكْرَى تَتْرُكُ لَكَ حُرِّيَّةَ أَنْ تَنْسَى، أَمَّا الصَّوْتُ الْمَحْفُوظُ فَيُبْقِيكَ وَاقِفًا فِي الْيَوْمِ نَفْسِهِ، فِي السَّاعَةِ نَفْسِهَا، لَا تَبْرَحُ.' },
+            { type: 'p', noIndent: true, text: 'قَرَأَتْ نُورُ الْكَلِمَاتِ مَرَّتَيْنِ. لَمْ تَكُنْ مَكْتُوبَةً فِي دَفْتَرِهَا. كَانَتْ مَكْتُوبَةً عَلَى الْجِدَارِ، بِخَطٍّ يَمِيلُ إِلَى الْيَسَارِ كَأَنَّهُ يَهْرُبُ مِنَ السُّطُورِ.' },
+            { type: 'p', dialogue: true, text: '— جَدِّي، أَنَا لَا أُرِيدُ أَنْ أَتْرُكَ صَوْتًا. أُرِيدُ أَنْ أَتْرُكَ الْبَابَ مَفْتُوحًا.' }
+          ]
+        },
+        {
+          id: 'ch4',
+          title: 'الْفَصْلُ الرَّابِعُ: طَرِيقٌ إِلَى الْأَعْلَى',
+          shortTitle: 'الفصل الرابع: طريق إلى الأعلى',
+          snippet: 'فِي صَبَاحِ الْيَوْمِ التَّالِي، فَتَحَ الْجَدُّ الْمَخْزَنَ الْقَدِيمَ...',
+          words: 245,
+          blocks: [
+            { type: 'p', noIndent: true, text: 'فِي صَبَاحِ الْيَوْمِ التَّالِي، فَتَحَ الْجَدُّ الْمَخْزَنَ الْقَدِيمَ وَأَخْرَجَ مِنْهُ أَنْبُوبًا نُحَاسِيًّا وَمِفْتَاحًا آخَرَ، أَكْبَرَ مِنَ الْأَوَّلِ. قَالَ إِنَّ الْبِئْرَ لَهَا مَخْرَجٌ إِلَى الْبَحْرِ، سَدَّهُ هُوَ بِيَدِهِ سَنَةَ الْغَرَقِ. وَالْأَصْوَاتُ الَّتِي تُحْفَظُ بِلَا مَخْرَجٍ تَتَحَوَّلُ إِلَى ثِقَلٍ، وَالثِّقَلُ إِذَا طَالَ صَارَ حَجَرًا.' },
+            { type: 'p', text: 'فَتَحَتْ نُورُ الْمِفْتَاحَ الْأَخِيرَ. دَارَ النُّحَاسُ، وَانْكَسَرَ خَتْمُ الطِّينِ، وَانْدَفَعَ الْمَاءُ إِلَى الْغُرْفَةِ دَفْعَةً وَاحِدَةً، بَارِدًا، عَذْبًا، لَا مَالِحًا كَمَا تَوَقَّعَتْ. وَفِي لَحْظَةِ دُخُولِهِ ارْتَفَعَ مِنَ الْحَجَرِ صَوْتُ امْرَأَةٍ تَضْحَكُ؛ ضَحْكَةً وَاحِدَةً قَصِيرَةً، ثُمَّ سَكَتَتْ.' },
+            { type: 'p', text: 'وَفِي الصَّبَاحِ وَجَدَتْ عَلَى عَتَبَةِ الْبَابِ صَدَفَةً صَغِيرَةً بَيْضَاءَ. رَفَعَتْهَا إِلَى أُذُنِهَا. كَانَ فِيهَا صَوْتُ مَاءٍ، وَصَوْتُ رِيحٍ، وَصَوْتُ أَحَدٍ يَقُولُ اسْمَهَا مَرَّةً وَاحِدَةً بِلَا حُزْنٍ. وَضَعَتِ الصَّدَفَةَ فِي جَيْبِهَا وَذَهَبَتْ لِتُسَاعِدَ الْجَدَّ فِي الشَّبَكَةِ.', fn: '1' },
+            { type: 'break' },
+            { type: 'quote', text: 'لَمْ تَعُدْ نُورُ تَخَافُ مِنَ الْبَحْرِ. وَلَكِنَّهَا صَارَتْ تَعْرِفُ أَنَّ الْحِفْظَ لَيْسَ أَنْ تَمْنَعَ الشَّيْءَ مِنَ الذَّهَابِ، بَلْ أَنْ تَعْرِفَ إِلَى أَيْنَ ذَهَبَ.', fn: '2' }
+          ]
+        }
+      ];
+
+      const FONTS = [
+        { id: 'Noto Naskh Arabic', label: 'نوتو نسخ' },
+        { id: 'Amiri', label: 'أميري' },
+        { id: 'Scheherazade New', label: 'شهرزاد' },
+        { id: 'Readex Pro', label: 'ريدكس برو' },
+        { id: 'IBM Plex Sans Arabic', label: 'بلكس عربي' },
+        { id: 'Literata', label: 'Literata' },
+        { id: 'Merriweather', label: 'Merriweather' },
+        { id: 'Inter', label: 'Inter' }
+      ];
+
+      const LIBRARY_BOOKS = [
+        { title: 'حَجَرُ الْمَاءِ', author: 'روايتي', pct: 38, color: '#1F5E5B' },
+        { title: 'خريطة الملح والنجوم', author: 'سلمى المنصوري', pct: 74, color: null },
+        { title: 'رسائل من بيت الطين', author: 'يوسف النجار', pct: 12, color: null },
+        { title: 'دفتر السفر القديم', author: 'كريم الدسوقي', pct: 100, color: null },
+        { title: 'ظلّ الغيمة الأخيرة', author: 'ندى الشريف', pct: 0, color: null }
+      ];
+
+      const MINERAL_PALETTES = [
+        { bg: '#215B58', shape: '#397B77', ink: '#F7FAF9' },
+        { bg: '#B87854', shape: '#D09673', ink: '#FFFDF9' },
+        { bg: '#475D6E', shape: '#667F92', ink: '#F7FAFC' },
+        { bg: '#5E7257', shape: '#7D9275', ink: '#FAFBF8' },
+        { bg: '#7E5E4F', shape: '#9E7B6B', ink: '#FCF9F5' },
+        { bg: '#5C546F', shape: '#7B7291', ink: '#F9F8FC' },
+        { bg: '#8C7444', shape: '#AC925E', ink: '#FCF9F2' }
+      ];
+
+      function hashTitle(str) {
+        let h = 2166136261;
+        for (let i = 0; i < str.length; i++) {
+          h ^= str.charCodeAt(i);
+          h = Math.imul(h, 16777619);
+        }
+        return Math.abs(h);
+      }
+
+      function buildModernCover(book) {
+        const h = hashTitle(book.title);
+        const pal = book.color
+          ? { bg: book.color, shape: '#367A76', ink: '#F5FAF9' }
+          : MINERAL_PALETTES[h % MINERAL_PALETTES.length];
+        const variant = h % 3;
+        let svg = '';
+        if (variant === 0) {
+          svg = `<svg class="mod-cover-svg" viewBox="0 0 100 144" preserveAspectRatio="none"><circle cx="24" cy="36" r="44" fill="${pal.shape}" opacity="0.42"/><circle cx="88" cy="112" r="32" fill="${pal.shape}" opacity="0.28"/></svg>`;
+        } else if (variant === 1) {
+          svg = `<svg class="mod-cover-svg" viewBox="0 0 100 144" preserveAspectRatio="none"><path d="M0 58 Q50 22 100 58 L100 0 L0 0 Z" fill="${pal.shape}" opacity="0.45"/><circle cx="76" cy="48" r="14" fill="${pal.ink}" opacity="0.14"/></svg>`;
+        } else {
+          svg = `<svg class="mod-cover-svg" viewBox="0 0 100 144" preserveAspectRatio="none"><rect x="14" y="14" width="72" height="54" rx="27" fill="${pal.shape}" opacity="0.44"/><line x1="14" y1="86" x2="86" y2="86" stroke="${pal.ink}" stroke-width="0.8" opacity="0.22"/></svg>`;
+        }
+        return `
+          <div class="mod-cover" style="background:${pal.bg};color:${pal.ink};">
+            ${svg}
+            <div class="mod-cover-title">${book.title}</div>
+          </div>
+        `;
+      }
+
+      function initPaperGrain() {
+        const c = document.createElement('canvas');
+        c.width = 128; c.height = 128;
+        const ctx = c.getContext('2d');
+        if (!ctx) return;
+        const img = ctx.createImageData(128, 128);
+        let seed = 8821;
+        for (let i = 0; i < img.data.length; i += 4) {
+          seed = (seed * 16807) % 2147483647;
+          const v = seed & 255;
+          img.data[i] = img.data[i+1] = img.data[i+2] = v;
+          img.data[i+3] = 255;
+        }
+        ctx.putImageData(img, 0, 0);
+        document.getElementById('paperGrain').style.backgroundImage = `url(${c.toDataURL('image/png')})`;
+      }
+
+      const state = {
+        screen: 'library',
+        theme: 'paper',
+        page: 0,
+        pageCount: 1,
+        stride: 386,
+        chapterMeta: [],
+        bookmarks: new Set([1, 5]),
+        jumpOrigin: null,
+        turnsSinceJump: 0,
+        font: 'Noto Naskh Arabic',
+        size: 19,
+        lh: 1.98,
+        ws: 0,
+        weight: 400,
+        align: 'justify',
+        indent: 'classic',
+        marginH: 24,
+        eInk: false
+      };
+
+      const screenLib = document.getElementById('screen-library');
+      const screenReader = document.getElementById('screen-reader');
+      const pageClip = document.getElementById('pageClip');
+      const track = document.getElementById('columnsTrack');
+      const edgeRight = document.getElementById('edgeRight');
+      const edgeLeft = document.getElementById('edgeLeft');
+      const silkRibbon = document.getElementById('silkRibbon');
+      const peekPill = document.getElementById('peekPill');
+      const peekText = document.getElementById('peekText');
+      const timelineWrap = document.getElementById('timelineWrap');
+      const timelineSegments = document.getElementById('timelineSegments');
+      const tlThumb = document.getElementById('tlThumb');
+      const scrubTooltip = document.getElementById('scrubTooltip');
+
+      function renderLibrary() {
+        document.getElementById('heroCoverMount').innerHTML = buildModernCover(LIBRARY_BOOKS[0]);
+        const list = document.getElementById('queueList');
+        list.innerHTML = LIBRARY_BOOKS.slice(1).map((b, i) => `
+          <article class="queue-row" data-open-book="${i + 1}">
+            <div class="queue-cover-box">${buildModernCover(b)}</div>
+            <div class="queue-info">
+              <h3 class="queue-book-title">${b.title}</h3>
+              <p class="queue-book-author">${b.author}</p>
+              <div class="queue-prog">
+                <div class="soft-bar"><div class="soft-bar-fill" style="width:${b.pct}%"></div></div>
+                <span class="pct-chip">${b.pct === 100 ? 'مكتملة' : b.pct === 0 ? 'جديدة' : toAr(b.pct) + '٪'}</span>
+              </div>
+            </div>
+          </article>
+        `).join('');
+        list.querySelectorAll('.queue-row').forEach(el => el.addEventListener('click', () => setScreen('reader')));
+      }
+
+      function renderNovel() {
+        track.innerHTML = CHAPTERS.map((ch, idx) => {
+          const blocksHtml = ch.blocks.map(b => {
+            const fnHtml = b.fn ? `<button class="fn-btn" data-fn="${b.fn}">${toAr(b.fn)}</button>` : '';
+            if (b.type === 'h2') return `<h2 class="scene-h2">${b.text}</h2>`;
+            if (b.type === 'break') return `<div class="scene-break">✦ &nbsp; ✦ &nbsp; ✦</div>`;
+            if (b.type === 'quote') return `<blockquote class="novel-quote">${b.text}${fnHtml}</blockquote>`;
+            const cls = ['novel-p', b.noIndent ? 'no-indent' : '', b.dialogue ? 'dialogue' : ''].filter(Boolean).join(' ');
+            return `<p class="${cls}">${b.text}${fnHtml}</p>`;
+          }).join('');
+          return `
+            <section class="chapter-sec" data-ch-index="${idx}">
+              <div class="ch-head">
+                <h1 class="ch-title">${ch.title}</h1>
+                <div class="ch-line"></div>
+              </div>
+              ${blocksHtml}
+            </section>
+          `;
+        }).join('');
+
+        track.querySelectorAll('.fn-btn').forEach(btn => {
+          btn.addEventListener('click', e => {
+            e.stopPropagation();
+            const id = btn.getAttribute('data-fn');
+            document.getElementById('fnTitle').textContent = `حاشية ${toAr(id)}`;
+            document.getElementById('fnBody').textContent = FOOTNOTES[id] || '';
+            document.getElementById('fnModal').classList.add('open');
+          });
+        });
+      }
+
+      function measureLayout(preserveRatio) {
+        const prevRatio = preserveRatio && state.pageCount > 1 ? state.page / (state.pageCount - 1) : null;
+        const clipW = Math.max(240, pageClip.clientWidth);
+        const gap = Math.max(36, state.marginH * 2);
+        state.stride = clipW + gap;
+
+        track.style.columnWidth = clipW + 'px';
+        track.style.columnGap = gap + 'px';
+
+        const oldTrans = track.style.transition;
+        track.style.transition = 'none';
+        track.style.transform = 'translateX(0px)';
+        void track.offsetWidth;
+
+        const clipRect = pageClip.getBoundingClientRect();
+        const sections = Array.from(track.querySelectorAll('.chapter-sec'));
+        let maxPage = 0;
+        const meta = [];
+
+        sections.forEach((sec, idx) => {
+          let startP = Infinity, endP = 0;
+          Array.from(sec.children).forEach(el => {
+            const r = el.getBoundingClientRect();
+            const p0 = Math.max(0, Math.floor(((clipRect.right - r.right) + 12) / state.stride));
+            const p1 = Math.max(0, Math.floor(((clipRect.right - r.left) - 6) / state.stride));
+            if (p0 < startP) startP = p0;
+            if (p1 > endP) endP = p1;
+          });
+          if (!isFinite(startP)) startP = maxPage;
+          if (endP < startP) endP = startP;
+          if (endP > maxPage) maxPage = endP;
+          meta.push({
+            index: idx, id: CHAPTERS[idx].id, title: CHAPTERS[idx].title,
+            shortTitle: CHAPTERS[idx].shortTitle, snippet: CHAPTERS[idx].snippet,
+            words: CHAPTERS[idx].words, startPage: startP, endPage: endP, pageCount: endP - startP + 1
+          });
+        });
+
+        state.pageCount = Math.max(1, maxPage + 1);
+        state.chapterMeta = meta;
+        if (prevRatio !== null) state.page = Math.max(0, Math.min(state.pageCount - 1, Math.round(prevRatio * (state.pageCount - 1))));
+        else state.page = Math.max(0, Math.min(state.pageCount - 1, state.page));
+
+        track.style.transform = `translateX(${state.page * state.stride}px)`;
+        void track.offsetWidth;
+        track.style.transition = oldTrans;
+
+        renderTimelineSegments();
+        renderToc();
+        updateReadingUI();
+      }
+
+      function getChapterForPage(p) {
+        let found = state.chapterMeta[0];
+        for (const m of state.chapterMeta) if (p >= m.startPage) found = m;
+        return found || { title: CHAPTERS[0].title, shortTitle: CHAPTERS[0].shortTitle, index: 0, startPage: 0, endPage: 0 };
+      }
+
+      function renderTimelineSegments() {
+        const totalWords = CHAPTERS.reduce((s, c) => s + c.words, 0);
+        timelineSegments.innerHTML = CHAPTERS.map((c, idx) => {
+          const flex = (c.words / totalWords * 100).toFixed(2);
+          return `<div class="tl-seg" style="flex:${flex} 0 0"><div class="tl-seg-fill" id="segFill-${idx}"></div></div>`;
+        }).join('');
+
+        state.bookmarks.forEach(bp => {
+          if (bp < state.pageCount) {
+            const pct = state.pageCount > 1 ? (bp / (state.pageCount - 1)) * 100 : 0;
+            const dot = document.createElement('span');
+            dot.className = 'tl-marker';
+            dot.style.right = pct + '%';
+            timelineSegments.appendChild(dot);
+          }
+        });
+      }
+
+      function renderToc() {
+        const activeCh = getChapterForPage(state.page);
+        document.getElementById('tocList').innerHTML = state.chapterMeta.map(m => `
+          <button class="toc-item ${m.index === activeCh.index ? 'active' : ''}" data-toc-page="${m.startPage}">
+            <div>
+              <div class="toc-item-title">${m.shortTitle}</div>
+              <div class="toc-item-meta">${toAr(m.pageCount)} صفحات</div>
+            </div>
+            <span class="toc-page">${toAr(m.startPage + 1)}</span>
+          </button>
+        `).join('');
+
+        document.querySelectorAll('.toc-item').forEach(btn => {
+          btn.addEventListener('click', () => {
+            jumpToPage(parseInt(btn.getAttribute('data-toc-page'), 10));
+            document.getElementById('tocBackdrop').classList.remove('open');
+          });
+        });
+      }
+
+      function updateReadingUI() {
+        const ratio = state.pageCount > 1 ? state.page / (state.pageCount - 1) : 1;
+        const pct = Math.max(1, Math.round(((state.page + 1) / state.pageCount) * 100));
+        const ch = getChapterForPage(state.page);
+
+        track.style.transform = `translateX(${state.page * state.stride}px)`;
+        edgeRight.style.width = (1.5 + ratio * 4.5).toFixed(1) + 'px';
+        edgeLeft.style.width = (6 - ratio * 4.5).toFixed(1) + 'px';
+
+        document.getElementById('runningChapter').textContent = ch.shortTitle;
+        document.getElementById('runningPageNum').textContent = `${toAr(state.page + 1)} / ${toAr(state.pageCount)}`;
+        document.getElementById('runningPct').textContent = `${toAr(pct)}٪`;
+        document.getElementById('hudChapterTitle').textContent = ch.shortTitle;
+        document.getElementById('hudPageCounter').textContent = `${toAr(state.page + 1)} من ${toAr(state.pageCount)}`;
+        document.getElementById('heroProgressFill').style.width = pct + '%';
+        document.getElementById('heroPctLabel').textContent = `${toAr(pct)}٪`;
+        document.getElementById('heroChapterLabel').textContent = ch.shortTitle;
+
+        state.chapterMeta.forEach((m, idx) => {
+          const fill = document.getElementById(`segFill-${idx}`);
+          if (!fill) return;
+          if (state.page > m.endPage) fill.style.width = '100%';
+          else if (state.page < m.startPage) fill.style.width = '0%';
+          else fill.style.width = (m.pageCount > 1 ? ((state.page - m.startPage + 1) / m.pageCount) * 100 : 100) + '%';
+        });
+
+        tlThumb.style.right = (ratio * 100) + '%';
+
+        const isBookmarked = state.bookmarks.has(state.page);
+        silkRibbon.classList.toggle('pinned', isBookmarked);
+        document.getElementById('hudBookmarkStatus').textContent = isBookmarked ? 'محفوظة بالشريطة' : 'اسحب الشريطة لحفظ الصفحة';
+
+        if (state.jumpOrigin !== null && state.jumpOrigin !== state.page) {
+          peekText.textContent = `ارجع لصفحة ${toAr(state.jumpOrigin + 1)}`;
+          peekPill.classList.add('visible');
+        } else {
+          peekPill.classList.remove('visible');
+        }
+      }
+
+      function goPage(nextPage) {
+        const clamped = Math.max(0, Math.min(state.pageCount - 1, nextPage));
+        if (clamped === state.page) return;
+        state.page = clamped;
+        if (state.jumpOrigin !== null) {
+          state.turnsSinceJump++;
+          if (state.turnsSinceJump >= 2) { state.jumpOrigin = null; state.turnsSinceJump = 0; }
+        }
+        updateReadingUI();
+      }
+
+      function jumpToPage(target) {
+        const clamped = Math.max(0, Math.min(state.pageCount - 1, target));
+        if (clamped !== state.page) {
+          if (state.jumpOrigin === null) state.jumpOrigin = state.page;
+          state.turnsSinceJump = 0;
+          state.page = clamped;
+          updateReadingUI();
+        }
+      }
+
+      function setScreen(mode) {
+        state.screen = mode;
+        const isLib = mode === 'library';
+        screenLib.classList.toggle('active', isLib);
+        screenReader.classList.toggle('active', !isLib);
+        screenReader.classList.toggle('hud-open', mode === 'hud');
+        screenReader.classList.toggle('settings-open', mode === 'settings');
+        document.querySelectorAll('[data-go-screen]').forEach(b => b.classList.toggle('active', b.getAttribute('data-go-screen') === mode));
+        if (!isLib) requestAnimationFrame(() => measureLayout(false));
+      }
+
+      function setTheme(theme) {
+        state.theme = theme;
+        document.documentElement.setAttribute('data-theme', theme);
+        document.querySelectorAll('[data-set-theme]').forEach(b => b.classList.toggle('active', b.getAttribute('data-set-theme') === theme));
+        document.querySelectorAll('[data-go-theme]').forEach(b => b.classList.toggle('active', b.getAttribute('data-go-theme') === theme));
+      }
+
+      function initSettings() {
+        const strip = document.getElementById('fontStrip');
+        strip.innerHTML = FONTS.map(f => `<button class="font-chip ${f.id === state.font ? 'active' : ''}" data-font="${f.id}" style="font-family:'${f.id}',serif">${f.label}</button>`).join('');
+        strip.querySelectorAll('.font-chip').forEach(btn => {
+          btn.addEventListener('click', () => {
+            state.font = btn.getAttribute('data-font');
+            document.documentElement.style.setProperty('--read-font', `'${state.font}', 'Noto Naskh Arabic', serif`);
+            strip.querySelectorAll('.font-chip').forEach(b => b.classList.toggle('active', b === btn));
+            measureLayout(true);
+          });
+        });
+
+        const updateSize = delta => {
+          state.size = Math.max(14, Math.min(36, state.size + delta));
+          document.documentElement.style.setProperty('--read-size', state.size + 'px');
+          document.getElementById('sizeReadout').textContent = toAr(state.size);
+          measureLayout(true);
+        };
+        document.getElementById('sizeDec').addEventListener('click', () => updateSize(-1));
+        document.getElementById('sizeInc').addEventListener('click', () => updateSize(1));
+
+        document.querySelectorAll('[data-weight]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            state.weight = parseInt(btn.getAttribute('data-weight'), 10);
+            document.documentElement.style.setProperty('--read-weight', state.weight);
+            document.querySelectorAll('[data-weight]').forEach(b => b.classList.toggle('active', b === btn));
+            measureLayout(true);
+          });
+        });
+
+        const lhRange = document.getElementById('lhRange');
+        lhRange.addEventListener('input', () => {
+          state.lh = parseFloat(lhRange.value);
+          document.documentElement.style.setProperty('--read-lh', state.lh);
+          document.getElementById('lhVal').textContent = toAr(state.lh.toFixed(2));
+          measureLayout(true);
+        });
+
+        const wsRange = document.getElementById('wsRange');
+        wsRange.addEventListener('input', () => {
+          state.ws = parseFloat(wsRange.value);
+          document.documentElement.style.setProperty('--read-ws', state.ws + 'px');
+          document.getElementById('wsVal').textContent = toAr(state.ws);
+          measureLayout(true);
+        });
+
+        document.querySelectorAll('[data-align]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            state.align = btn.getAttribute('data-align');
+            document.documentElement.style.setProperty('--read-align', state.align);
+            document.querySelectorAll('[data-align]').forEach(b => b.classList.toggle('active', b === btn));
+            measureLayout(true);
+          });
+        });
+
+        document.querySelectorAll('[data-indent]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const isClassic = btn.getAttribute('data-indent') === 'classic';
+            document.documentElement.style.setProperty('--read-indent', isClassic ? '1.4em' : '0em');
+            document.documentElement.style.setProperty('--read-pgap', isClassic ? '9px' : '16px');
+            document.querySelectorAll('[data-indent]').forEach(b => b.classList.toggle('active', b === btn));
+            measureLayout(true);
+          });
+        });
+
+        document.querySelectorAll('[data-margin]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            state.marginH = parseInt(btn.getAttribute('data-margin'), 10);
+            document.documentElement.style.setProperty('--margin-h', state.marginH + 'px');
+            document.querySelectorAll('[data-margin]').forEach(b => b.classList.toggle('active', b === btn));
+            measureLayout(true);
+          });
+        });
+
+        const eInkBtn = document.getElementById('eInkToggle');
+        eInkBtn.addEventListener('click', () => {
+          state.eInk = !state.eInk;
+          eInkBtn.classList.toggle('on', state.eInk);
+          eInkBtn.setAttribute('aria-checked', String(state.eInk));
+          track.classList.toggle('e-ink', state.eInk);
+        });
+
+        document.querySelectorAll('[data-set-theme]').forEach(btn => {
+          btn.addEventListener('click', () => setTheme(btn.getAttribute('data-set-theme')));
+        });
+
+        document.querySelectorAll('.sheet-tab').forEach(tab => {
+          tab.addEventListener('click', () => {
+            const target = tab.getAttribute('data-tab');
+            document.querySelectorAll('.sheet-tab').forEach(t => t.classList.toggle('active', t === tab));
+            document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === `pane-${target}`));
+          });
+        });
+      }
+
+      function initScrubber() {
+        let dragging = false;
+        const pageFromClientX = clientX => {
+          const rect = timelineWrap.getBoundingClientRect();
+          const ratio = Math.max(0, Math.min(1, (rect.right - clientX) / rect.width));
+          return Math.round(ratio * (state.pageCount - 1));
+        };
+        const showPreview = p => {
+          const ch = getChapterForPage(p);
+          document.getElementById('ttChapter').textContent = ch.shortTitle;
+          document.getElementById('ttPage').textContent = `صفحة ${toAr(p + 1)}`;
+          document.getElementById('ttSnippet').textContent = ch.snippet;
+          scrubTooltip.classList.add('show');
+          tlThumb.style.right = ((state.pageCount > 1 ? p / (state.pageCount - 1) : 0) * 100) + '%';
+        };
+        timelineWrap.addEventListener('pointerdown', e => { dragging = true; timelineWrap.setPointerCapture(e.pointerId); showPreview(pageFromClientX(e.clientX)); });
+        timelineWrap.addEventListener('pointermove', e => { if (dragging) showPreview(pageFromClientX(e.clientX)); });
+        timelineWrap.addEventListener('pointerup', e => { if (!dragging) return; dragging = false; scrubTooltip.classList.remove('show'); jumpToPage(pageFromClientX(e.clientX)); });
+        timelineWrap.addEventListener('pointercancel', () => { dragging = false; scrubTooltip.classList.remove('show'); updateReadingUI(); });
+      }
+
+      function bindEvents() {
+        document.getElementById('heroBook').addEventListener('click', () => setScreen('reader'));
+        document.getElementById('continueReadingBtn').addEventListener('click', e => { e.stopPropagation(); setScreen('reader'); });
+        const order = ['paper', 'sepia', 'charcoal', 'oled'];
+        document.getElementById('libThemeToggle').addEventListener('click', () => setTheme(order[(order.indexOf(state.theme) + 1) % order.length]));
+        document.getElementById('importDemoBtn').addEventListener('click', () => setScreen('reader'));
+
+        document.getElementById('tapNext').addEventListener('click', () => state.screen === 'settings' ? setScreen('reader') : goPage(state.page + 1));
+        document.getElementById('tapPrev').addEventListener('click', () => state.screen === 'settings' ? setScreen('reader') : goPage(state.page - 1));
+        document.getElementById('tapCenter').addEventListener('click', () => {
+          if (state.screen === 'settings') setScreen('reader');
+          else setScreen(state.screen === 'hud' ? 'reader' : 'hud');
+        });
+
+        document.getElementById('ribbonZone').addEventListener('click', e => {
+          e.stopPropagation();
+          if (state.bookmarks.has(state.page)) state.bookmarks.delete(state.page);
+          else state.bookmarks.add(state.page);
+          renderTimelineSegments();
+          updateReadingUI();
+        });
+
+        peekPill.addEventListener('click', () => {
+          if (state.jumpOrigin !== null) { state.page = state.jumpOrigin; state.jumpOrigin = null; state.turnsSinceJump = 0; updateReadingUI(); }
+        });
+
+        document.getElementById('btnBackLib').addEventListener('click', () => setScreen('library'));
+        document.getElementById('btnOpenToc').addEventListener('click', () => { renderToc(); document.getElementById('tocBackdrop').classList.add('open'); });
+        document.getElementById('btnCloseToc').addEventListener('click', () => document.getElementById('tocBackdrop').classList.remove('open'));
+        document.getElementById('tocBackdrop').addEventListener('click', e => { if (e.target.id === 'tocBackdrop') document.getElementById('tocBackdrop').classList.remove('open'); });
+        document.getElementById('btnOpenSettings').addEventListener('click', () => setScreen('settings'));
+        document.getElementById('btnCloseSettings').addEventListener('click', () => setScreen('reader'));
+
+        document.getElementById('fnClose').addEventListener('click', () => document.getElementById('fnModal').classList.remove('open'));
+        document.getElementById('fnModal').addEventListener('click', e => { if (e.target.id === 'fnModal') document.getElementById('fnModal').classList.remove('open'); });
+
+        document.querySelectorAll('[data-go-screen]').forEach(b => b.addEventListener('click', () => setScreen(b.getAttribute('data-go-screen'))));
+        document.querySelectorAll('[data-go-theme]').forEach(b => b.addEventListener('click', () => setTheme(b.getAttribute('data-go-theme'))));
+
+        window.addEventListener('keydown', e => {
+          if (state.screen === 'library') return;
+          if (e.key === 'ArrowLeft') goPage(state.page + 1);
+          if (e.key === 'ArrowRight') goPage(state.page - 1);
+        });
+
+        window.addEventListener('message', e => {
+          if (!e.data || typeof e.data !== 'object') return;
+          if (e.data.type === 'setScreen' && e.data.screen) setScreen(e.data.screen);
+          if (e.data.type === 'setTheme') setTheme(e.data.theme === 'default' ? 'paper' : e.data.theme);
+        });
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('embed') === '1') document.body.classList.add('embed');
+
+      initPaperGrain();
+      renderLibrary();
+      renderNovel();
+      initSettings();
+      initScrubber();
+      bindEvents();
+
+      setTheme(params.get('theme') || 'paper');
+      const initPage = parseInt(params.get('page') || '0', 10);
+      if (!isNaN(initPage) && initPage >= 0) state.page = initPage;
+      setScreen(params.get('screen') || 'library');
+
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(() => { if (state.screen !== 'library') measureLayout(false); });
+      }
+    })();
+  </script>
+</body>
+</html>
