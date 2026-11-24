@@ -208,3 +208,43 @@ describe('parseTxt', () => {
     expect(book.wordCount).toBe(12);
   });
 });
+
+describe('XSS hardening', () => {
+  const imgs = (md: string) =>
+    parseBook(`# فصل\n\n${md}\n`, 'x.md').chapters[0]!.blocks.filter((b) => b.kind === 'image');
+
+  it.each([
+    'javascript:alert(1)',
+    ' JaVaScRiPt:alert(1)',
+    'vbscript:x',
+    'data:text/html;base64,PHNjcmlwdD4=',
+    'data:image/svg+xml;base64,PHN2Zz4=',
+    'file:///etc/passwd',
+    'blob:https://x/y',
+    'content://com.android/x',
+    '//evil.example/x.png',
+  ])('drops unsafe image src %s', (src) => {
+    expect(imgs(`![a](${src})`)).toHaveLength(0);
+  });
+
+  it.each(['assets/ch01.webp', 'https://example.com/a.png', 'data:image/png;base64,iVBORw0KGgo='])(
+    'keeps safe image src %s',
+    (src) => {
+      expect(imgs(`![a](${src})`)).toHaveLength(1);
+    },
+  );
+
+  it('never emits active html from raw input or link syntax', () => {
+    const book = parseBook(
+      '# فصل\n\n<script>alert(1)</script> <img src=x onerror=alert(1)> [click](javascript:alert(1)) <a href="javascript:x">y</a>\n',
+      'x.md',
+    );
+    const html = book.chapters[0]!.blocks.map((b) => b.html).join('');
+    // Every real tag must be from the inline allowlist; the raw input survives only as escaped text.
+    const tags = [...html.matchAll(/<\/?([a-z0-9]+)/gi)].map((m) => m[1]!.toLowerCase());
+    for (const t of tags) expect(['em', 'strong', 'br', 'sup', 'a']).toContain(t);
+    expect(html).not.toMatch(/<a\b(?![^>]*class="fn-ref")[^>]*>/i);
+    expect(html).not.toMatch(/href="javascript:/i);
+    expect(html).toContain('&lt;script&gt;');
+  });
+});

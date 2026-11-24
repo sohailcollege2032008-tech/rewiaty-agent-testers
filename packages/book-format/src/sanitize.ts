@@ -33,7 +33,12 @@ export function isSafeImageSrc(rawSrc: string): boolean {
   if (normalized.startsWith('data:')) {
     return /^data:image\/(?:png|jpe?g|gif|webp|avif);base64,/i.test(trimmed);
   }
-  return true;
+  // Why (tech): allowlist, not denylist — any other scheme (file:, blob:, content:, intent:...) or a
+  // protocol-relative URL could reach outside the book bundle inside the WebView.
+  if (normalized.startsWith('//')) return false;
+  const scheme = /^([a-z][a-z0-9+.-]*):/.exec(normalized);
+  if (scheme) return scheme[1] === 'http' || scheme[1] === 'https';
+  return true; // relative path inside the bundle (assets/...)
 }
 
 const ESCAPE_SENTINEL_PREFIX = '\uE000';
