@@ -6,8 +6,8 @@
 | M1 Engine | ✅ اتدمج (#1). وCodex لقى XSS في مصادر الصور، واتصلح | #1 · follow-up #3 (P2) |
 | M0 Sample | ✅ اتدمج (#2) | #2 |
 | M-QA infra | ✅ rewiaty-agent-testers شغال (demo: 14 finding، $0، Go allowance) | github.com/sohailcollege2032008-tech/rewiaty-agent-testers |
-| M2 Shell | 🟡 Hydrogen شغال (`feat/m2-shell`، stacked على M1 القديم، ومحتاج rebase على main) | subagent M2 |
-| M3 Settings | ⏳ | |
+| M2 Shell | ✅ اتدمج (#4). وfollow-up #5 | #4 |
+| M3 Settings | 🟡 Hydrogen (sohailcollege) | subagent M3 |
 | M4 Release+QA | ⏳ | |
 | Book Lab (أمواج PDF → bundle، تجربة pipeline المرحلة 4) | 🟡 Neon (sohailcollege) + deepseek | ثريد Book Lab · ~/workspace/rewiaty-book-lab |
 
