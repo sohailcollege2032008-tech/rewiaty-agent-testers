@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "scripts": {
     "typecheck": "tsc -p packages/book-format/tsconfig.json --noEmit && tsc -p packages/reader-engine/tsconfig.json --noEmit",
