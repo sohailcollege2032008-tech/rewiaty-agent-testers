@@ -1,40 +1,74 @@
 import { resolveCoverPalette } from '@/storage/cover';
-import { getAppThemeTokens, THEME_OPTIONS } from '@/theme/reader-theme';
+import { computeResponsiveLayout } from '@/theme/layout';
+import {
+  getAppThemeTokens,
+  migrateThemeId,
+  resolveAppTheme,
+  resolveSystemTheme,
+  THEME_OPTIONS,
+} from '@/theme/reader-theme';
 
-describe('reader-theme & generated cover', () => {
-  it('provides all 4 required themes with exact PRD color tokens', () => {
+describe('reader-theme registry, migration & responsive layout', () => {
+  it('provides all 4 Warraq themes from the data-driven registry', () => {
     expect(THEME_OPTIONS.map((t) => t.id)).toEqual([
-      'warm-paper',
+      'warraq',
       'sepia',
-      'charcoal',
-      'oled',
+      'burnt-paper',
+      'oled-crimson',
     ]);
 
-    const warmPaper = getAppThemeTokens('warm-paper');
-    expect(warmPaper.bg).toBe('#FAF8F5');
-    expect(warmPaper.text).toBe('#24211D');
-    expect(warmPaper.isDark).toBe(false);
-    expect(warmPaper.sheetBg).toContain('rgba(');
+    const warraq = getAppThemeTokens('warraq');
+    expect(warraq.bg).toBe('#FAF7F0');
+    expect(warraq.text).toBe('#231F1A');
+    expect(warraq.accent).toBe('#9E3E2F');
+    expect(warraq.ctaBg).toBe('#9E3E2F');
+    expect(warraq.isDark).toBe(false);
+    expect(warraq.sheetBg).toContain('rgba(');
 
     const sepia = getAppThemeTokens('sepia');
-    expect(sepia.bg).toBe('#F4ECD8');
-    expect(sepia.text).toBe('#3E3024');
+    expect(sepia.bg).toBe('#F3EBD6');
+    expect(sepia.text).toBe('#382B1E');
+    expect(sepia.accent).toBe('#8C3A2B');
     expect(sepia.isDark).toBe(false);
 
-    const charcoal = getAppThemeTokens('charcoal');
-    expect(charcoal.bg).toBe('#18181B');
-    expect(charcoal.text).toBe('#D4D4D8');
-    expect(charcoal.isDark).toBe(true);
+    const burntPaper = getAppThemeTokens('burnt-paper');
+    expect(burntPaper.bg).toBe('#181310');
+    expect(burntPaper.text).toBe('#DECFC0');
+    expect(burntPaper.accent).toBe('#DF7863');
+    expect(burntPaper.ctaBg).toBe('#A34131');
+    expect(burntPaper.isDark).toBe(true);
 
-    const oled = getAppThemeTokens('oled');
-    expect(oled.bg).toBe('#000000');
-    expect(oled.text).toBe('#A1A1AA');
-    expect(oled.isDark).toBe(true);
+    const oledCrimson = getAppThemeTokens('oled-crimson');
+    expect(oledCrimson.bg).toBe('#000000');
+    expect(oledCrimson.text).toBe('#B9B2A7');
+    expect(oledCrimson.accent).toBe('#D46A5A');
+    expect(oledCrimson.ctaBg).toBe('#9B3A2C');
+    expect(oledCrimson.isDark).toBe(true);
   });
 
-  it('falls back to warm-paper for unknown or null theme IDs', () => {
-    expect(getAppThemeTokens(null).id).toBe('warm-paper');
-    expect(getAppThemeTokens(undefined).id).toBe('warm-paper');
+  it('migrates legacy theme IDs and falls back based on colorScheme', () => {
+    expect(migrateThemeId('warm-paper')).toBe('warraq');
+    expect(migrateThemeId('charcoal')).toBe('burnt-paper');
+    expect(migrateThemeId('oled')).toBe('oled-crimson');
+    expect(migrateThemeId('sepia')).toBe('sepia');
+    expect(migrateThemeId('unknown')).toBeNull();
+
+    expect(getAppThemeTokens(null, 'light').id).toBe('warraq');
+    expect(getAppThemeTokens(undefined, 'dark').id).toBe('burnt-paper');
+    expect(getAppThemeTokens('charcoal').id).toBe('burnt-paper');
+  });
+
+  it('resolves system theme unless user manually selected a theme', () => {
+    expect(resolveSystemTheme('light')).toBe('warraq');
+    expect(resolveSystemTheme('dark')).toBe('burnt-paper');
+    expect(resolveSystemTheme(null)).toBe('warraq');
+
+    expect(resolveAppTheme('oled-crimson', false, 'light')).toBe('warraq');
+    expect(resolveAppTheme('warraq', false, 'dark')).toBe('burnt-paper');
+
+    expect(resolveAppTheme('oled-crimson', true, 'light')).toBe('oled-crimson');
+    expect(resolveAppTheme('sepia', true, 'dark')).toBe('sepia');
+    expect(resolveAppTheme('oled', true, 'light')).toBe('oled-crimson');
   });
 
   it('derives deterministic cover palette and SVG pattern from title hash', () => {
@@ -50,5 +84,28 @@ describe('reader-theme & generated cover', () => {
     const customDark = resolveCoverPalette('قصة', '#1E293B');
     expect(customDark.bg).toBe('#1E293B');
     expect(customDark.text).toBe('#FFFFFF');
+  });
+
+  it('computes phone and tablet responsive layouts at 600dp shortest-side threshold', () => {
+    const phone = computeResponsiveLayout(390, 844);
+    expect(phone.isTablet).toBe(false);
+    expect(phone.libraryColumns).toBe(2);
+    expect(phone.settingsMode).toBe('bottom-sheet');
+    expect(phone.readerMaxReadingWidthCh).toBeNull();
+
+    const tabletPortrait = computeResponsiveLayout(1024, 1366);
+    expect(tabletPortrait.isTablet).toBe(true);
+    expect(tabletPortrait.isTabletPortrait).toBe(true);
+    expect(tabletPortrait.libraryColumns).toBe(3);
+    expect(tabletPortrait.settingsMode).toBe('bottom-sheet');
+    expect(tabletPortrait.readerMaxReadingWidthCh).toBe(62);
+
+    const tabletLandscape = computeResponsiveLayout(1366, 1024);
+    expect(tabletLandscape.isTablet).toBe(true);
+    expect(tabletLandscape.isTabletLandscape).toBe(true);
+    expect(tabletLandscape.libraryColumns).toBe(4);
+    expect(tabletLandscape.settingsMode).toBe('side-panel');
+    expect(tabletLandscape.settingsPanelWidth).toBe(348);
+    expect(tabletLandscape.readerMaxReadingWidthCh).toBe(54);
   });
 });

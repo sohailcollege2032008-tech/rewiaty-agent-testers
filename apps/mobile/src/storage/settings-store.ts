@@ -7,9 +7,11 @@ import {
   type ThemeId,
 } from '../../../../packages/reader-engine/src/types';
 import { READER_FONT_FAMILIES } from '../../../../packages/reader-engine/src/fonts';
+import { isLegacyThemeId, migrateThemeId } from '@/theme/reader-theme';
 import { getKv, setKv, type DatabaseAdapter } from './database';
 
 export const SETTINGS_KV_KEY = 'reader_settings_v1';
+export const THEME_MANUAL_KV_KEY = 'reader_theme_manual_v1';
 
 export { DEFAULT_SETTINGS, READER_FONT_FAMILIES };
 
@@ -18,6 +20,10 @@ const VALID_FONTS = new Set<string>(READER_FONT_FAMILIES);
 const VALID_ALIGNS = new Set<TextAlignMode>(['start', 'justify']);
 const VALID_INDENTS = new Set<IndentMode>(['classic', 'block']);
 const VALID_DIRS = new Set<'auto' | 'rtl' | 'ltr'>(['auto', 'rtl', 'ltr']);
+
+type RawStoredSettings = Partial<Omit<ReaderSettings, 'theme'>> & {
+  theme?: string;
+};
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
@@ -29,7 +35,7 @@ function roundToStep(value: number, step: number): number {
 }
 
 export function sanitizeSettingsPartial(
-  partial: Partial<ReaderSettings> | null | undefined,
+  partial: Partial<ReaderSettings> | RawStoredSettings | null | undefined,
   current: ReaderSettings = DEFAULT_SETTINGS,
 ): Partial<ReaderSettings> {
   if (!partial || typeof partial !== 'object') return {};
@@ -79,8 +85,11 @@ export function sanitizeSettingsPartial(
       clampNumber(partial.maxReadingWidth, 45, 85, current.maxReadingWidth),
     );
   }
-  if (partial.theme !== undefined && VALID_THEMES.has(partial.theme)) {
-    next.theme = partial.theme;
+  if (partial.theme !== undefined) {
+    const migrated = migrateThemeId(partial.theme);
+    if (migrated && VALID_THEMES.has(migrated)) {
+      next.theme = migrated;
+    }
   }
   if (typeof partial.disableAnimation === 'boolean') {
     next.disableAnimation = partial.disableAnimation;
@@ -94,7 +103,7 @@ export function sanitizeSettingsPartial(
 
 export function mergeReaderSettings(
   base: ReaderSettings,
-  partial?: Partial<ReaderSettings> | null,
+  partial?: Partial<ReaderSettings> | RawStoredSettings | null,
 ): ReaderSettings {
   return {
     ...base,
@@ -102,9 +111,41 @@ export function mergeReaderSettings(
   };
 }
 
+export type ThemePreferenceState = {
+  settings: ReaderSettings;
+  hasManualTheme: boolean;
+};
+
+export async function loadThemePreference(db?: DatabaseAdapter): Promise<ThemePreferenceState> {
+  const stored = await getKv<RawStoredSettings | null>(SETTINGS_KV_KEY, null, db);
+  const manualStored = await getKv<boolean | null>(THEME_MANUAL_KV_KEY, null, db);
+
+  const merged = mergeReaderSettings(DEFAULT_SETTINGS, stored);
+  const rawTheme = stored?.theme;
+  const wasLegacy = isLegacyThemeId(rawTheme);
+
+  if (wasLegacy) {
+    await setKv(SETTINGS_KV_KEY, merged, db);
+  }
+
+  let hasManualTheme = manualStored === true;
+  if (manualStored === null && stored && typeof rawTheme === 'string') {
+    // Existing users who chose a non-default theme before automatic scheme tracking keep their choice.
+    if (rawTheme === 'charcoal' || rawTheme === 'oled' || rawTheme === 'sepia') {
+      hasManualTheme = true;
+      await setKv(THEME_MANUAL_KV_KEY, true, db);
+    }
+  }
+
+  return {
+    settings: merged,
+    hasManualTheme,
+  };
+}
+
 export async function loadReaderSettings(db?: DatabaseAdapter): Promise<ReaderSettings> {
-  const stored = await getKv<Partial<ReaderSettings> | null>(SETTINGS_KV_KEY, null, db);
-  return mergeReaderSettings(DEFAULT_SETTINGS, stored);
+  const { settings } = await loadThemePreference(db);
+  return settings;
 }
 
 export async function saveReaderSettings(
@@ -123,11 +164,26 @@ export async function updateReaderSettings(
   const current = await loadReaderSettings(db);
   const next = mergeReaderSettings(current, partial);
   await setKv(SETTINGS_KV_KEY, next, db);
+  if (partial.theme !== undefined) {
+    await setKv(THEME_MANUAL_KV_KEY, true, db);
+  }
   return next;
+}
+
+export async function selectManualTheme(
+  theme: ThemeId,
+  db?: DatabaseAdapter,
+): Promise<ReaderSettings> {
+  return updateReaderSettings({ theme }, db);
+}
+
+export async function clearManualThemeOverride(db?: DatabaseAdapter): Promise<void> {
+  await setKv(THEME_MANUAL_KV_KEY, false, db);
 }
 
 export async function resetReaderSettings(db?: DatabaseAdapter): Promise<ReaderSettings> {
   const defaults = { ...DEFAULT_SETTINGS };
   await setKv(SETTINGS_KV_KEY, defaults, db);
+  await setKv(THEME_MANUAL_KV_KEY, false, db);
   return defaults;
 }

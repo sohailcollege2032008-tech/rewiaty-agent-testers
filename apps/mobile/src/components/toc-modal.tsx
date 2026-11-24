@@ -1,6 +1,8 @@
 import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Path } from 'react-native-svg';
 
+import { TYPOGRAPHY, useResponsiveLayout } from '@/theme/layout';
 import { getAppThemeTokens } from '@/theme/reader-theme';
 import type { ThemeId, TocEntry } from '@/types/reader';
 
@@ -24,6 +26,7 @@ export function TocModal({
   onClose,
 }: TocModalProps) {
   const insets = useSafeAreaInsets();
+  const layout = useResponsiveLayout();
   const palette = getAppThemeTokens(theme);
   const isRtl = dir === 'rtl';
 
@@ -36,20 +39,35 @@ export function TocModal({
       statusBarTranslucent
     >
       <View style={styles.backdrop}>
-        <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="إغلاق الفهرس" />
+        <Pressable
+          style={[styles.scrim, { backgroundColor: palette.scrim }]}
+          onPress={onClose}
+          accessibilityLabel="إغلاق الفهرس"
+        />
         <View
           style={[
             styles.sheet,
             {
-              paddingTop: Math.max(insets.top, 16),
+              width: layout.tocDrawerWidth,
+              paddingTop: Math.max(insets.top, layout.isTablet ? 20 : 16),
               paddingBottom: Math.max(insets.bottom, 16),
-              backgroundColor: palette.bg,
+              backgroundColor: layout.isTablet ? palette.surface : palette.bg,
               borderStartColor: palette.border,
             },
           ]}
         >
           <View style={[styles.header, { borderBottomColor: palette.border }]}>
-            <Text style={[styles.headerTitle, { color: palette.text }]}>الفهرس</Text>
+            <Text
+              style={[
+                styles.headerTitle,
+                {
+                  color: palette.text,
+                  fontFamily: TYPOGRAPHY.displayFont,
+                },
+              ]}
+            >
+              فهرس الفصول
+            </Text>
             <Pressable
               testID="toc-close-button"
               onPress={onClose}
@@ -58,7 +76,14 @@ export function TocModal({
               accessibilityRole="button"
               accessibilityLabel="إغلاق"
             >
-              <Text style={[styles.closeText, { color: palette.muted }]}>✕</Text>
+              <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+                <Path
+                  d="M18 6L6 18M6 6l12 12"
+                  stroke={palette.muted}
+                  strokeWidth={1.9}
+                  strokeLinecap="round"
+                />
+              </Svg>
             </Pressable>
           </View>
 
@@ -77,8 +102,8 @@ export function TocModal({
                   }}
                   style={({ pressed }) => [
                     styles.row,
-                    isActive && { backgroundColor: palette.chipActiveBg },
-                    pressed && { backgroundColor: palette.chipBg },
+                    isActive && { backgroundColor: palette.accentSoft },
+                    pressed && !isActive && { backgroundColor: palette.chipBg },
                   ]}
                   accessibilityRole="button"
                   accessibilityState={{ selected: isActive }}
@@ -87,22 +112,32 @@ export function TocModal({
                     <Text
                       style={[
                         styles.rowTitle,
-                        { color: isActive ? palette.accent : palette.text },
-                        isActive && styles.rowTitleActive,
-                        { writingDirection: isRtl ? 'rtl' : 'ltr' },
+                        {
+                          color: isActive ? palette.accent : palette.text,
+                          fontFamily: TYPOGRAPHY.displayFont,
+                          writingDirection: isRtl ? 'rtl' : 'ltr',
+                        },
                       ]}
                       numberOfLines={2}
                     >
                       {item.title}
                     </Text>
-                    <Text style={[styles.rowSub, { color: palette.muted }]}>
-                      {`الفصل ${index + 1} · ${item.pageCount} صفحة`}
+                    <Text
+                      style={[
+                        styles.rowSub,
+                        { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
+                      ]}
+                    >
+                      {`الفصل ${index + 1} · ${item.pageCount} صفحات`}
                     </Text>
                   </View>
                   <Text
                     style={[
                       styles.pageNum,
-                      { color: isActive ? palette.accent : palette.muted },
+                      {
+                        color: isActive ? palette.accent : palette.muted,
+                        fontFamily: TYPOGRAPHY.uiFont,
+                      },
                     ]}
                   >
                     {item.startPage}
@@ -112,7 +147,12 @@ export function TocModal({
             }}
             ListEmptyComponent={
               <View style={styles.empty}>
-                <Text style={[styles.emptyText, { color: palette.muted }]}>
+                <Text
+                  style={[
+                    styles.emptyText,
+                    { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
+                  ]}
+                >
                   لا توجد فصول متاحة
                 </Text>
               </View>
@@ -132,94 +172,67 @@ const styles = StyleSheet.create({
   },
   scrim: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(20, 18, 15, 0.45)',
   },
   sheet: {
-    width: '84%',
     maxWidth: 380,
     height: '100%',
-    backgroundColor: '#FAF8F5',
     borderStartWidth: 1,
-    borderStartColor: '#E5DDD0',
-    boxShadow: '-8px 0 24px rgba(0, 0, 0, 0.18)',
+    boxShadow: '-12px 0 32px rgba(0, 0, 0, 0.20)',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5DDD0',
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 21,
     fontWeight: '700',
-    color: '#24211D',
   },
   closeButton: {
-    minWidth: 44,
-    minHeight: 44,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 10,
-  },
-  closeText: {
-    fontSize: 18,
-    color: '#6E675F',
-    fontWeight: '600',
+    borderRadius: 6,
   },
   listContent: {
-    padding: 12,
-    gap: 6,
+    padding: 14,
+    gap: 4,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
-    paddingHorizontal: 14,
+    gap: 10,
+    paddingHorizontal: 12,
     paddingVertical: 12,
-    borderRadius: 10,
+    borderRadius: 6,
     borderCurve: 'continuous',
     minHeight: 54,
-  },
-  rowActive: {
-    backgroundColor: 'rgba(139, 90, 43, 0.12)',
-  },
-  rowPressed: {
-    backgroundColor: 'rgba(36, 33, 29, 0.06)',
   },
   rowTextWrap: {
     flex: 1,
     gap: 2,
   },
   rowTitle: {
-    fontSize: 15,
-    lineHeight: 22,
-    fontWeight: '600',
-    color: '#24211D',
+    fontSize: 16.5,
+    lineHeight: 23,
+    fontWeight: '700',
     textAlign: 'right',
   },
-  rowTitleActive: {
-    color: '#8B5A2B',
-    fontWeight: '700',
-  },
   rowSub: {
-    fontSize: 12,
-    color: '#6E675F',
+    fontSize: 11.5,
     textAlign: 'right',
   },
   pageNum: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '600',
-    color: '#6E675F',
     fontVariant: ['tabular-nums'],
     minWidth: 28,
     textAlign: 'center',
-  },
-  pageNumActive: {
-    color: '#8B5A2B',
   },
   empty: {
     paddingVertical: 40,
@@ -227,6 +240,5 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
-    color: '#6E675F',
   },
 });
