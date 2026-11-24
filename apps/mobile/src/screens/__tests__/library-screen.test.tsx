@@ -69,14 +69,20 @@ describe('LibraryScreen', () => {
     (listBooks as jest.Mock).mockResolvedValue([SAMPLE_RECORD]);
   });
 
-  it('renders seeded book card, imports a book, and deletes on long-press confirm', async () => {
-    const alertSpy = jest.spyOn(Alert, 'alert');
-
-    const { getAllByText, getByText, getByTestId, queryByText } = await render(<LibraryScreen />);
+  it('renders seeded book card with progress percentage', async () => {
+    const { getAllByText, getByText } = await render(<LibraryScreen />);
 
     await waitFor(() => {
       expect(getAllByText('أَوْرَاقُ الْبَحْرِ الْقَدِيمِ').length).toBeGreaterThan(0);
       expect(getByText('35%')).toBeTruthy();
+    });
+  });
+
+  it('imports a book and renders it in the library list', async () => {
+    const { getAllByText, getByTestId } = await render(<LibraryScreen />);
+
+    await waitFor(() => {
+      expect(getAllByText('أَوْرَاقُ الْبَحْرِ الْقَدِيمِ').length).toBeGreaterThan(0);
     });
 
     (pickAndImportBook as jest.Mock).mockResolvedValueOnce(IMPORTED_RECORD);
@@ -88,8 +94,18 @@ describe('LibraryScreen', () => {
       expect(pickAndImportBook).toHaveBeenCalledTimes(1);
       expect(getAllByText('رواية مستوردة').length).toBeGreaterThan(0);
     });
+  });
 
-    // Long press triggers delete confirmation dialog
+  it('deletes a book on long-press confirm', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert');
+    (listBooks as jest.Mock).mockResolvedValueOnce([IMPORTED_RECORD, SAMPLE_RECORD]);
+
+    const { getAllByText, getByTestId, queryByText } = await render(<LibraryScreen />);
+
+    await waitFor(() => {
+      expect(getAllByText('رواية مستوردة').length).toBeGreaterThan(0);
+    });
+
     await fireEvent(getByTestId('book-card-book_imported'), 'longPress');
     expect(alertSpy).toHaveBeenCalledTimes(1);
 

@@ -102,63 +102,58 @@ describe('ReaderScreen', () => {
     jest.useRealTimers();
   });
 
-  it('loads book with saved anchor, debounces position saves, toggles HUD, and handles TOC goto', async () => {
-    const { getByTestId, getByText } = await render(<ReaderScreen />);
-
-    expect(useKeepAwake).toHaveBeenCalled();
-
+  async function renderLoadedReader() {
+    const utils = await render(<ReaderScreen />);
     await waitFor(() => {
-      expect(getByTestId('reader-webview')).toBeTruthy();
+      expect(utils.getByTestId('reader-webview')).toBeTruthy();
     });
-
     await act(async () => {
       capturedOnLoadEnd?.();
     });
+    return utils;
+  }
 
+  function emitWebMessage(payload: unknown) {
+    capturedOnMessage?.({
+      nativeEvent: { data: JSON.stringify(payload) },
+    });
+  }
+
+  it('loads book with saved anchor and posts load payload to WebView', async () => {
+    await renderLoadedReader();
+
+    expect(useKeepAwake).toHaveBeenCalled();
     expect(postedToWebView.length).toBeGreaterThanOrEqual(1);
     const loadPayload = JSON.parse(postedToWebView[0]!);
     expect(loadPayload.type).toBe('load');
     expect(loadPayload.book.id).toBe('book_123');
     expect(loadPayload.anchor).toEqual({ blockId: 'ch01_p0003', charOffset: 12 });
+  });
+
+  it('debounces position saves by 500ms', async () => {
+    await renderLoadedReader();
 
     jest.useFakeTimers();
     await act(async () => {
-      capturedOnMessage?.({
-        nativeEvent: { data: JSON.stringify({ type: 'ready' }) },
-      });
-      capturedOnMessage?.({
-        nativeEvent: {
-          data: JSON.stringify({
-            type: 'toc',
-            chapters: [
-              { id: 'ch01', title: 'الفصل الأول', wordCount: 100, pageCount: 5, startPage: 1 },
-              { id: 'ch02', title: 'الفصل الثاني', wordCount: 120, pageCount: 6, startPage: 6 },
-            ],
-          }),
-        },
-      });
-      capturedOnMessage?.({
-        nativeEvent: {
-          data: JSON.stringify({
-            type: 'position',
-            anchor: { blockId: 'ch02_p0001', charOffset: 0 },
-            chapterId: 'ch02',
-            page: 6,
-            pageCount: 11,
-            chapterPage: 1,
-            chapterPageCount: 6,
-            bookProgress: 0.5,
-          }),
-        },
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({
+        type: 'position',
+        anchor: { blockId: 'ch02_p0001', charOffset: 0 },
+        chapterId: 'ch02',
+        page: 6,
+        pageCount: 11,
+        chapterPage: 1,
+        chapterPageCount: 6,
+        bookProgress: 0.5,
       });
     });
 
-    // Position save is debounced by 500ms
     expect(saveBookReaderState).not.toHaveBeenCalled();
     await act(async () => {
       jest.advanceTimersByTime(500);
     });
     jest.useRealTimers();
+
     expect(saveBookReaderState).toHaveBeenCalledWith(
       'book_123',
       expect.objectContaining({
@@ -169,18 +164,39 @@ describe('ReaderScreen', () => {
         pageCount: 11,
       }),
     );
+  });
 
-    // Tap center toggles HUD and shows page X of Y and chapter title
+  it('toggles HUD on center tap and sends goto when selecting TOC chapter', async () => {
+    const { getByTestId, getByText } = await renderLoadedReader();
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({
+        type: 'toc',
+        chapters: [
+          { id: 'ch01', title: 'الفصل الأول', wordCount: 100, pageCount: 5, startPage: 1 },
+          { id: 'ch02', title: 'الفصل الثاني', wordCount: 120, pageCount: 6, startPage: 6 },
+        ],
+      });
+      emitWebMessage({
+        type: 'position',
+        anchor: { blockId: 'ch02_p0001', charOffset: 0 },
+        chapterId: 'ch02',
+        page: 6,
+        pageCount: 11,
+        chapterPage: 1,
+        chapterPageCount: 6,
+        bookProgress: 0.5,
+      });
+    });
+
     expect(getByTestId('reader-hud-header').props.pointerEvents).toBe('none');
     await act(async () => {
-      capturedOnMessage?.({
-        nativeEvent: { data: JSON.stringify({ type: 'tap', zone: 'center' }) },
-      });
+      emitWebMessage({ type: 'tap', zone: 'center' });
     });
     expect(getByTestId('reader-hud-header').props.pointerEvents).toBe('auto');
     expect(getByText('صفحة 6 من 11')).toBeTruthy();
 
-    // Open TOC and select chapter -> sends goto chapterId
     await fireEvent.press(getByTestId('reader-toc-button'));
     await fireEvent.press(getByTestId('toc-item-ch01'));
 
