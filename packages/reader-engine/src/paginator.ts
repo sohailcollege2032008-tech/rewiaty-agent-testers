@@ -835,7 +835,7 @@ export class Paginator {
   }
 
   private applyStylesAndMeasureViewport(): void {
-    const theme = THEMES[this.settings.theme] ?? THEMES['warm-paper'];
+    const theme = THEMES[this.settings.theme] ?? THEMES.warraq;
     const spine = spineTokensFor(this.settings.theme);
     const rootStyle = document.documentElement.style;
 

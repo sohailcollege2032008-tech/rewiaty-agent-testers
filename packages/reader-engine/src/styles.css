@@ -1,12 +1,12 @@
 :root {
-  --bg-color: #FAF8F5;
-  --text-color: #24211D;
-  --muted-color: #6E675F;
-  --quote-bg: rgba(36, 33, 29, 0.04);
-  --quote-border: rgba(130, 100, 68, 0.45);
-  --accent-color: #8B5A2B;
-  --popover-bg: #FFFDF9;
-  --popover-border: #E5DDD0;
+  --bg-color: #FAF7F0;
+  --text-color: #231F1A;
+  --muted-color: #6E655A;
+  --quote-bg: rgba(35, 31, 26, 0.035);
+  --quote-border: #9E3E2F;
+  --accent-color: #9E3E2F;
+  --popover-bg: #FFFDF8;
+  --popover-border: #E3DACB;
 
   --font-family: 'Amiri', 'Noto Naskh Arabic', 'Geeza Pro', 'Traditional Arabic', serif;
   --font-size: 20px;
@@ -200,14 +200,15 @@ body {
   margin: 0;
   font-size: 1.55em;
   line-height: 1.5;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-color);
 }
 
 .chapter-ornament {
   margin-top: 0.45em;
-  font-size: 0.8em;
-  color: var(--muted-color);
+  font-size: 0.75em;
+  color: var(--accent-color);
+  opacity: 0.85;
   letter-spacing: 0;
 }
 
@@ -226,8 +227,8 @@ body {
   margin: 1.2em 0 0.6em 0;
   font-size: 1.2em;
   line-height: 1.6;
-  font-weight: 600;
-  color: var(--text-color);
+  font-weight: 700;
+  color: var(--accent-color);
   break-inside: avoid;
   break-after: avoid;
   text-align: start;
@@ -236,19 +237,20 @@ body {
 .block-break {
   margin: 1.2em 0;
   text-align: center;
-  color: var(--muted-color);
+  color: var(--accent-color);
   font-size: 0.95em;
   line-height: 1.6;
   break-inside: avoid;
   text-indent: 0;
+  opacity: 0.8;
 }
 
 .block-quote {
   margin: 1em 0;
   padding: 0.7em 1em;
   background-color: var(--quote-bg);
-  border-inline-start: 3px solid var(--quote-border);
-  border-radius: 4px;
+  border-inline-start: 2.5px solid var(--quote-border);
+  border-radius: 3px;
   font-size: 0.96em;
   text-indent: 0;
   orphans: 2;

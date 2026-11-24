@@ -170,6 +170,9 @@ export async function readBookBundle(bookId: string): Promise<{
         chapterId: parsedState.chapterId,
         page: parsedState.page,
         pageCount: parsedState.pageCount,
+        bookmarks: Array.isArray(parsedState.bookmarks)
+          ? parsedState.bookmarks.filter((n): n is number => typeof n === 'number' && Number.isFinite(n))
+          : undefined,
         settings: parsedState.settings,
         updatedAt: typeof parsedState.updatedAt === 'number' ? parsedState.updatedAt : Date.now(),
       };

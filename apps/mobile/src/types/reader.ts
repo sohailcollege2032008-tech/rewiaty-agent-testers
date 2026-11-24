@@ -41,6 +41,7 @@ export type BookReaderState = {
   chapterId?: string;
   page?: number;
   pageCount?: number;
+  bookmarks?: number[];
   settings?: Partial<import('../../../../packages/reader-engine/src/types').ReaderSettings>;
   updatedAt: number;
 };

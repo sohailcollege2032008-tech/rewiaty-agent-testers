@@ -36,11 +36,11 @@ export type SpineTokens = {
 };
 
 /**
- * Warraq theme → spine tokens. `warm-paper` and `sepia` are both paper-light,
- * `charcoal` maps to the burnt-paper dark family and `oled` to the OLED family.
+ * Warraq theme → spine tokens. `warraq` and `sepia` are paper-light,
+ * `burnt-paper` is the warm dark and `oled-crimson` the true-black OLED family.
  */
 const SPINE_BY_THEME: Record<ThemeId, SpineTokens> = {
-  'warm-paper': {
+  warraq: {
     crease: 'rgba(54, 42, 28, 0.24)',
     inner: 'rgba(54, 42, 28, 0.11)',
     mid: 'rgba(54, 42, 28, 0.045)',
@@ -54,14 +54,14 @@ const SPINE_BY_THEME: Record<ThemeId, SpineTokens> = {
     sheen: 'rgba(255, 248, 232, 0.46)',
     pageEdge: 'rgba(115, 95, 75, 0.3)',
   },
-  charcoal: {
+  'burnt-paper': {
     crease: 'rgba(0, 0, 0, 0.72)',
     inner: 'rgba(0, 0, 0, 0.42)',
     mid: 'rgba(0, 0, 0, 0.16)',
     sheen: 'rgba(255, 238, 220, 0.035)',
     pageEdge: 'rgba(222, 207, 192, 0.2)',
   },
-  oled: {
+  'oled-crimson': {
     crease: 'rgba(210, 198, 185, 0.16)',
     inner: 'rgba(210, 198, 185, 0.035)',
     mid: 'rgba(0, 0, 0, 0)',
@@ -71,7 +71,7 @@ const SPINE_BY_THEME: Record<ThemeId, SpineTokens> = {
 };
 
 export function spineTokensFor(theme: ThemeId): SpineTokens {
-  return SPINE_BY_THEME[theme] ?? SPINE_BY_THEME['warm-paper'];
+  return Object.hasOwn(SPINE_BY_THEME, theme) ? SPINE_BY_THEME[theme] : SPINE_BY_THEME.warraq;
 }
 
 /**
