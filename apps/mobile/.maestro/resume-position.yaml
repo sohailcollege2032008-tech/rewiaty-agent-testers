@@ -35,8 +35,14 @@ appId: com.rewiaty.app
 - waitForAnimationToEnd
 - takeScreenshot: "01-ch2-before-zoom"
 # Open settings and increase font size (20 -> 24)
-- tapOn:
-    point: "50%,50%"
+# The HUD may already be open (e.g. after closing the TOC); a blind center tap would hide it.
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-chapter-title"
+    commands:
+      - tapOn:
+          point: "50%,50%"
 - extendedWaitUntil:
     visible:
       id: "reader-chapter-title"
@@ -70,8 +76,14 @@ appId: com.rewiaty.app
     id: "settings-close-button"
 - waitForAnimationToEnd
 # Wait >500ms debounce before stopping so anchor + settings persist
-- tapOn:
-    point: "50%,50%"
+# The HUD may already be open (e.g. after closing the TOC); a blind center tap would hide it.
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-chapter-title"
+    commands:
+      - tapOn:
+          point: "50%,50%"
 - extendedWaitUntil:
     visible:
       id: "reader-chapter-title"
@@ -97,8 +109,14 @@ appId: com.rewiaty.app
     timeout: 20000
 - waitForAnimationToEnd
 - takeScreenshot: "03-ch2-after-reopen"
-- tapOn:
-    point: "50%,50%"
+# The HUD may already be open (e.g. after closing the TOC); a blind center tap would hide it.
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-chapter-title"
+    commands:
+      - tapOn:
+          point: "50%,50%"
 - extendedWaitUntil:
     visible:
       id: "reader-chapter-title"

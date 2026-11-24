@@ -19,12 +19,17 @@ appId: com.rewiaty.app
     timeout: 5000
 - tapOn:
     id: "reader-settings-button"
+# The settings sheet has tabs since R1: الخط (font) · الصفحة (layout) · المظهر (theme).
+- tapOn:
+    id: "settings-tab-theme"
 - extendedWaitUntil:
     visible:
       id: "theme-option-oled-crimson"
     timeout: 5000
 - tapOn:
     id: "theme-option-oled-crimson"
+- tapOn:
+    id: "settings-tab-font"
 - tapOn:
     id: "font-option-Readex Pro"
 - waitForAnimationToEnd

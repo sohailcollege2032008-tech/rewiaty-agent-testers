@@ -9,8 +9,14 @@ appId: com.rewiaty.app
 - assertNotVisible:
     id: "reader-error-state"
 - takeScreenshot: "01-opened-from-intent"
-- tapOn:
-    point: "50%,50%"
+# The HUD may already be open (e.g. after closing the TOC); a blind center tap would hide it.
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-chapter-title"
+    commands:
+      - tapOn:
+          point: "50%,50%"
 - extendedWaitUntil:
     visible:
       id: "reader-chapter-title"

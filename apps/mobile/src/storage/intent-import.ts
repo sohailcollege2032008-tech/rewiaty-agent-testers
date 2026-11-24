@@ -97,9 +97,21 @@ export type ImportFromUriDeps = {
   db?: DatabaseAdapter;
 };
 
+export const FILE_ACCESS_MESSAGE =
+  'مقدرناش نوصل للملف ده. افتحه من تيليجرام أو مدير الملفات بـ «فتح بواسطة» أو «مشاركة»، أو استورده من زرار «استيراد» في المكتبة.';
+
+// Why (product): errors from the OS / expo-file-system (e.g. "Missing 'READ' permission", seen on a
+// file:// intent in CI) are English and technical. The reader only ever sees our own Arabic messages.
+const ARABIC_RE = /[\u0600-\u06FF]/;
+
 async function defaultReadFile(uri: string): Promise<{ text: string; name?: string | null }> {
-  const read = await readBookTextFile(new File(uri));
-  return { text: read.text, name: read.name };
+  try {
+    const read = await readBookTextFile(new File(uri));
+    return { text: read.text, name: read.name };
+  } catch (err) {
+    if (err instanceof Error && ARABIC_RE.test(err.message)) throw err;
+    throw new Error(FILE_ACCESS_MESSAGE);
+  }
 }
 
 export async function importBookFromUri(

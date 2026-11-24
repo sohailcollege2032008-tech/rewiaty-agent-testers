@@ -3,6 +3,7 @@ import { render, waitFor } from '@testing-library/react-native';
 import * as Linking from 'expo-linking';
 
 import {
+  FILE_ACCESS_MESSAGE,
   importBookFromUri,
   isBookImportUri,
   resolveBookFileNameFromUri,
@@ -11,6 +12,16 @@ import type { BookLibraryRecord } from '@/types/reader';
 import { useIncomingBookIntent } from '@/utils/use-incoming-book-intent';
 
 const mockPush = jest.fn();
+
+const mockFileBytes = jest.fn();
+jest.mock('expo-file-system', () => ({
+  File: jest.fn().mockImplementation((uri: string) => ({
+    uri,
+    name: uri.split('/').pop(),
+    size: 10,
+    bytes: () => mockFileBytes(),
+  })),
+}));
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush }),
@@ -157,5 +168,16 @@ describe('intent-import & Android Open With flow', () => {
 
     alertSpy.mockRestore();
     intentSpy.mockRestore();
+  });
+});
+
+describe('default file reading errors', () => {
+  it('turns a technical OS error into an Arabic message the reader can act on', async () => {
+    mockFileBytes.mockRejectedValueOnce(
+      new Error("Call to function 'FileSystemFile.bytes' has been rejected. Missing 'READ' permission"),
+    );
+    await expect(importBookFromUri('file:///storage/emulated/0/Download/x.md')).rejects.toThrow(
+      FILE_ACCESS_MESSAGE,
+    );
   });
 });
