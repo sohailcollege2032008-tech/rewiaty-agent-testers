@@ -1,6 +1,6 @@
 import type { Anchor, Book } from '@rewiaty/book-format';
 
-export type ThemeId = 'warm-paper' | 'sepia' | 'charcoal' | 'oled';
+export type ThemeId = 'warraq' | 'sepia' | 'burnt-paper' | 'oled-crimson';
 
 export type TextAlignMode = 'start' | 'justify';
 
@@ -37,45 +37,45 @@ export type ThemeTokens = {
 };
 
 export const THEMES: Record<ThemeId, ThemeTokens> = {
-  'warm-paper': {
-    bg: '#FAF8F5',
-    text: '#24211D',
-    muted: '#6E675F',
-    quoteBg: 'rgba(36, 33, 29, 0.04)',
-    quoteBorder: 'rgba(130, 100, 68, 0.45)',
-    accent: '#8B5A2B',
-    popoverBg: '#FFFDF9',
-    popoverBorder: '#E5DDD0',
+  warraq: {
+    bg: '#FAF7F0',
+    text: '#231F1A',
+    muted: '#6E655A',
+    quoteBg: 'rgba(35, 31, 26, 0.035)',
+    quoteBorder: '#9E3E2F',
+    accent: '#9E3E2F',
+    popoverBg: '#FFFDF8',
+    popoverBorder: '#E3DACB',
   },
   sepia: {
-    bg: '#F4ECD8',
-    text: '#3E3024',
-    muted: '#735F4B',
-    quoteBg: 'rgba(62, 48, 36, 0.05)',
-    quoteBorder: 'rgba(122, 86, 48, 0.45)',
-    accent: '#7A4E22',
-    popoverBg: '#FAF3E3',
-    popoverBorder: '#DECFAF',
+    bg: '#F3EBD6',
+    text: '#382B1E',
+    muted: '#725E49',
+    quoteBg: 'rgba(56, 43, 30, 0.045)',
+    quoteBorder: '#8C3A2B',
+    accent: '#8C3A2B',
+    popoverBg: '#F8F2E2',
+    popoverBorder: '#D8C9AA',
   },
-  charcoal: {
-    bg: '#18181B',
-    text: '#D4D4D8',
-    muted: '#9CA3AF',
-    quoteBg: 'rgba(255, 255, 255, 0.04)',
-    quoteBorder: 'rgba(161, 161, 170, 0.4)',
-    accent: '#D4A373',
-    popoverBg: '#27272A',
-    popoverBorder: '#3F3F46',
+  'burnt-paper': {
+    bg: '#181310',
+    text: '#DECFC0',
+    muted: '#A69686',
+    quoteBg: 'rgba(222, 207, 192, 0.045)',
+    quoteBorder: '#C95E4B',
+    accent: '#DF7863',
+    popoverBg: '#2B231D',
+    popoverBorder: '#372C25',
   },
-  oled: {
+  'oled-crimson': {
     bg: '#000000',
-    text: '#A1A1AA',
-    muted: '#71717A',
-    quoteBg: 'rgba(255, 255, 255, 0.05)',
-    quoteBorder: 'rgba(161, 161, 170, 0.35)',
-    accent: '#C49A6C',
-    popoverBg: '#121214',
-    popoverBorder: '#27272A',
+    text: '#B9B2A7',
+    muted: '#878077',
+    quoteBg: 'rgba(185, 178, 167, 0.045)',
+    quoteBorder: '#B84D3D',
+    accent: '#D46A5A',
+    popoverBg: '#171414',
+    popoverBorder: '#262120',
   },
 };
 
@@ -90,7 +90,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   marginHorizontal: 24,
   marginVertical: 24,
   fontWeight: 400,
-  theme: 'warm-paper',
+  theme: 'warraq',
   disableAnimation: false,
   maxReadingWidth: 68,
   dirOverride: 'auto',

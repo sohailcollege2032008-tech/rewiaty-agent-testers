@@ -771,7 +771,7 @@ export class Paginator {
   }
 
   private applyStylesAndMeasureViewport(): void {
-    const theme = THEMES[this.settings.theme] ?? THEMES['warm-paper'];
+    const theme = THEMES[this.settings.theme] ?? THEMES.warraq;
     const rootStyle = document.documentElement.style;
 
     const maxCh = Math.max(45, Math.min(85, Math.round(this.settings.maxReadingWidth)));

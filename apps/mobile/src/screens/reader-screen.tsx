@@ -7,6 +7,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useColorScheme,
   View,
 } from 'react-native';
 import type { Anchor, Book } from '@rewiaty/book-format';
@@ -14,6 +15,7 @@ import { useKeepAwake } from 'expo-keep-awake';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Path } from 'react-native-svg';
 import WebView, { type WebViewMessageEvent, type WebViewNavigation } from 'react-native-webview';
 
 import { ReaderHud } from '@/components/reader-hud';
@@ -24,12 +26,15 @@ import { touchBookOpened } from '@/storage/database';
 import { ensureOfflineFontsDir } from '@/storage/font-assets';
 import {
   DEFAULT_SETTINGS,
-  loadReaderSettings,
+  loadThemePreference,
   mergeReaderSettings,
   resetReaderSettings,
   saveReaderSettings,
+  selectManualTheme,
 } from '@/storage/settings-store';
-import { getAppThemeTokens } from '@/theme/reader-theme';
+import { RADIUS, TYPOGRAPHY, useResponsiveLayout } from '@/theme/layout';
+import { getAppThemeTokens, resolveAppTheme, resolveSystemTheme } from '@/theme/reader-theme';
+import { notifyThemeListeners } from '@/theme/use-app-theme';
 import type {
   BookReaderState,
   ReaderSettings,
@@ -45,6 +50,10 @@ const READER_ORIGIN_WHITELIST: string[] = ['file://*', 'about:blank'];
 /** Used when the offline fonts folder is unavailable; needs no whitelist entry. */
 const READER_FALLBACK_BASE_URL = 'about:blank';
 
+type EngineSettingsPayload = Partial<ReaderSettings> & {
+  spread?: 'auto' | 'none';
+};
+
 function isReaderDocumentUrl(url: string, baseUrl: string): boolean {
   if (!url) return false;
   // Android loads an `html` source through a data URL and reports that back.
@@ -58,6 +67,8 @@ export function ReaderScreen() {
 
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const colorScheme = useColorScheme();
+  const layout = useResponsiveLayout();
   const { id } = useLocalSearchParams<{ id: string }>();
   const bookId = Array.isArray(id) ? id[0] : id;
 
@@ -65,12 +76,15 @@ export function ReaderScreen() {
   const hasSentLoadRef = useRef(false);
   const initialAnchorRef = useRef<Anchor | undefined>(undefined);
   const initialSettingsRef = useRef<ReaderSettings>(DEFAULT_SETTINGS);
+  const hasManualThemeRef = useRef(false);
   const fontBaseUrlRef = useRef<string | null>(null);
+  const latestStateRef = useRef<BookReaderState | null>(null);
 
   const [readerHtml, setReaderHtml] = useState<string | null>(null);
   const [fontBaseUrl, setFontBaseUrl] = useState<string | null>(null);
   const [book, setBook] = useState<Book | null>(null);
   const [settings, setSettings] = useState<ReaderSettings>(DEFAULT_SETTINGS);
+  const [bookmarks, setBookmarks] = useState<number[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [webLoaded, setWebLoaded] = useState(false);
   const [engineReady, setEngineReady] = useState(false);
@@ -97,6 +111,16 @@ export function ReaderScreen() {
 
   const themeTokens = useMemo(() => getAppThemeTokens(settings.theme), [settings.theme]);
 
+  const effectiveMaxWidth = useMemo(() => {
+    if (
+      layout.readerMaxReadingWidthCh !== null &&
+      settings.maxReadingWidth === DEFAULT_SETTINGS.maxReadingWidth
+    ) {
+      return layout.readerMaxReadingWidthCh;
+    }
+    return settings.maxReadingWidth;
+  }, [layout.readerMaxReadingWidthCh, settings.maxReadingWidth]);
+
   const debouncedSave = useMemo(
     () =>
       debounce((targetBookId: string, state: BookReaderState) => {
@@ -117,6 +141,9 @@ export function ReaderScreen() {
     };
   }, [debouncedSave]);
 
+  const colorSchemeRef = useRef(colorScheme);
+  colorSchemeRef.current = colorScheme;
+
   useEffect(() => {
     hasSentLoadRef.current = false;
     setWebLoaded(false);
@@ -134,10 +161,13 @@ export function ReaderScreen() {
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const readerAsset = require('@/assets/reader.html') as number;
-        const [html, bundle, loadedSettings, resolvedFontsUrl] = await Promise.all([
+        const [html, bundle, pref, resolvedFontsUrl] = await Promise.all([
           readAssetText(readerAsset),
           readBookBundle(bookId),
-          loadReaderSettings().catch(() => ({ ...DEFAULT_SETTINGS })),
+          loadThemePreference().catch(() => ({
+            settings: { ...DEFAULT_SETTINGS },
+            hasManualTheme: false,
+          })),
           ensureOfflineFontsDir().catch(() => null),
         ]);
         if (cancelled) return;
@@ -145,10 +175,24 @@ export function ReaderScreen() {
         await touchBookOpened(bookId, Date.now());
         if (cancelled) return;
 
+        const effectiveTheme = resolveAppTheme(
+          pref.settings.theme,
+          pref.hasManualTheme,
+          colorSchemeRef.current,
+        );
+        const resolvedSettings: ReaderSettings = {
+          ...pref.settings,
+          theme: effectiveTheme,
+        };
+
+        hasManualThemeRef.current = pref.hasManualTheme;
         initialAnchorRef.current = bundle.state.anchor ?? undefined;
-        initialSettingsRef.current = loadedSettings;
+        initialSettingsRef.current = resolvedSettings;
         fontBaseUrlRef.current = resolvedFontsUrl;
-        setSettings(loadedSettings);
+        latestStateRef.current = bundle.state;
+
+        setSettings(resolvedSettings);
+        setBookmarks(bundle.state.bookmarks ?? []);
         setFontBaseUrl(resolvedFontsUrl);
         setReaderHtml(html);
         setBook(bundle.book);
@@ -184,14 +228,63 @@ export function ReaderScreen() {
   useEffect(() => {
     if (!webLoaded || !book || hasSentLoadRef.current) return;
     hasSentLoadRef.current = true;
+    const loadSettings: EngineSettingsPayload = {
+      ...initialSettingsRef.current,
+      maxReadingWidth: effectiveMaxWidth,
+      ...(layout.isTabletLandscape ? { spread: 'auto' as const } : {}),
+    };
     postToEngine({
       type: 'load',
       book,
       anchor: initialAnchorRef.current,
-      settings: initialSettingsRef.current,
+      settings: loadSettings,
       ...(fontBaseUrlRef.current ? { fontBaseUrl: fontBaseUrlRef.current } : {}),
     });
-  }, [webLoaded, book, postToEngine]);
+  }, [webLoaded, book, effectiveMaxWidth, layout.isTabletLandscape, postToEngine]);
+
+  // Sync tablet responsive spread & line width when dimensions / orientation change
+  const prevResponsiveRef = useRef<{ maxWidth: number; isTabletLandscape: boolean } | null>(null);
+  useEffect(() => {
+    if (!hasSentLoadRef.current) {
+      prevResponsiveRef.current = {
+        maxWidth: effectiveMaxWidth,
+        isTabletLandscape: layout.isTabletLandscape,
+      };
+      return;
+    }
+    const prev = prevResponsiveRef.current;
+    if (
+      prev &&
+      prev.maxWidth === effectiveMaxWidth &&
+      prev.isTabletLandscape === layout.isTabletLandscape
+    ) {
+      return;
+    }
+    prevResponsiveRef.current = {
+      maxWidth: effectiveMaxWidth,
+      isTabletLandscape: layout.isTabletLandscape,
+    };
+    const partial: EngineSettingsPayload = {
+      maxReadingWidth: effectiveMaxWidth,
+      spread: layout.isTabletLandscape ? 'auto' : 'none',
+    };
+    postToEngine({ type: 'settings', partial });
+  }, [effectiveMaxWidth, layout.isTabletLandscape, postToEngine]);
+
+  // Follow system colorScheme automatically unless the user chose a theme manually
+  useEffect(() => {
+    if (hasManualThemeRef.current) return;
+    const systemTheme = resolveSystemTheme(colorScheme);
+    setSettings((prev) => {
+      if (prev.theme === systemTheme) return prev;
+      const next = { ...prev, theme: systemTheme };
+      initialSettingsRef.current = next;
+      if (hasSentLoadRef.current) {
+        postToEngine({ type: 'settings', partial: { theme: systemTheme } });
+      }
+      return next;
+    });
+  }, [colorScheme, postToEngine]);
 
   const handleWebViewMessage = useCallback(
     (event: WebViewMessageEvent) => {
@@ -219,23 +312,27 @@ export function ReaderScreen() {
             }
           }
           break;
-        case 'position':
+        case 'position': {
           setPageInfo({
             chapterId: parsed.chapterId,
             page: parsed.page,
             pageCount: parsed.pageCount,
           });
           if (bookId) {
-            debouncedSave(bookId, {
+            const nextState: BookReaderState = {
               anchor: parsed.anchor,
               progress: parsed.bookProgress,
               chapterId: parsed.chapterId,
               page: parsed.page,
               pageCount: parsed.pageCount,
+              bookmarks: latestStateRef.current?.bookmarks,
               updatedAt: Date.now(),
-            });
+            };
+            latestStateRef.current = nextState;
+            debouncedSave(bookId, nextState);
           }
           break;
+        }
         case 'error':
           setLoadError(parsed.message);
           break;
@@ -287,6 +384,11 @@ export function ReaderScreen() {
         const next = mergeReaderSettings(prev, partial);
         initialSettingsRef.current = next;
         void saveReaderSettings(next);
+        if (partial.theme !== undefined) {
+          hasManualThemeRef.current = true;
+          notifyThemeListeners({ theme: next.theme, hasManualTheme: true });
+          void selectManualTheme(next.theme);
+        }
         return next;
       });
     },
@@ -294,12 +396,44 @@ export function ReaderScreen() {
   );
 
   const handleResetSettings = useCallback(() => {
-    const defaults = { ...DEFAULT_SETTINGS };
+    hasManualThemeRef.current = false;
+    const systemTheme = resolveSystemTheme(colorSchemeRef.current);
+    const defaults: ReaderSettings = { ...DEFAULT_SETTINGS, theme: systemTheme };
     postToEngine({ type: 'settings', partial: defaults });
     initialSettingsRef.current = defaults;
     setSettings(defaults);
+    notifyThemeListeners({ theme: systemTheme, hasManualTheme: false });
     void resetReaderSettings();
   }, [postToEngine]);
+
+  const handleToggleBookmark = useCallback(() => {
+    setBookmarks((prev) => {
+      const currentPage = pageInfo.page;
+      const exists = prev.includes(currentPage);
+      const next = exists
+        ? prev.filter((p) => p !== currentPage)
+        : [...prev, currentPage].sort((a, b) => a - b);
+
+      if (bookId) {
+        const base = latestStateRef.current ?? {
+          anchor: null,
+          progress: 0,
+          chapterId: pageInfo.chapterId,
+          page: pageInfo.page,
+          pageCount: pageInfo.pageCount,
+          updatedAt: Date.now(),
+        };
+        const updatedState: BookReaderState = {
+          ...base,
+          bookmarks: next,
+          updatedAt: Date.now(),
+        };
+        latestStateRef.current = updatedState;
+        void saveBookReaderState(bookId, updatedState);
+      }
+      return next;
+    });
+  }, [bookId, pageInfo.chapterId, pageInfo.page, pageInfo.pageCount]);
 
   const activeChapterTitle = useMemo(() => {
     const fromToc = tocEntries.find((c) => c.id === pageInfo.chapterId)?.title;
@@ -307,9 +441,20 @@ export function ReaderScreen() {
     return book?.chapters.find((c) => c.id === pageInfo.chapterId)?.title ?? book?.meta.title ?? '';
   }, [tocEntries, book, pageInfo.chapterId]);
 
+  const effectiveDir: 'rtl' | 'ltr' =
+    settings.dirOverride && settings.dirOverride !== 'auto'
+      ? settings.dirOverride
+      : book?.meta.dir ?? 'rtl';
+
+  const isBookmarked = bookmarks.includes(pageInfo.page);
+  const progressRatio =
+    pageInfo.pageCount > 1 ? Math.max(0, Math.min(1, (pageInfo.page - 1) / (pageInfo.pageCount - 1))) : 0;
+  const pctRead = Math.max(1, Math.round((pageInfo.page / Math.max(1, pageInfo.pageCount)) * 100));
+
   if (loadError) {
     return (
       <View
+        testID="reader-error-state"
         style={[
           styles.centerState,
           {
@@ -320,107 +465,296 @@ export function ReaderScreen() {
         ]}
       >
         <StatusBar style={themeTokens.isDark ? 'light' : 'dark'} />
-        <Text style={[styles.errorText, { color: themeTokens.danger }]} selectable>
-          {loadError}
-        </Text>
-        <Pressable
-          onPress={() => router.back()}
-          style={[styles.backBtn, { backgroundColor: themeTokens.accent }]}
+        <View
+          style={[
+            styles.errorCard,
+            {
+              backgroundColor: themeTokens.surface,
+              borderColor: themeTokens.border,
+            },
+          ]}
         >
-          <Text style={[styles.backBtnText, { color: themeTokens.onAccent }]}>
-            العودة إلى المكتبة
+          <Text style={[styles.errorOrnament, { color: themeTokens.danger }]}>✦</Text>
+          <Text
+            style={[
+              styles.errorText,
+              { color: themeTokens.danger, fontFamily: TYPOGRAPHY.uiFont },
+            ]}
+            selectable
+          >
+            {loadError}
           </Text>
-        </Pressable>
+          <Pressable
+            onPress={() => router.back()}
+            style={({ pressed }) => [
+              styles.backBtn,
+              { backgroundColor: themeTokens.ctaBg },
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text
+              style={[
+                styles.backBtnText,
+                { color: themeTokens.ctaText, fontFamily: TYPOGRAPHY.uiFont },
+              ]}
+            >
+              العودة إلى المكتبة
+            </Text>
+          </Pressable>
+        </View>
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: themeTokens.bg }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: layout.isTabletLandscape ? themeTokens.deskBg : themeTokens.bg,
+          paddingHorizontal: layout.isTabletLandscape ? 20 : 0,
+          paddingVertical: layout.isTabletLandscape ? 16 : 0,
+        },
+      ]}
+    >
       <StatusBar style={themeTokens.isDark ? 'light' : 'dark'} />
-      {readerHtml && book ? (
-        <WebView<Record<string, unknown>>
-          ref={webViewRef}
-          testID="reader-webview"
-          originWhitelist={READER_ORIGIN_WHITELIST}
-          {...(Platform.OS === 'android'
-            ? // Why (tech): the engine renders the 8 bundled woff2 fonts as file://
-              // subresources, and Android WebView refuses file:// subresources unless
-              // file access is on. iOS reads them through allowingReadAccessToURL instead.
-              { allowFileAccess: true }
-            : {})}
-          // Why (tech): on iOS the reader only ever needs to read the fonts folder —
-          // never the whole cache directory — so read access stops there.
-          allowingReadAccessToURL={fontBaseUrl?.startsWith('file://') ? fontBaseUrl : undefined}
-          onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
-          source={{
-            html: readerHtml,
-            baseUrl: readerBaseUrl,
-          }}
+
+      <View
+        testID="reader-book-vessel"
+        style={[
+          styles.bookVessel,
+          {
+            backgroundColor: themeTokens.bg,
+          },
+          layout.isTabletLandscape && {
+            borderRadius: 6,
+            borderWidth: 1,
+            borderColor: themeTokens.boardRim,
+            boxShadow: '0 18px 46px rgba(0, 0, 0, 0.22)',
+          },
+        ]}
+      >
+        {/* Living page-edge thickness indicators */}
+        <View
+          pointerEvents="none"
           style={[
-            styles.webview,
+            styles.edgeStack,
+            styles.edgeRight,
             {
-              backgroundColor: themeTokens.bg,
-              marginTop: insets.top,
-              marginBottom: insets.bottom,
+              width: 2 + progressRatio * (layout.isTabletLandscape ? 8 : 4),
+              backgroundColor: themeTokens.pageEdgeBg,
+              borderLeftColor: themeTokens.pageEdge,
             },
           ]}
-          javaScriptEnabled
-          domStorageEnabled
-          mixedContentMode="never"
-          showsHorizontalScrollIndicator={false}
-          showsVerticalScrollIndicator={false}
-          overScrollMode="never"
-          bounces={false}
-          onLoadEnd={() => setWebLoaded(true)}
-          onMessage={handleWebViewMessage}
         />
-      ) : null}
-
-      {!engineReady ? (
         <View
-          style={[styles.loadingOverlay, { backgroundColor: themeTokens.bg }]}
           pointerEvents="none"
-        >
-          <ActivityIndicator size="large" color={themeTokens.accent} />
-        </View>
-      ) : null}
+          style={[
+            styles.edgeStack,
+            styles.edgeLeft,
+            {
+              width: (layout.isTabletLandscape ? 10 : 6) - progressRatio * (layout.isTabletLandscape ? 7 : 4),
+              backgroundColor: themeTokens.pageEdgeBg,
+              borderRightColor: themeTokens.pageEdge,
+            },
+          ]}
+        />
 
-      {book ? (
-        <>
-          <ReaderHud
-            visible={hudVisible}
-            bookTitle={book.meta.title}
-            chapterTitle={activeChapterTitle}
-            page={pageInfo.page}
-            pageCount={pageInfo.pageCount}
-            dir={settings.dirOverride && settings.dirOverride !== 'auto' ? settings.dirOverride : book.meta.dir}
-            theme={settings.theme}
-            onBack={handleBack}
-            onOpenToc={() => setTocVisible(true)}
-            onOpenSettings={handleOpenSettings}
-            onSeekPage={handleSeekPage}
-          />
+        {/* Center book spine crease in tablet landscape open-book spread */}
+        {layout.isTabletLandscape ? (
+          <View pointerEvents="none" style={styles.spineCenterGuide}>
+            <View
+              style={[
+                styles.spineHeadband,
+                styles.spineHeadbandTop,
+                { backgroundColor: themeTokens.ribbon },
+              ]}
+            />
+            <View
+              style={[
+                styles.spineHairline,
+                { backgroundColor: themeTokens.spineCrease },
+              ]}
+            />
+            <View
+              style={[
+                styles.spineHeadband,
+                styles.spineHeadbandBottom,
+                { backgroundColor: themeTokens.ribbon },
+              ]}
+            />
+          </View>
+        ) : null}
 
-          <TocModal
-            visible={tocVisible}
-            chapters={tocEntries}
-            activeChapterId={pageInfo.chapterId}
-            dir={settings.dirOverride && settings.dirOverride !== 'auto' ? settings.dirOverride : book.meta.dir}
-            theme={settings.theme}
-            onSelectChapter={handleSelectChapter}
-            onClose={() => setTocVisible(false)}
+        {readerHtml && book ? (
+          <WebView<Record<string, unknown>>
+            ref={webViewRef}
+            testID="reader-webview"
+            originWhitelist={READER_ORIGIN_WHITELIST}
+            {...(Platform.OS === 'android'
+              ? // Why (tech): the engine renders the 8 bundled woff2 fonts as file://
+                // subresources, and Android WebView refuses file:// subresources unless
+                // file access is on. iOS reads them through allowingReadAccessToURL instead.
+                { allowFileAccess: true }
+              : {})}
+            // Why (tech): on iOS the reader only ever needs to read the fonts folder —
+            // never the whole cache directory — so read access stops there.
+            allowingReadAccessToURL={fontBaseUrl?.startsWith('file://') ? fontBaseUrl : undefined}
+            onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
+            source={{
+              html: readerHtml,
+              baseUrl: readerBaseUrl,
+            }}
+            style={[
+              styles.webview,
+              {
+                backgroundColor: themeTokens.bg,
+                marginTop: layout.isTabletLandscape ? 12 : Math.max(insets.top, 8),
+              },
+            ]}
+            javaScriptEnabled
+            domStorageEnabled
+            mixedContentMode="never"
+            showsHorizontalScrollIndicator={false}
+            showsVerticalScrollIndicator={false}
+            overScrollMode="never"
+            bounces={false}
+            onLoadEnd={() => setWebLoaded(true)}
+            onMessage={handleWebViewMessage}
           />
+        ) : null}
 
-          <ReaderSettingsSheet
-            visible={settingsVisible}
-            settings={settings}
-            onChange={handleSettingsChange}
-            onReset={handleResetSettings}
-            onClose={() => setSettingsVisible(false)}
-          />
-        </>
-      ) : null}
+        {/* Quiet Running Footer */}
+        {book && engineReady ? (
+          <View
+            testID="reader-running-footer"
+            pointerEvents="none"
+            style={[
+              styles.runningFoot,
+              {
+                paddingBottom: layout.isTabletLandscape ? 10 : Math.max(insets.bottom, 10),
+                paddingHorizontal: layout.isTablet ? 36 : 24,
+                backgroundColor: themeTokens.bg,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.runningFootText,
+                { color: themeTokens.muted, fontFamily: TYPOGRAPHY.uiFont },
+              ]}
+              numberOfLines={1}
+            >
+              {activeChapterTitle}
+            </Text>
+            <Text
+              style={[
+                styles.runningFootNumbers,
+                { color: themeTokens.muted, fontFamily: TYPOGRAPHY.uiFont },
+              ]}
+            >
+              {`${pageInfo.page} / ${pageInfo.pageCount} · ${pctRead}%`}
+            </Text>
+          </View>
+        ) : null}
+
+        {/* Signature Crimson Silk Bookmark Ribbon */}
+        {book ? (
+          <Pressable
+            testID="reader-bookmark-ribbon"
+            onPress={handleToggleBookmark}
+            hitSlop={10}
+            style={[
+              styles.ribbonZone,
+              layout.isTabletLandscape
+                ? styles.ribbonCenterSpine
+                : effectiveDir === 'rtl'
+                  ? styles.ribbonLeft
+                  : styles.ribbonRight,
+              {
+                top: layout.isTabletLandscape ? 0 : insets.top,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={isBookmarked ? 'إزالة العلامة المرجعية' : 'حفظ علامة مرجعية'}
+            accessibilityState={{ selected: isBookmarked }}
+          >
+            <Svg
+              width={18}
+              height={isBookmarked ? 42 : 16}
+              viewBox={isBookmarked ? '0 0 18 42' : '0 0 18 16'}
+              style={{ opacity: isBookmarked ? 1 : 0.46 }}
+            >
+              <Path
+                d={
+                  isBookmarked
+                    ? 'M0 0 H18 V42 L9 34 L0 42 Z'
+                    : 'M0 0 H18 V16 L9 12 L0 16 Z'
+                }
+                fill={themeTokens.ribbon}
+              />
+            </Svg>
+          </Pressable>
+        ) : null}
+
+        {!engineReady ? (
+          <View
+            testID="reader-loading-overlay"
+            style={[styles.loadingOverlay, { backgroundColor: themeTokens.bg }]}
+            pointerEvents="none"
+          >
+            <ActivityIndicator size="large" color={themeTokens.accent} />
+            <Text
+              style={[
+                styles.loadingText,
+                { color: themeTokens.muted, fontFamily: TYPOGRAPHY.uiFont },
+              ]}
+            >
+              جاري تجهيز الصفحات...
+            </Text>
+          </View>
+        ) : null}
+
+        {book ? (
+          <>
+            <ReaderHud
+              visible={hudVisible}
+              bookTitle={book.meta.title}
+              chapterTitle={activeChapterTitle}
+              page={pageInfo.page}
+              pageCount={pageInfo.pageCount}
+              chapterCount={book.chapters.length}
+              isBookmarked={isBookmarked}
+              isTablet={layout.isTablet}
+              isTabletLandscape={layout.isTabletLandscape}
+              dir={effectiveDir}
+              theme={settings.theme}
+              onBack={handleBack}
+              onOpenToc={() => setTocVisible(true)}
+              onOpenSettings={handleOpenSettings}
+              onSeekPage={handleSeekPage}
+            />
+
+            <TocModal
+              visible={tocVisible}
+              chapters={tocEntries}
+              activeChapterId={pageInfo.chapterId}
+              dir={effectiveDir}
+              theme={settings.theme}
+              onSelectChapter={handleSelectChapter}
+              onClose={() => setTocVisible(false)}
+            />
+
+            <ReaderSettingsSheet
+              visible={settingsVisible}
+              settings={settings}
+              onChange={handleSettingsChange}
+              onReset={handleResetSettings}
+              onClose={() => setSettingsVisible(false)}
+            />
+          </>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -428,41 +762,137 @@ export function ReaderScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAF8F5',
+  },
+  bookVessel: {
+    flex: 1,
+    position: 'relative',
+    overflow: 'hidden',
   },
   webview: {
     flex: 1,
-    backgroundColor: '#FAF8F5',
+  },
+  edgeStack: {
+    position: 'absolute',
+    top: 16,
+    bottom: 16,
+    zIndex: 4,
+  },
+  edgeRight: {
+    right: 0,
+    borderLeftWidth: 0.5,
+  },
+  edgeLeft: {
+    left: 0,
+    borderRightWidth: 0.5,
+  },
+  spineCenterGuide: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: '50%',
+    width: 24,
+    marginLeft: -12,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    zIndex: 5,
+  },
+  spineHairline: {
+    flex: 1,
+    width: 1,
+    opacity: 0.35,
+  },
+  spineHeadband: {
+    width: 22,
+    height: 4,
+    opacity: 0.8,
+  },
+  spineHeadbandTop: {
+    borderBottomLeftRadius: 3,
+    borderBottomRightRadius: 3,
+  },
+  spineHeadbandBottom: {
+    borderTopLeftRadius: 3,
+    borderTopRightRadius: 3,
+  },
+  runningFoot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingTop: 4,
+  },
+  runningFootText: {
+    flex: 1,
+    fontSize: 10.5,
+    opacity: 0.72,
+    textAlign: 'right',
+  },
+  runningFootNumbers: {
+    fontSize: 10.5,
+    opacity: 0.72,
+    fontVariant: ['tabular-nums'],
+  },
+  ribbonZone: {
+    position: 'absolute',
+    width: 34,
+    height: 52,
+    alignItems: 'center',
+    zIndex: 15,
+  },
+  ribbonLeft: {
+    left: 16,
+  },
+  ribbonRight: {
+    right: 16,
+  },
+  ribbonCenterSpine: {
+    left: '50%',
+    marginLeft: -17,
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FAF8F5',
+    gap: 12,
+    zIndex: 18,
+  },
+  loadingText: {
+    fontSize: 13.5,
   },
   centerState: {
     flex: 1,
-    backgroundColor: '#FAF8F5',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
-    gap: 16,
+  },
+  errorCard: {
+    width: '100%',
+    maxWidth: 360,
+    padding: 22,
+    borderRadius: RADIUS.card,
+    borderWidth: 1,
+    alignItems: 'center',
+    gap: 14,
+  },
+  errorOrnament: {
+    fontSize: 20,
   },
   errorText: {
-    fontSize: 16,
-    color: '#991B1B',
+    fontSize: 15,
     textAlign: 'center',
+    lineHeight: 22,
   },
   backBtn: {
-    minHeight: 44,
-    paddingHorizontal: 18,
-    borderRadius: 10,
-    backgroundColor: '#8B5A2B',
+    minHeight: 42,
+    paddingHorizontal: 20,
+    borderRadius: RADIUS.button,
     justifyContent: 'center',
   },
   backBtnText: {
-    color: '#FFFDF9',
-    fontWeight: '700',
-    fontSize: 14,
+    fontWeight: '600',
+    fontSize: 13.5,
+  },
+  pressed: {
+    opacity: 0.78,
   },
 });

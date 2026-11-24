@@ -1,10 +1,11 @@
-import { Alert } from 'react-native';
+import { Alert, Dimensions } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import { LibraryScreen } from '@/screens/library-screen';
 import { deleteBookBundle, ensureSampleBookSeeded } from '@/storage/bundle';
 import { listBooks } from '@/storage/database';
 import { pickAndImportBook } from '@/storage/importer';
+import { loadThemePreference } from '@/storage/settings-store';
 import type { BookLibraryRecord } from '@/types/reader';
 
 const mockPush = jest.fn();
@@ -38,6 +39,15 @@ jest.mock('@/storage/importer', () => ({
   pickAndImportBook: jest.fn(),
 }));
 
+jest.mock('@/storage/settings-store', () => {
+  const actual = jest.requireActual('@/storage/settings-store');
+  return {
+    ...actual,
+    loadThemePreference: jest.fn(),
+    selectManualTheme: jest.fn(),
+  };
+});
+
 const SAMPLE_RECORD: BookLibraryRecord = {
   id: 'book_sample',
   title: 'أَوْرَاقُ الْبَحْرِ الْقَدِيمِ',
@@ -65,8 +75,16 @@ const IMPORTED_RECORD: BookLibraryRecord = {
 describe('LibraryScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    Dimensions.set({
+      window: { width: 390, height: 844, scale: 2, fontScale: 1 },
+      screen: { width: 390, height: 844, scale: 2, fontScale: 1 },
+    });
     (ensureSampleBookSeeded as jest.Mock).mockResolvedValue(true);
     (listBooks as jest.Mock).mockResolvedValue([SAMPLE_RECORD]);
+    (loadThemePreference as jest.Mock).mockResolvedValue({
+      settings: { theme: 'warraq' },
+      hasManualTheme: false,
+    });
   });
 
   it('renders seeded book card with progress percentage', async () => {
@@ -126,5 +144,21 @@ describe('LibraryScreen', () => {
     });
 
     alertSpy.mockRestore();
+  });
+
+  it('uses multi-column tablet grid and theme pills on tablet width', async () => {
+    Dimensions.set({
+      window: { width: 1366, height: 1024, scale: 2, fontScale: 1 },
+      screen: { width: 1366, height: 1024, scale: 2, fontScale: 1 },
+    });
+    (listBooks as jest.Mock).mockResolvedValue([IMPORTED_RECORD, SAMPLE_RECORD]);
+
+    const { getByTestId } = await render(<LibraryScreen />);
+
+    await waitFor(() => {
+      const list = getByTestId('library-book-list');
+      expect(list.props.numColumns).toBe(4);
+      expect(getByTestId('library-theme-pill-burnt-paper')).toBeTruthy();
+    });
   });
 });

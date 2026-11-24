@@ -1,5 +1,8 @@
 import { hashString } from '@rewiaty/book-format';
 
+import { warraqTheme } from '@/theme/themes/warraq';
+import type { CoverSwatchPalette } from '@/theme/types';
+
 export type CoverPatternVariant = 'diamonds' | 'octagon' | 'arch' | 'lattice';
 
 export type CoverPalette = {
@@ -10,25 +13,6 @@ export type CoverPalette = {
   border: string;
   pattern: CoverPatternVariant;
 };
-
-type BasePalette = {
-  bg: string;
-  accent: string;
-  text: string;
-  spine: string;
-  border: string;
-};
-
-const COVER_PALETTES: readonly BasePalette[] = [
-  { bg: '#4E342E', accent: '#E6D5C3', text: '#FFF8F1', spine: '#36221E', border: '#A1887F' },
-  { bg: '#2C3E50', accent: '#C8D8E6', text: '#F8FAFC', spine: '#1C2833', border: '#7F9EB2' },
-  { bg: '#1B4332', accent: '#B7E4C7', text: '#F4FBF7', spine: '#0F2A1F', border: '#52B788' },
-  { bg: '#5C2434', accent: '#F2C6CE', text: '#FFF5F7', spine: '#3E1622', border: '#B56576' },
-  { bg: '#3D315B', accent: '#D4C5F9', text: '#F8F5FF', spine: '#281F3D', border: '#8E7AB5' },
-  { bg: '#6B4226', accent: '#EAD2AC', text: '#FFF9F0', spine: '#4A2C18', border: '#BC8A5F' },
-  { bg: '#264653', accent: '#A8DADC', text: '#F1FAEE', spine: '#182D36', border: '#5E9CA0' },
-  { bg: '#4A4E69', accent: '#E0D6EB', text: '#FAF8FC', spine: '#2F3246', border: '#9A8C98' },
-];
 
 const PATTERN_VARIANTS: readonly CoverPatternVariant[] = [
   'diamonds',
@@ -59,9 +43,11 @@ function isLightHex(hex: string): boolean {
 export function resolveCoverPalette(
   title: string,
   explicitCoverColor?: string | null,
+  themePalettes: readonly CoverSwatchPalette[] = warraqTheme.coverPalettes,
 ): CoverPalette {
+  const palettes = themePalettes.length > 0 ? themePalettes : warraqTheme.coverPalettes;
   const hashHex = hashString(title || 'Rewiaty');
-  const paletteIdx = parseInt(hashHex.slice(0, 8), 16) % COVER_PALETTES.length;
+  const paletteIdx = parseInt(hashHex.slice(0, 8), 16) % palettes.length;
   const patternIdx = parseInt(hashHex.slice(8, 16), 16) % PATTERN_VARIANTS.length;
   const pattern = PATTERN_VARIANTS[patternIdx] ?? 'diamonds';
 
@@ -70,17 +56,21 @@ export function resolveCoverPalette(
     const light = isLightHex(trimmed);
     return {
       bg: trimmed,
-      accent: light ? '#5C4033' : 'rgba(255, 255, 255, 0.78)',
+      accent: light ? '#5C4033' : '#DEC8A4',
       text: light ? '#1F1B18' : '#FFFFFF',
-      spine: light ? 'rgba(0, 0, 0, 0.18)' : 'rgba(0, 0, 0, 0.34)',
-      border: light ? 'rgba(0, 0, 0, 0.24)' : 'rgba(255, 255, 255, 0.32)',
+      spine: light ? 'rgba(0, 0, 0, 0.18)' : 'rgba(0, 0, 0, 0.36)',
+      border: light ? 'rgba(0, 0, 0, 0.24)' : 'rgba(222, 200, 164, 0.35)',
       pattern,
     };
   }
 
-  const base = COVER_PALETTES[paletteIdx] ?? COVER_PALETTES[0]!;
+  const chosen = palettes[paletteIdx] ?? palettes[0]!;
   return {
-    ...base,
+    bg: chosen.bg,
+    accent: chosen.line,
+    text: chosen.ink,
+    spine: chosen.spine,
+    border: chosen.line,
     pattern,
   };
 }

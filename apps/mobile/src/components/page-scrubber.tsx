@@ -9,6 +9,7 @@ import {
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
+import { TYPOGRAPHY } from '@/theme/layout';
 import { getAppThemeTokens } from '@/theme/reader-theme';
 import type { ThemeId } from '@/types/reader';
 
@@ -20,7 +21,7 @@ export type PageScrubberProps = {
   onSeekPage: (targetPage: number) => void;
 };
 
-const THUMB_SIZE = 20;
+const THUMB_SIZE = 15;
 
 function computePageFromX(x: number, width: number, pageCount: number, isRtl: boolean): number {
   'worklet';
@@ -140,7 +141,27 @@ export function PageScrubber({ page, pageCount, dir, theme, onSeekPage }: PageSc
   return (
     <View style={styles.container}>
       {previewPage !== null ? (
-        <Text style={[styles.previewText, { color: palette.accent }]}>{`صفحة ${previewPage}`}</Text>
+        <View
+          style={[
+            styles.previewTooltip,
+            {
+              backgroundColor: palette.surfaceElevated,
+              borderColor: palette.border,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.previewText,
+              {
+                color: palette.accent,
+                fontFamily: TYPOGRAPHY.uiFont,
+              },
+            ]}
+          >
+            {`صفحة ${previewPage}`}
+          </Text>
+        </View>
       ) : null}
       <GestureDetector gesture={gesture}>
         <View
@@ -150,13 +171,16 @@ export function PageScrubber({ page, pageCount, dir, theme, onSeekPage }: PageSc
           accessibilityRole="adjustable"
           accessibilityLabel="شريط التنقل بين الصفحات"
         >
-          <View style={[styles.track, { backgroundColor: palette.scrubberTrack }]}>
+          <View style={[styles.track, { backgroundColor: palette.border }]}>
             <Animated.View style={[styles.fill, { backgroundColor: palette.accent }, fillStyle]} />
           </View>
           <Animated.View
             style={[
               styles.thumb,
-              { backgroundColor: palette.accent, borderColor: palette.popoverBg },
+              {
+                backgroundColor: palette.accent,
+                borderColor: palette.surfaceElevated,
+              },
               thumbStyle,
             ]}
           />
@@ -171,22 +195,27 @@ const styles = StyleSheet.create({
     width: '100%',
     gap: 4,
   },
-  previewText: {
+  previewTooltip: {
     alignSelf: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.12)',
+  },
+  previewText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#8B5A2B',
     fontVariant: ['tabular-nums'],
   },
   touchArea: {
-    height: 36,
+    height: 32,
     justifyContent: 'center',
     position: 'relative',
   },
   track: {
     height: 4,
-    borderRadius: 999,
-    backgroundColor: '#E5DDD0',
+    borderRadius: 2,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -194,8 +223,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     bottom: 0,
-    backgroundColor: '#8B5A2B',
-    borderRadius: 999,
+    borderRadius: 2,
   },
   thumb: {
     position: 'absolute',
@@ -203,9 +231,7 @@ const styles = StyleSheet.create({
     width: THUMB_SIZE,
     height: THUMB_SIZE,
     borderRadius: THUMB_SIZE / 2,
-    backgroundColor: '#8B5A2B',
     borderWidth: 2,
-    borderColor: '#FFFDF9',
-    boxShadow: '0 2px 5px rgba(0, 0, 0, 0.22)',
+    boxShadow: '0 2px 6px rgba(0, 0, 0, 0.25)',
   },
 });
