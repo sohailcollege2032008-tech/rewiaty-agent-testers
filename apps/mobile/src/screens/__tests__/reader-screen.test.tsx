@@ -1,14 +1,23 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { useKeepAwake } from 'expo-keep-awake';
+import { Linking, Platform } from 'react-native';
 
 import { ReaderScreen } from '@/screens/reader-screen';
 import { readAssetText, readBookBundle, saveBookReaderState } from '@/storage/bundle';
 import { touchBookOpened } from '@/storage/database';
+import { ensureOfflineFontsDir } from '@/storage/font-assets';
+import {
+  DEFAULT_SETTINGS,
+  loadReaderSettings,
+  resetReaderSettings,
+  saveReaderSettings,
+} from '@/storage/settings-store';
 
 const mockBack = jest.fn();
 const postedToWebView: string[] = [];
 let capturedOnLoadEnd: (() => void) | undefined;
 let capturedOnMessage: ((event: { nativeEvent: { data: string } }) => void) | undefined;
+let capturedWebViewProps: Record<string, unknown> | undefined;
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ back: mockBack }),
@@ -28,11 +37,13 @@ jest.mock('react-native-webview', () => {
         testID?: string;
         onLoadEnd?: () => void;
         onMessage?: (event: { nativeEvent: { data: string } }) => void;
+        [key: string]: unknown;
       },
       ref: React.Ref<{ postMessage: (msg: string) => void }>,
     ) => {
       capturedOnLoadEnd = props.onLoadEnd;
       capturedOnMessage = props.onMessage;
+      capturedWebViewProps = props as Record<string, unknown>;
       React.useImperativeHandle(ref, () => ({
         postMessage: (msg: string) => {
           postedToWebView.push(msg);
@@ -58,6 +69,20 @@ jest.mock('@/storage/database', () => ({
   touchBookOpened: jest.fn(),
 }));
 
+jest.mock('@/storage/font-assets', () => ({
+  ensureOfflineFontsDir: jest.fn(),
+}));
+
+jest.mock('@/storage/settings-store', () => {
+  const actual = jest.requireActual('@/storage/settings-store');
+  return {
+    ...actual,
+    loadReaderSettings: jest.fn(),
+    saveReaderSettings: jest.fn(),
+    resetReaderSettings: jest.fn(),
+  };
+});
+
 describe('ReaderScreen', () => {
   beforeEach(() => {
     jest.useRealTimers();
@@ -65,10 +90,15 @@ describe('ReaderScreen', () => {
     postedToWebView.length = 0;
     capturedOnLoadEnd = undefined;
     capturedOnMessage = undefined;
+    capturedWebViewProps = undefined;
 
     (readAssetText as jest.Mock).mockResolvedValue('<html><body>reader</body></html>');
     (touchBookOpened as jest.Mock).mockResolvedValue(undefined);
     (saveBookReaderState as jest.Mock).mockResolvedValue(undefined);
+    (ensureOfflineFontsDir as jest.Mock).mockResolvedValue('file:///mock/cache/rewiaty-fonts/');
+    (loadReaderSettings as jest.Mock).mockResolvedValue({ ...DEFAULT_SETTINGS });
+    (saveReaderSettings as jest.Mock).mockResolvedValue({ ...DEFAULT_SETTINGS });
+    (resetReaderSettings as jest.Mock).mockResolvedValue({ ...DEFAULT_SETTINGS });
     (readBookBundle as jest.Mock).mockResolvedValue({
       book: {
         id: 'book_123',
@@ -119,6 +149,33 @@ describe('ReaderScreen', () => {
     });
   }
 
+  it('hardens the reader WebView: local-only origins, no file-URL JS surface, outbound links leave the app', async () => {
+    await renderLoadedReader();
+
+    const props = capturedWebViewProps!;
+    expect(props.allowFileAccessFromFileURLs).toBeUndefined();
+    expect(props.allowUniversalAccessFromFileURLs).toBeUndefined();
+    expect(props.originWhitelist).toEqual(['file://*', 'about:blank']);
+    expect(props.originWhitelist).not.toContain('*');
+    expect(props.allowFileAccess === true).toBe(Platform.OS === 'android');
+    expect(props.allowingReadAccessToURL).toBe('file:///mock/cache/rewiaty-fonts/');
+
+    const canStart = props.onShouldStartLoadWithRequest as (request: {
+      url: string;
+    }) => boolean;
+    expect(canStart({ url: 'about:blank' })).toBe(true);
+    expect(canStart({ url: 'file:///mock/cache/rewiaty-fonts/' })).toBe(true);
+    expect(canStart({ url: 'file:///etc/passwd' })).toBe(false);
+    expect(canStart({ url: 'file:///mock/document/books/other/book.md' })).toBe(false);
+
+    const openUrl = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
+    expect(canStart({ url: 'https://example.com/article' })).toBe(false);
+    expect(openUrl).toHaveBeenCalledWith('https://example.com/article');
+    expect(canStart({ url: 'javascript:alert(1)' })).toBe(false);
+    expect(openUrl).toHaveBeenCalledTimes(1);
+    openUrl.mockRestore();
+  });
+
   it('loads book with saved anchor and posts load payload to WebView', async () => {
     await renderLoadedReader();
 
@@ -128,6 +185,8 @@ describe('ReaderScreen', () => {
     expect(loadPayload.type).toBe('load');
     expect(loadPayload.book.id).toBe('book_123');
     expect(loadPayload.anchor).toEqual({ blockId: 'ch01_p0003', charOffset: 12 });
+    expect(loadPayload.settings).toEqual(DEFAULT_SETTINGS);
+    expect(loadPayload.fontBaseUrl).toBe('file:///mock/cache/rewiaty-fonts/');
   });
 
   it('debounces position saves by 500ms', async () => {
@@ -202,5 +261,59 @@ describe('ReaderScreen', () => {
 
     const gotoMsg = JSON.parse(postedToWebView.at(-1)!);
     expect(gotoMsg).toEqual({ type: 'goto', chapterId: 'ch01' });
+  });
+
+  it('opens settings bottom sheet from HUD, sends live settings partial, applies theme, and persists', async () => {
+    const { getByTestId, queryByTestId } = await renderLoadedReader();
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+
+    expect(queryByTestId('reader-settings-sheet-host')).toBeNull();
+
+    await fireEvent.press(getByTestId('reader-settings-button'));
+    expect(getByTestId('reader-settings-sheet-host')).toBeTruthy();
+
+    await fireEvent.press(getByTestId('settings-font-size-inc'));
+    expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
+      type: 'settings',
+      partial: { fontSize: 21 },
+    });
+
+    await fireEvent.press(getByTestId('theme-option-oled'));
+    expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
+      type: 'settings',
+      partial: { theme: 'oled' },
+    });
+
+    await fireEvent.press(getByTestId('font-option-Readex Pro'));
+    expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
+      type: 'settings',
+      partial: { fontFamily: 'Readex Pro' },
+    });
+
+    await fireEvent(getByTestId('settings-disable-animation-switch'), 'valueChange', true);
+    expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
+      type: 'settings',
+      partial: { disableAnimation: true },
+    });
+
+    expect(saveReaderSettings).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        fontSize: 21,
+        theme: 'oled',
+        fontFamily: 'Readex Pro',
+        disableAnimation: true,
+      }),
+    );
+
+    const hudHeader = getByTestId('reader-hud-header');
+    expect(hudHeader.props.style).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ backgroundColor: 'rgba(0, 0, 0, 0.96)' }),
+      ]),
+    );
   });
 });

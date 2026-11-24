@@ -1,6 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 
+import { readBookTextFile } from './book-file';
 import { importBookContent } from './bundle';
 import type { DatabaseAdapter } from './database';
 import type { BookLibraryRecord } from '@/types/reader';
@@ -29,9 +30,7 @@ export async function pickAndImportBook(
     throw new Error('صيغة الملف غير مدعومة. اختر ملف .md أو .txt.');
   }
 
-  const content = asset.file
-    ? await asset.file.text()
-    : await new File(asset.uri).text();
+  const read = await readBookTextFile(asset.file ?? new File(asset.uri));
 
-  return importBookContent(content, asset.name, db);
+  return importBookContent(read.text, read.name ?? asset.name, db);
 }

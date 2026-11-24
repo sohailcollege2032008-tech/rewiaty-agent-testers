@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
+  Linking,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -10,15 +12,27 @@ import {
 import type { Anchor, Book } from '@rewiaty/book-format';
 import { useKeepAwake } from 'expo-keep-awake';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import WebView, { type WebViewMessageEvent } from 'react-native-webview';
+import WebView, { type WebViewMessageEvent, type WebViewNavigation } from 'react-native-webview';
 
 import { ReaderHud } from '@/components/reader-hud';
+import { ReaderSettingsSheet } from '@/components/reader-settings-sheet';
 import { TocModal } from '@/components/toc-modal';
 import { readAssetText, readBookBundle, saveBookReaderState } from '@/storage/bundle';
 import { touchBookOpened } from '@/storage/database';
+import { ensureOfflineFontsDir } from '@/storage/font-assets';
+import {
+  DEFAULT_SETTINGS,
+  loadReaderSettings,
+  mergeReaderSettings,
+  resetReaderSettings,
+  saveReaderSettings,
+} from '@/storage/settings-store';
+import { getAppThemeTokens } from '@/theme/reader-theme';
 import type {
   BookReaderState,
+  ReaderSettings,
   RNToWebMessage,
   TocEntry,
   WebToRNMessage,
@@ -26,6 +40,18 @@ import type {
 import { debounce } from '@/utils/debounce';
 
 const POSITION_SAVE_DEBOUNCE_MS = 500;
+/** The reader document is local-only: no remote origins may be navigated to. */
+const READER_ORIGIN_WHITELIST: string[] = ['file://*', 'about:blank'];
+/** Used when the offline fonts folder is unavailable; needs no whitelist entry. */
+const READER_FALLBACK_BASE_URL = 'about:blank';
+
+function isReaderDocumentUrl(url: string, baseUrl: string): boolean {
+  if (!url) return false;
+  // Android loads an `html` source through a data URL and reports that back.
+  if (url === 'about:blank' || url === 'about:srcdoc') return true;
+  if (url.startsWith('data:text/html')) return true;
+  return url === baseUrl;
+}
 
 export function ReaderScreen() {
   useKeepAwake();
@@ -38,15 +64,26 @@ export function ReaderScreen() {
   const webViewRef = useRef<WebView<Record<string, unknown>> | null>(null);
   const hasSentLoadRef = useRef(false);
   const initialAnchorRef = useRef<Anchor | undefined>(undefined);
+  const initialSettingsRef = useRef<ReaderSettings>(DEFAULT_SETTINGS);
+  const fontBaseUrlRef = useRef<string | null>(null);
 
   const [readerHtml, setReaderHtml] = useState<string | null>(null);
+  const [fontBaseUrl, setFontBaseUrl] = useState<string | null>(null);
   const [book, setBook] = useState<Book | null>(null);
+  const [settings, setSettings] = useState<ReaderSettings>(DEFAULT_SETTINGS);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [webLoaded, setWebLoaded] = useState(false);
   const [engineReady, setEngineReady] = useState(false);
 
+  const readerBaseUrl = fontBaseUrl ?? READER_FALLBACK_BASE_URL;
+  const readerBaseUrlRef = useRef(readerBaseUrl);
+  readerBaseUrlRef.current = readerBaseUrl;
+
   const [hudVisible, setHudVisible] = useState(false);
   const [tocVisible, setTocVisible] = useState(false);
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const settingsVisibleRef = useRef(false);
+  settingsVisibleRef.current = settingsVisible;
   const [tocEntries, setTocEntries] = useState<TocEntry[]>([]);
   const [pageInfo, setPageInfo] = useState<{
     chapterId: string;
@@ -57,6 +94,8 @@ export function ReaderScreen() {
     page: 1,
     pageCount: 1,
   });
+
+  const themeTokens = useMemo(() => getAppThemeTokens(settings.theme), [settings.theme]);
 
   const debouncedSave = useMemo(
     () =>
@@ -95,9 +134,11 @@ export function ReaderScreen() {
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const readerAsset = require('@/assets/reader.html') as number;
-        const [html, bundle] = await Promise.all([
+        const [html, bundle, loadedSettings, resolvedFontsUrl] = await Promise.all([
           readAssetText(readerAsset),
           readBookBundle(bookId),
+          loadReaderSettings().catch(() => ({ ...DEFAULT_SETTINGS })),
+          ensureOfflineFontsDir().catch(() => null),
         ]);
         if (cancelled) return;
 
@@ -105,6 +146,10 @@ export function ReaderScreen() {
         if (cancelled) return;
 
         initialAnchorRef.current = bundle.state.anchor ?? undefined;
+        initialSettingsRef.current = loadedSettings;
+        fontBaseUrlRef.current = resolvedFontsUrl;
+        setSettings(loadedSettings);
+        setFontBaseUrl(resolvedFontsUrl);
         setReaderHtml(html);
         setBook(bundle.book);
         setTocEntries(
@@ -143,6 +188,8 @@ export function ReaderScreen() {
       type: 'load',
       book,
       anchor: initialAnchorRef.current,
+      settings: initialSettingsRef.current,
+      ...(fontBaseUrlRef.current ? { fontBaseUrl: fontBaseUrlRef.current } : {}),
     });
   }, [webLoaded, book, postToEngine]);
 
@@ -165,7 +212,11 @@ export function ReaderScreen() {
           break;
         case 'tap':
           if (parsed.zone === 'center') {
-            setHudVisible((prev) => !prev);
+            if (settingsVisibleRef.current) {
+              setSettingsVisible(false);
+            } else {
+              setHudVisible((prev) => !prev);
+            }
           }
           break;
         case 'position':
@@ -198,6 +249,18 @@ export function ReaderScreen() {
     router.back();
   }, [debouncedSave, router]);
 
+  const handleShouldStartLoadWithRequest = useCallback((request: WebViewNavigation) => {
+    const targetUrl = request.url ?? '';
+    if (isReaderDocumentUrl(targetUrl, readerBaseUrlRef.current)) return true;
+
+    // Any other navigation is an outbound link: http(s) leaves the app, everything
+    // else (file://, javascript:, intent://, ...) is refused outright.
+    if (/^https?:\/\//i.test(targetUrl)) {
+      void Linking.openURL(targetUrl).catch(() => undefined);
+    }
+    return false;
+  }, []);
+
   const handleSelectChapter = useCallback(
     (chapterId: string) => {
       postToEngine({ type: 'goto', chapterId });
@@ -212,6 +275,32 @@ export function ReaderScreen() {
     [postToEngine],
   );
 
+  const handleOpenSettings = useCallback(() => {
+    setHudVisible(false);
+    setSettingsVisible(true);
+  }, []);
+
+  const handleSettingsChange = useCallback(
+    (partial: Partial<ReaderSettings>) => {
+      postToEngine({ type: 'settings', partial });
+      setSettings((prev) => {
+        const next = mergeReaderSettings(prev, partial);
+        initialSettingsRef.current = next;
+        void saveReaderSettings(next);
+        return next;
+      });
+    },
+    [postToEngine],
+  );
+
+  const handleResetSettings = useCallback(() => {
+    const defaults = { ...DEFAULT_SETTINGS };
+    postToEngine({ type: 'settings', partial: defaults });
+    initialSettingsRef.current = defaults;
+    setSettings(defaults);
+    void resetReaderSettings();
+  }, [postToEngine]);
+
   const activeChapterTitle = useMemo(() => {
     const fromToc = tocEntries.find((c) => c.id === pageInfo.chapterId)?.title;
     if (fromToc) return fromToc;
@@ -220,28 +309,58 @@ export function ReaderScreen() {
 
   if (loadError) {
     return (
-      <View style={[styles.centerState, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-        <Text style={styles.errorText} selectable>
+      <View
+        style={[
+          styles.centerState,
+          {
+            backgroundColor: themeTokens.bg,
+            paddingTop: insets.top,
+            paddingBottom: insets.bottom,
+          },
+        ]}
+      >
+        <StatusBar style={themeTokens.isDark ? 'light' : 'dark'} />
+        <Text style={[styles.errorText, { color: themeTokens.danger }]} selectable>
           {loadError}
         </Text>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backBtnText}>العودة إلى المكتبة</Text>
+        <Pressable
+          onPress={() => router.back()}
+          style={[styles.backBtn, { backgroundColor: themeTokens.accent }]}
+        >
+          <Text style={[styles.backBtnText, { color: themeTokens.onAccent }]}>
+            العودة إلى المكتبة
+          </Text>
         </Pressable>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: themeTokens.bg }]}>
+      <StatusBar style={themeTokens.isDark ? 'light' : 'dark'} />
       {readerHtml && book ? (
         <WebView<Record<string, unknown>>
           ref={webViewRef}
           testID="reader-webview"
-          originWhitelist={['*']}
-          source={{ html: readerHtml, baseUrl: 'https://rewiaty.local/' }}
+          originWhitelist={READER_ORIGIN_WHITELIST}
+          {...(Platform.OS === 'android'
+            ? // Why (tech): the engine renders the 8 bundled woff2 fonts as file://
+              // subresources, and Android WebView refuses file:// subresources unless
+              // file access is on. iOS reads them through allowingReadAccessToURL instead.
+              { allowFileAccess: true }
+            : {})}
+          // Why (tech): on iOS the reader only ever needs to read the fonts folder —
+          // never the whole cache directory — so read access stops there.
+          allowingReadAccessToURL={fontBaseUrl?.startsWith('file://') ? fontBaseUrl : undefined}
+          onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
+          source={{
+            html: readerHtml,
+            baseUrl: readerBaseUrl,
+          }}
           style={[
             styles.webview,
             {
+              backgroundColor: themeTokens.bg,
               marginTop: insets.top,
               marginBottom: insets.bottom,
             },
@@ -259,8 +378,11 @@ export function ReaderScreen() {
       ) : null}
 
       {!engineReady ? (
-        <View style={styles.loadingOverlay} pointerEvents="none">
-          <ActivityIndicator size="large" color="#8B5A2B" />
+        <View
+          style={[styles.loadingOverlay, { backgroundColor: themeTokens.bg }]}
+          pointerEvents="none"
+        >
+          <ActivityIndicator size="large" color={themeTokens.accent} />
         </View>
       ) : null}
 
@@ -272,9 +394,11 @@ export function ReaderScreen() {
             chapterTitle={activeChapterTitle}
             page={pageInfo.page}
             pageCount={pageInfo.pageCount}
-            dir={book.meta.dir}
+            dir={settings.dirOverride && settings.dirOverride !== 'auto' ? settings.dirOverride : book.meta.dir}
+            theme={settings.theme}
             onBack={handleBack}
             onOpenToc={() => setTocVisible(true)}
+            onOpenSettings={handleOpenSettings}
             onSeekPage={handleSeekPage}
           />
 
@@ -282,9 +406,18 @@ export function ReaderScreen() {
             visible={tocVisible}
             chapters={tocEntries}
             activeChapterId={pageInfo.chapterId}
-            dir={book.meta.dir}
+            dir={settings.dirOverride && settings.dirOverride !== 'auto' ? settings.dirOverride : book.meta.dir}
+            theme={settings.theme}
             onSelectChapter={handleSelectChapter}
             onClose={() => setTocVisible(false)}
+          />
+
+          <ReaderSettingsSheet
+            visible={settingsVisible}
+            settings={settings}
+            onChange={handleSettingsChange}
+            onReset={handleResetSettings}
+            onClose={() => setSettingsVisible(false)}
           />
         </>
       ) : null}

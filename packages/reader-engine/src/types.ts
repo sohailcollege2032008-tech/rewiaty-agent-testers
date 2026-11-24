@@ -102,10 +102,15 @@ export type RNToWebMessage =
       book: Book;
       anchor?: Anchor;
       settings?: Partial<ReaderSettings>;
+      fontBaseUrl?: string;
     }
   | {
       type: 'settings';
       partial: Partial<ReaderSettings>;
+    }
+  | {
+      type: 'fonts';
+      fontBaseUrl: string;
     }
   | {
       type: 'goto';

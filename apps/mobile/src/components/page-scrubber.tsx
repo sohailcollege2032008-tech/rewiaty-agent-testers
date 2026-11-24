@@ -9,10 +9,14 @@ import {
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
+import { getAppThemeTokens } from '@/theme/reader-theme';
+import type { ThemeId } from '@/types/reader';
+
 export type PageScrubberProps = {
   page: number;
   pageCount: number;
   dir: 'rtl' | 'ltr';
+  theme?: ThemeId;
   onSeekPage: (targetPage: number) => void;
 };
 
@@ -26,7 +30,8 @@ function computePageFromX(x: number, width: number, pageCount: number, isRtl: bo
   return Math.max(1, Math.min(pageCount, Math.round(1 + progress * (pageCount - 1))));
 }
 
-export function PageScrubber({ page, pageCount, dir, onSeekPage }: PageScrubberProps) {
+export function PageScrubber({ page, pageCount, dir, theme, onSeekPage }: PageScrubberProps) {
+  const palette = getAppThemeTokens(theme);
   const isRtl = dir === 'rtl';
   const [previewPage, setPreviewPage] = useState<number | null>(null);
   const trackWidth = useSharedValue(0);
@@ -135,7 +140,7 @@ export function PageScrubber({ page, pageCount, dir, onSeekPage }: PageScrubberP
   return (
     <View style={styles.container}>
       {previewPage !== null ? (
-        <Text style={styles.previewText}>{`صفحة ${previewPage}`}</Text>
+        <Text style={[styles.previewText, { color: palette.accent }]}>{`صفحة ${previewPage}`}</Text>
       ) : null}
       <GestureDetector gesture={gesture}>
         <View
@@ -145,10 +150,16 @@ export function PageScrubber({ page, pageCount, dir, onSeekPage }: PageScrubberP
           accessibilityRole="adjustable"
           accessibilityLabel="شريط التنقل بين الصفحات"
         >
-          <View style={styles.track}>
-            <Animated.View style={[styles.fill, fillStyle]} />
+          <View style={[styles.track, { backgroundColor: palette.scrubberTrack }]}>
+            <Animated.View style={[styles.fill, { backgroundColor: palette.accent }, fillStyle]} />
           </View>
-          <Animated.View style={[styles.thumb, thumbStyle]} />
+          <Animated.View
+            style={[
+              styles.thumb,
+              { backgroundColor: palette.accent, borderColor: palette.popoverBg },
+              thumbStyle,
+            ]}
+          />
         </View>
       </GestureDetector>
     </View>

@@ -1,13 +1,15 @@
 import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import type { TocEntry } from '@/types/reader';
+import { getAppThemeTokens } from '@/theme/reader-theme';
+import type { ThemeId, TocEntry } from '@/types/reader';
 
 export type TocModalProps = {
   visible: boolean;
   chapters: TocEntry[];
   activeChapterId: string;
   dir: 'rtl' | 'ltr';
+  theme?: ThemeId;
   onSelectChapter: (chapterId: string) => void;
   onClose: () => void;
 };
@@ -17,10 +19,12 @@ export function TocModal({
   chapters,
   activeChapterId,
   dir,
+  theme,
   onSelectChapter,
   onClose,
 }: TocModalProps) {
   const insets = useSafeAreaInsets();
+  const palette = getAppThemeTokens(theme);
   const isRtl = dir === 'rtl';
 
   return (
@@ -39,11 +43,13 @@ export function TocModal({
             {
               paddingTop: Math.max(insets.top, 16),
               paddingBottom: Math.max(insets.bottom, 16),
+              backgroundColor: palette.bg,
+              borderStartColor: palette.border,
             },
           ]}
         >
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>الفهرس</Text>
+          <View style={[styles.header, { borderBottomColor: palette.border }]}>
+            <Text style={[styles.headerTitle, { color: palette.text }]}>الفهرس</Text>
             <Pressable
               testID="toc-close-button"
               onPress={onClose}
@@ -52,7 +58,7 @@ export function TocModal({
               accessibilityRole="button"
               accessibilityLabel="إغلاق"
             >
-              <Text style={styles.closeText}>✕</Text>
+              <Text style={[styles.closeText, { color: palette.muted }]}>✕</Text>
             </Pressable>
           </View>
 
@@ -71,8 +77,8 @@ export function TocModal({
                   }}
                   style={({ pressed }) => [
                     styles.row,
-                    isActive && styles.rowActive,
-                    pressed && styles.rowPressed,
+                    isActive && { backgroundColor: palette.chipActiveBg },
+                    pressed && { backgroundColor: palette.chipBg },
                   ]}
                   accessibilityRole="button"
                   accessibilityState={{ selected: isActive }}
@@ -81,6 +87,7 @@ export function TocModal({
                     <Text
                       style={[
                         styles.rowTitle,
+                        { color: isActive ? palette.accent : palette.text },
                         isActive && styles.rowTitleActive,
                         { writingDirection: isRtl ? 'rtl' : 'ltr' },
                       ]}
@@ -88,11 +95,16 @@ export function TocModal({
                     >
                       {item.title}
                     </Text>
-                    <Text style={styles.rowSub}>
+                    <Text style={[styles.rowSub, { color: palette.muted }]}>
                       {`الفصل ${index + 1} · ${item.pageCount} صفحة`}
                     </Text>
                   </View>
-                  <Text style={[styles.pageNum, isActive && styles.pageNumActive]}>
+                  <Text
+                    style={[
+                      styles.pageNum,
+                      { color: isActive ? palette.accent : palette.muted },
+                    ]}
+                  >
                     {item.startPage}
                   </Text>
                 </Pressable>
@@ -100,7 +112,9 @@ export function TocModal({
             }}
             ListEmptyComponent={
               <View style={styles.empty}>
-                <Text style={styles.emptyText}>لا توجد فصول متاحة</Text>
+                <Text style={[styles.emptyText, { color: palette.muted }]}>
+                  لا توجد فصول متاحة
+                </Text>
               </View>
             }
           />

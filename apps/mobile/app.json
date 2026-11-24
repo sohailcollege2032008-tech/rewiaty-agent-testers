@@ -19,7 +19,51 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "category": ["DEFAULT", "BROWSABLE"],
+          "data": [
+            { "scheme": "content", "mimeType": "text/markdown" },
+            { "scheme": "file", "mimeType": "text/markdown" },
+            { "scheme": "content", "mimeType": "text/plain" },
+            { "scheme": "file", "mimeType": "text/plain" },
+            { "scheme": "content", "mimeType": "text/x-markdown" },
+            { "scheme": "file", "mimeType": "text/x-markdown" }
+          ]
+        },
+        {
+          "action": "VIEW",
+          "category": ["DEFAULT", "BROWSABLE"],
+          "data": [
+            {
+              "scheme": "content",
+              "host": "*",
+              "mimeType": "application/octet-stream",
+              "pathPattern": ".*\\.md"
+            },
+            {
+              "scheme": "file",
+              "host": "*",
+              "mimeType": "application/octet-stream",
+              "pathPattern": ".*\\.md"
+            },
+            {
+              "scheme": "content",
+              "host": "*",
+              "mimeType": "application/octet-stream",
+              "pathPattern": ".*\\.MD"
+            },
+            {
+              "scheme": "file",
+              "host": "*",
+              "mimeType": "application/octet-stream",
+              "pathPattern": ".*\\.MD"
+            }
+          ]
+        }
+      ]
     },
     "web": {
       "output": "static",

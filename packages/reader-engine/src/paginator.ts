@@ -434,6 +434,31 @@ export class Paginator {
     return true;
   }
 
+  handleFontLoad(): boolean {
+    if (!this.book || this.rendered.size === 0) return false;
+    const anchorBefore = this.captureCurrentAnchor();
+    let changed = false;
+
+    for (const entry of this.rendered.values()) {
+      const nextCount = this.measureChapterScrollPages(entry.el);
+      if (nextCount !== entry.pageCount) {
+        changed = true;
+      }
+      entry.pageCount = nextCount;
+      entry.estimatedTotalPages = this.computeEstimatedTotalPages(entry);
+      if (entry.isComplete) {
+        this.pageCache.set(this.cacheKey(entry.chapter), entry.pageCount);
+      }
+    }
+
+    if (!changed) return false;
+
+    this.layoutVirtualizedChapterOffsets();
+    this.currentChapterPage = this.resolveAnchorPageInCurrentChapter(anchorBefore);
+    this.applyTrackTransform(false);
+    return true;
+  }
+
   nextPage(): boolean {
     if (!this.book) return false;
     const curr = this.rendered.get(this.currentChapterIdx);

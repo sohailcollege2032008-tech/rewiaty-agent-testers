@@ -417,4 +417,46 @@ test.describe('Rewiaty Reader Engine', () => {
 
     expect(elapsedMs).toBeLessThan(1500);
   });
+
+  test('(f) registers @font-face rules from local fontBaseUrl and loads offline woff2 fonts', async ({ page }) => {
+    await mountEngine(page);
+    const fontsDirUrl = pathToFileURL(path.resolve(__dirname, '../../../apps/mobile/assets/fonts')).href + '/';
+    const rtlBook = parseBook(sampleArText, 'sample-ar.md');
+
+    await sendBridge(page, {
+      type: 'load',
+      book: rtlBook,
+      fontBaseUrl: fontsDirUrl,
+      settings: { fontFamily: 'Amiri', disableAnimation: true },
+    });
+
+    await expect.poll(async () => (await getLatestPosition(page))?.chapterId).toBe('ch01');
+
+    const fontCheck = await page.evaluate(async () => {
+      const styleEl = document.getElementById('rewiaty-font-faces');
+      await document.fonts.ready;
+      const loadedFamilies = Array.from(document.fonts)
+        .filter((f) => f.status === 'loaded')
+        .map((f) => f.family.replace(/['"]/g, ''));
+      const totalFaces = document.fonts.size;
+      return {
+        hasStyleEl: Boolean(styleEl && styleEl.textContent?.includes('@font-face')),
+        totalFaces,
+        loadedFamilies,
+      };
+    });
+
+    expect(fontCheck.hasStyleEl).toBe(true);
+    expect(fontCheck.totalFaces).toBeGreaterThanOrEqual(8);
+    expect(fontCheck.loadedFamilies).toContain('Amiri');
+
+    await sendBridge(page, { type: 'settings', partial: { fontFamily: 'Noto Naskh Arabic' } });
+    const notoLoaded = await page.evaluate(async () => {
+      await document.fonts.load('400 20px "Noto Naskh Arabic"', 'تجربة');
+      return Array.from(document.fonts).some(
+        (f) => f.family.replace(/['"]/g, '') === 'Noto Naskh Arabic' && f.status === 'loaded',
+      );
+    });
+    expect(notoLoaded).toBe(true);
+  });
 });

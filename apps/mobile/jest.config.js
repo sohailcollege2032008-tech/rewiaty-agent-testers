@@ -14,7 +14,7 @@ module.exports = {
   ],
   transform: {
     ...jestPreset.transform,
-    '^.+\\.md$': require.resolve('jest-expo/src/preset/assetFileTransformer.js'),
+    '^.+\\.(?:md|woff2)$': require.resolve('jest-expo/src/preset/assetFileTransformer.js'),
   },
   moduleNameMapper: {
     '^@/assets/(.*)$': '<rootDir>/assets/$1',

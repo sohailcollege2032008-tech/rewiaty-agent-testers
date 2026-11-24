@@ -9,6 +9,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { getAppThemeTokens } from '@/theme/reader-theme';
+import type { ThemeId } from '@/types/reader';
 import { PageScrubber } from './page-scrubber';
 
 const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
@@ -20,8 +22,10 @@ export type ReaderHudProps = {
   page: number;
   pageCount: number;
   dir: 'rtl' | 'ltr';
+  theme?: ThemeId;
   onBack: () => void;
   onOpenToc: () => void;
+  onOpenSettings: () => void;
   onSeekPage: (page: number) => void;
 };
 
@@ -32,11 +36,14 @@ export function ReaderHud({
   page,
   pageCount,
   dir,
+  theme,
   onBack,
   onOpenToc,
+  onOpenSettings,
   onSeekPage,
 }: ReaderHudProps) {
   const insets = useSafeAreaInsets();
+  const palette = getAppThemeTokens(theme);
   const reducedMotion = useReducedMotion();
   const progress = useSharedValue(visible ? 1 : 0);
 
@@ -74,7 +81,11 @@ export function ReaderHud({
         pointerEvents={barPointerEvents}
         style={[
           styles.header,
-          { paddingTop: Math.max(insets.top, 12) },
+          {
+            paddingTop: Math.max(insets.top, 12),
+            backgroundColor: palette.hudBg,
+            borderBottomColor: palette.border,
+          },
           topStyle,
         ]}
       >
@@ -82,27 +93,52 @@ export function ReaderHud({
           testID="reader-back-button"
           onPress={onBack}
           hitSlop={10}
-          style={({ pressed }) => [styles.iconBtn, pressed && styles.btnPressed]}
+          style={({ pressed }) => [
+            styles.iconBtn,
+            { backgroundColor: palette.chipActiveBg },
+            pressed && styles.btnPressed,
+          ]}
           accessibilityRole="button"
           accessibilityLabel="رجوع إلى المكتبة"
         >
-          <Text style={styles.btnText}>رجوع</Text>
+          <Text style={[styles.btnText, { color: palette.accent }]}>رجوع</Text>
         </Pressable>
 
-        <Text style={styles.bookTitle} numberOfLines={1}>
+        <Text style={[styles.bookTitle, { color: palette.text }]} numberOfLines={1}>
           {bookTitle}
         </Text>
 
-        <Pressable
-          testID="reader-toc-button"
-          onPress={onOpenToc}
-          hitSlop={10}
-          style={({ pressed }) => [styles.iconBtn, pressed && styles.btnPressed]}
-          accessibilityRole="button"
-          accessibilityLabel="الفهرس"
-        >
-          <Text style={styles.btnText}>الفهرس</Text>
-        </Pressable>
+        <View style={styles.actionsRow}>
+          <Pressable
+            testID="reader-toc-button"
+            onPress={onOpenToc}
+            hitSlop={10}
+            style={({ pressed }) => [
+              styles.iconBtn,
+              { backgroundColor: palette.chipActiveBg },
+              pressed && styles.btnPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="الفهرس"
+          >
+            <Text style={[styles.btnText, { color: palette.accent }]}>الفهرس</Text>
+          </Pressable>
+
+          <Pressable
+            testID="reader-settings-button"
+            onPress={onOpenSettings}
+            hitSlop={10}
+            style={({ pressed }) => [
+              styles.iconBtn,
+              { backgroundColor: palette.chipActiveBg },
+              pressed && styles.btnPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="إعدادات القراءة"
+          >
+            <Text style={[styles.btnText, { color: palette.accent }]}>الإعدادات</Text>
+          </Pressable>
+        </View>
       </Animated.View>
 
       <Animated.View
@@ -110,18 +146,30 @@ export function ReaderHud({
         pointerEvents={barPointerEvents}
         style={[
           styles.footer,
-          { paddingBottom: Math.max(insets.bottom, 14) },
+          {
+            paddingBottom: Math.max(insets.bottom, 14),
+            backgroundColor: palette.hudBg,
+            borderTopColor: palette.border,
+          },
           bottomStyle,
         ]}
       >
         <View style={styles.footerInfoRow}>
-          <Text style={styles.chapterTitle} numberOfLines={1}>
+          <Text style={[styles.chapterTitle, { color: palette.muted }]} numberOfLines={1}>
             {chapterTitle}
           </Text>
-          <Text style={styles.pageCounter}>{`صفحة ${page} من ${pageCount}`}</Text>
+          <Text style={[styles.pageCounter, { color: palette.text }]}>
+            {`صفحة ${page} من ${pageCount}`}
+          </Text>
         </View>
 
-        <PageScrubber page={page} pageCount={pageCount} dir={dir} onSeekPage={onSeekPage} />
+        <PageScrubber
+          page={page}
+          pageCount={pageCount}
+          dir={dir}
+          theme={theme}
+          onSeekPage={onSeekPage}
+        />
       </Animated.View>
     </View>
   );
@@ -145,8 +193,13 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E5DDD0',
     boxShadow: '0 2px 10px rgba(0, 0, 0, 0.08)',
   },
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   iconBtn: {
-    minWidth: 56,
+    minWidth: 52,
     minHeight: 44,
     paddingHorizontal: 10,
     borderRadius: 10,
