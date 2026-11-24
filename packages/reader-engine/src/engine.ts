@@ -1,5 +1,6 @@
 import type { Block, Book } from '@rewiaty/book-format';
 import { postToHost, subscribeHostMessages } from './bridge.js';
+import { buildFontFaceCss } from './fonts.js';
 import { Paginator } from './paginator.js';
 import { DEFAULT_SETTINGS, type ReaderSettings, type RNToWebMessage, type TapZone } from './types.js';
 
@@ -21,6 +22,8 @@ export class ReaderEngine {
   private book: Book | null = null;
   private pointerStart: { x: number; y: number; time: number } | null = null;
   private resizeTimer: number | null = null;
+  private fontStyleEl: HTMLStyleElement | null = null;
+  private appliedFontBaseUrl = '';
 
   constructor() {
     this.rootEl = document.getElementById('reader-root')!;
@@ -131,12 +134,39 @@ export class ReaderEngine {
       }, 30);
     });
     observer.observe(this.stageEl);
+
+    document.fonts?.addEventListener?.('loadingdone', () => {
+      if (this.paginator.handleFontLoad()) {
+        this.emitPositionAndToc();
+      }
+    });
+  }
+
+  private applyFontFaces(fontBaseUrl?: string): void {
+    const trimmed = fontBaseUrl?.trim() ?? '';
+    if (!trimmed || trimmed === this.appliedFontBaseUrl) return;
+    const css = buildFontFaceCss(trimmed);
+    if (!css) return;
+
+    if (!this.fontStyleEl) {
+      this.fontStyleEl = document.getElementById('rewiaty-font-faces') as HTMLStyleElement | null;
+      if (!this.fontStyleEl) {
+        this.fontStyleEl = document.createElement('style');
+        this.fontStyleEl.id = 'rewiaty-font-faces';
+        document.head.appendChild(this.fontStyleEl);
+      }
+    }
+    this.fontStyleEl.textContent = css;
+    this.appliedFontBaseUrl = trimmed;
   }
 
   private handleMessage(msg: RNToWebMessage): void {
     switch (msg.type) {
       case 'load': {
         this.book = msg.book;
+        if (msg.fontBaseUrl) {
+          this.applyFontFaces(msg.fontBaseUrl);
+        }
         const merged: ReaderSettings = {
           ...DEFAULT_SETTINGS,
           lineHeight: msg.book.meta.dir === 'ltr' ? 1.7 : 1.95,
@@ -147,6 +177,13 @@ export class ReaderEngine {
         postToHost({ type: 'ready' });
         this.emitPositionAndToc();
         this.paginator.scheduleBackgroundWork();
+        break;
+      }
+      case 'fonts': {
+        this.applyFontFaces(msg.fontBaseUrl);
+        if (this.paginator.handleFontLoad()) {
+          this.emitPositionAndToc();
+        }
         break;
       }
       case 'settings': {

@@ -5,7 +5,7 @@ const { getDefaultConfig } = require('expo/metro-config');
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
-const extraAssetExts = ['html', 'md'];
+const extraAssetExts = ['html', 'md', 'woff2'];
 for (const ext of extraAssetExts) {
   if (!config.resolver.assetExts.includes(ext)) {
     config.resolver.assetExts.push(ext);

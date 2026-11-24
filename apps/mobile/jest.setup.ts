@@ -4,6 +4,10 @@ jest.mock('expo-keep-awake', () => ({
   deactivateKeepAwake: jest.fn(),
 }));
 
+jest.mock('expo-status-bar', () => ({
+  StatusBar: () => null,
+}));
+
 jest.mock('react-native-worklets', () => ({
   scheduleOnRN: (fn: (...args: unknown[]) => unknown, ...args: unknown[]) => fn(...args),
 }));
@@ -146,5 +150,59 @@ jest.mock('react-native/Libraries/Modal/Modal', () => {
   return {
     __esModule: true,
     default: MockModal,
+  };
+});
+
+jest.mock('@gorhom/bottom-sheet', () => {
+  const React = require('react');
+  const { View, ScrollView } = require('react-native');
+  const MockBottomSheet = React.forwardRef(
+    (
+      props: {
+        children?: React.ReactNode;
+        backgroundStyle?: unknown;
+        index?: number;
+        snapPoints?: unknown[];
+        [key: string]: unknown;
+      },
+      ref: React.Ref<{ snapToIndex: (i: number) => void; close: () => void }>,
+    ) => {
+      React.useImperativeHandle(ref, () => ({
+        snapToIndex: jest.fn(),
+        close: jest.fn(),
+      }));
+      if (props.index === -1) return null;
+      return React.createElement(
+        View,
+        { testID: 'mock-bottom-sheet', style: props.backgroundStyle },
+        props.children,
+      );
+    },
+  );
+  return {
+    __esModule: true,
+    default: MockBottomSheet,
+    BottomSheetScrollView: ScrollView,
+    BottomSheetView: View,
+  };
+});
+
+jest.mock('react-native-svg', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const makeSvgMock = (name: string) =>
+    function MockSvgElement(props: { children?: React.ReactNode; [key: string]: unknown }) {
+      return React.createElement(View, { accessibilityLabel: name, ...props }, props.children);
+    };
+  return {
+    __esModule: true,
+    default: makeSvgMock('Svg'),
+    Svg: makeSvgMock('Svg'),
+    Rect: makeSvgMock('Rect'),
+    Circle: makeSvgMock('Circle'),
+    Line: makeSvgMock('Line'),
+    Path: makeSvgMock('Path'),
+    Polygon: makeSvgMock('Polygon'),
+    G: makeSvgMock('G'),
   };
 });
