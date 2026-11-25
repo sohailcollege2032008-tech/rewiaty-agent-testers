@@ -6,12 +6,13 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useColorScheme,
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, Path } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 
 import { BookCard } from '@/components/book-card';
 import { BookCover } from '@/components/book-cover';
@@ -19,9 +20,10 @@ import { deleteBookBundle, ensureSampleBookSeeded } from '@/storage/bundle';
 import { listBooks } from '@/storage/database';
 import { pickAndImportBook } from '@/storage/importer';
 import { RADIUS, SPACING, TYPOGRAPHY, useResponsiveLayout } from '@/theme/layout';
-import { THEME_LIST, THEME_OPTIONS } from '@/theme/reader-theme';
-import { useAppTheme } from '@/theme/use-app-theme';
+import { getAppThemeTokens, resolveSystemTheme } from '@/theme/reader-theme';
 import type { BookLibraryRecord } from '@/types/reader';
+import { progressToPercent } from '@/utils/progress';
+import { showToast } from '@/utils/toast';
 
 type GridItem = BookLibraryRecord | { readonly __spacer: true; readonly id: string };
 
@@ -33,7 +35,9 @@ export function LibraryScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const layout = useResponsiveLayout();
-  const { themeId, tokens: palette, selectTheme, refreshTheme } = useAppTheme();
+  const colorScheme = useColorScheme();
+  const themeId = resolveSystemTheme(colorScheme);
+  const palette = getAppThemeTokens(themeId, colorScheme);
 
   const [books, setBooks] = useState<BookLibraryRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,9 +63,8 @@ export function LibraryScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void refreshTheme();
       void refreshBooks();
-    }, [refreshBooks, refreshTheme]),
+    }, [refreshBooks]),
   );
 
   const handleImport = async () => {
@@ -72,6 +75,8 @@ export function LibraryScreen() {
       if (imported) {
         const rows = await listBooks();
         setBooks(rows);
+        showToast(`اتضافت «${imported.title}»`);
+        router.push({ pathname: '/reader/[id]', params: { id: imported.id } });
       }
     } catch (err) {
       Alert.alert(
@@ -81,12 +86,6 @@ export function LibraryScreen() {
     } finally {
       setImporting(false);
     }
-  };
-
-  const handleCycleTheme = () => {
-    const idx = THEME_LIST.findIndex((t) => t.id === themeId);
-    const next = THEME_LIST[(idx + 1) % THEME_LIST.length] ?? THEME_LIST[0]!;
-    void selectTheme(next.id);
   };
 
   const handleOpenBook = (book: BookLibraryRecord) => {
@@ -124,6 +123,17 @@ export function LibraryScreen() {
 
   const heroBook = books[0] ?? null;
   const shelfBooks = useMemo(() => books.slice(1), [books]);
+  const newestUnopenedBookId = useMemo(() => {
+    let newest: BookLibraryRecord | null = null;
+    for (const b of books) {
+      if (b.progress === 0 && b.lastOpenedAt <= b.addedAt) {
+        if (!newest || b.addedAt > newest.addedAt) {
+          newest = b;
+        }
+      }
+    }
+    return newest?.id ?? null;
+  }, [books]);
   const gridColumns = layout.libraryColumns;
 
   const gridData: GridItem[] = useMemo(() => {
@@ -150,7 +160,7 @@ export function LibraryScreen() {
 
   const renderHeroHeader = () => {
     if (!heroBook) return null;
-    const heroPct = Math.max(0, Math.min(100, Math.round(heroBook.progress * 100)));
+    const heroPct = progressToPercent(heroBook.progress);
     const isHeroRtl = heroBook.dir !== 'ltr';
 
     return (
@@ -285,14 +295,16 @@ export function LibraryScreen() {
                   >
                     {`${heroPct}%`}
                   </Text>
-                  <Text
-                    style={[
-                      styles.heroStatusLabel,
-                      { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
-                    ]}
-                  >
-                    {heroPct === 0 ? 'لم تبدأ بعد' : heroPct === 100 ? 'مكتملة' : 'مقروء'}
-                  </Text>
+                  {heroPct === 0 || heroPct >= 98 ? (
+                    <Text
+                      style={[
+                        styles.heroStatusLabel,
+                        { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
+                      ]}
+                    >
+                      {heroPct === 0 ? 'لم تبدأ بعد' : 'مقروء'}
+                    </Text>
+                  ) : null}
                 </View>
               </View>
 
@@ -433,84 +445,6 @@ export function LibraryScreen() {
         </View>
 
         <View style={styles.headerActions}>
-          {layout.isTablet ? (
-            <View
-              style={[
-                styles.themePillGroup,
-                {
-                  backgroundColor: palette.surface,
-                  borderColor: palette.border,
-                },
-              ]}
-            >
-              {THEME_OPTIONS.map((t) => {
-                const active = themeId === t.id;
-                return (
-                  <Pressable
-                    key={t.id}
-                    testID={`library-theme-pill-${t.id}`}
-                    onPress={() => void selectTheme(t.id)}
-                    hitSlop={{ top: 10, bottom: 10, left: 2, right: 2 }}
-                    style={[
-                      styles.themePillBtn,
-                      active && { backgroundColor: palette.surfaceElevated },
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
-                  >
-                    <Text
-                      style={[
-                        styles.themePillText,
-                        {
-                          color: active ? palette.accent : palette.muted,
-                          fontWeight: active ? '600' : '500',
-                          fontFamily: TYPOGRAPHY.uiFont,
-                        },
-                      ]}
-                    >
-                      {t.labelAr}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          ) : (
-            <Pressable
-              testID="library-theme-toggle"
-              onPress={handleCycleTheme}
-              hitSlop={6}
-              style={({ pressed }) => [
-                styles.iconBtn,
-                { borderColor: palette.border },
-                pressed && { backgroundColor: palette.surface },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="تبديل المظهر"
-            >
-              <Svg width={17} height={17} viewBox="0 0 24 24" fill="none">
-                {palette.isDark ? (
-                  <Path
-                    d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"
-                    stroke={palette.text}
-                    strokeWidth={1.7}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                ) : (
-                  <>
-                    <Circle cx={12} cy={12} r={4} stroke={palette.text} strokeWidth={1.7} />
-                    <Path
-                      d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
-                      stroke={palette.text}
-                      strokeWidth={1.7}
-                      strokeLinecap="round"
-                    />
-                  </>
-                )}
-              </Svg>
-            </Pressable>
-          )}
-
           <Pressable
             testID="import-book-button"
             onPress={() => void handleImport()}
@@ -624,6 +558,7 @@ export function LibraryScreen() {
                 book={item}
                 theme={themeId}
                 isTablet={layout.isTablet}
+                isNew={item.id === newestUnopenedBookId}
                 onPress={handleOpenBook}
                 onLongPress={handleLongPressBook}
               />
@@ -707,30 +642,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  themePillGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    padding: 3,
-    borderWidth: 1,
-    borderRadius: 8,
-  },
-  themePillBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 5,
-  },
-  themePillText: {
-    fontSize: 12,
-  },
-  iconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: RADIUS.button,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   importBtn: {
     height: 38,

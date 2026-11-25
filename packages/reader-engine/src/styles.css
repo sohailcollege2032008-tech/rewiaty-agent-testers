@@ -74,8 +74,8 @@ body {
 
 .reader-stage {
   position: relative;
-  width: min(100%, var(--max-width));
-  height: 100%;
+  width: var(--stage-width, min(100%, var(--max-width)));
+  height: var(--stage-height, 100%);
   overflow: hidden;
 }
 

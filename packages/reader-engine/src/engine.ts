@@ -141,7 +141,7 @@ export class ReaderEngine {
         }
       }, 30);
     });
-    observer.observe(this.stageEl);
+    observer.observe(this.rootEl);
 
     document.fonts?.addEventListener?.('loadingdone', () => {
       if (this.paginator.handleFontLoad()) {

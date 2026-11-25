@@ -45,6 +45,7 @@ import type {
   WebToRNMessage,
 } from '@/types/reader';
 import { debounce } from '@/utils/debounce';
+import { progressToPercent } from '@/utils/progress';
 
 const POSITION_SAVE_DEBOUNCE_MS = 500;
 const SETTINGS_CLOSE_TAP_COOLDOWN_MS = 300;
@@ -118,12 +119,14 @@ export function ReaderScreen() {
     chapterId: string;
     page: number;
     pageCount: number;
+    bookProgress: number;
     /** The engine is still measuring chapters, so `pageCount` is an estimate. */
     estimated: boolean;
   }>({
     chapterId: 'ch01',
     page: 1,
     pageCount: 1,
+    bookProgress: 0,
     estimated: true,
   });
 
@@ -213,7 +216,7 @@ export function ReaderScreen() {
         ]);
         if (cancelled) return;
 
-        await touchBookOpened(bookId, Date.now());
+        await touchBookOpened(bookId, Math.max(Date.now(), bundle.state.updatedAt + 1));
         if (cancelled) return;
 
         const effectiveTheme = resolveAppTheme(
@@ -250,6 +253,7 @@ export function ReaderScreen() {
           chapterId: bundle.state.chapterId ?? bundle.book.chapters[0]?.id ?? 'ch01',
           page: bundle.state.page ?? 1,
           pageCount: bundle.state.pageCount ?? Math.max(1, bundle.book.chapters.length),
+          bookProgress: bundle.state.progress ?? 0,
           // A saved position is reported before the engine has measured anything.
           estimated: true,
         });
@@ -412,6 +416,10 @@ export function ReaderScreen() {
             chapterId: parsed.chapterId,
             page: parsed.page,
             pageCount: parsed.pageCount,
+            bookProgress:
+              typeof parsed.bookProgress === 'number' && Number.isFinite(parsed.bookProgress)
+                ? parsed.bookProgress
+                : 0,
             estimated: parsed.estimated === true,
           });
           if (bookId) {
@@ -540,7 +548,7 @@ export function ReaderScreen() {
   const isBookmarked = bookmarks.includes(pageInfo.page);
   const progressRatio =
     pageInfo.pageCount > 1 ? Math.max(0, Math.min(1, (pageInfo.page - 1) / (pageInfo.pageCount - 1))) : 0;
-  const pctRead = Math.max(1, Math.round((pageInfo.page / Math.max(1, pageInfo.pageCount)) * 100));
+  const pctRead = progressToPercent(pageInfo.bookProgress);
 
   if (loadError) {
     return (
@@ -682,6 +690,7 @@ export function ReaderScreen() {
           <WebView<Record<string, unknown>>
             ref={webViewRef}
             testID="reader-webview"
+            accessibilityLabel="صفحة الرواية"
             originWhitelist={READER_ORIGIN_WHITELIST}
             {...(Platform.OS === 'android'
               ? // Why (tech): the engine renders the 8 bundled woff2 fonts as file://
@@ -738,15 +747,18 @@ export function ReaderScreen() {
             ]}
           >
             <Text
+              testID="reader-running-chapter"
               style={[
                 styles.runningFootText,
                 { color: themeTokens.muted, fontFamily: TYPOGRAPHY.uiFont },
               ]}
               numberOfLines={1}
+              ellipsizeMode="tail"
             >
               {activeChapterTitle}
             </Text>
             <Text
+              numberOfLines={1}
               style={[
                 styles.runningFootNumbers,
                 { color: themeTokens.muted, fontFamily: TYPOGRAPHY.uiFont },
@@ -953,13 +965,16 @@ const styles = StyleSheet.create({
   },
   runningFootText: {
     flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
     fontSize: 10.5,
-    opacity: 0.72,
+    opacity: 0.6,
     textAlign: 'right',
   },
   runningFootNumbers: {
+    flexShrink: 0,
     fontSize: 10.5,
-    opacity: 0.72,
+    opacity: 0.6,
     fontVariant: ['tabular-nums'],
   },
   ribbonZone: {

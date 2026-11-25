@@ -2,12 +2,14 @@ import * as ReactNative from 'react-native';
 import { Alert, Dimensions } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
+import { ToastOverlay } from '@/components/toast-overlay';
 import { LibraryScreen } from '@/screens/library-screen';
 import { deleteBookBundle, ensureSampleBookSeeded } from '@/storage/bundle';
 import { listBooks } from '@/storage/database';
 import { pickAndImportBook } from '@/storage/importer';
 import { loadThemePreference } from '@/storage/settings-store';
 import type { BookLibraryRecord } from '@/types/reader';
+import { clearToast } from '@/utils/toast';
 
 const mockPush = jest.fn();
 
@@ -74,8 +76,12 @@ const IMPORTED_RECORD: BookLibraryRecord = {
 };
 
 describe('LibraryScreen', () => {
+  let colorSchemeSpy: jest.SpyInstance;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    clearToast();
+    colorSchemeSpy = jest.spyOn(ReactNative, 'useColorScheme').mockReturnValue('light');
     Dimensions.set({
       window: { width: 390, height: 844, scale: 2, fontScale: 1 },
       screen: { width: 390, height: 844, scale: 2, fontScale: 1 },
@@ -88,17 +94,27 @@ describe('LibraryScreen', () => {
     });
   });
 
-  it('renders seeded book card with progress percentage', async () => {
-    const { getAllByText, getByText } = await render(<LibraryScreen />);
+  afterEach(() => {
+    colorSchemeSpy.mockRestore();
+  });
+
+  it('renders seeded book card with progress percentage and without premature مقروء label', async () => {
+    const { getAllByText, getByText, queryByText } = await render(<LibraryScreen />);
 
     await waitFor(() => {
       expect(getAllByText('أَوْرَاقُ الْبَحْرِ الْقَدِيمِ').length).toBeGreaterThan(0);
       expect(getByText('35%')).toBeTruthy();
+      expect(queryByText('مقروء')).toBeNull();
     });
   });
 
-  it('imports a book and renders it in the library list', async () => {
-    const { getAllByText, getByTestId } = await render(<LibraryScreen />);
+  it('shows toast and opens the book immediately after importing (P3-1)', async () => {
+    const { getAllByText, getByTestId, getByText } = await render(
+      <>
+        <LibraryScreen />
+        <ToastOverlay />
+      </>,
+    );
 
     await waitFor(() => {
       expect(getAllByText('أَوْرَاقُ الْبَحْرِ الْقَدِيمِ').length).toBeGreaterThan(0);
@@ -111,8 +127,129 @@ describe('LibraryScreen', () => {
 
     await waitFor(() => {
       expect(pickAndImportBook).toHaveBeenCalledTimes(1);
-      expect(getAllByText('رواية مستوردة').length).toBeGreaterThan(0);
+      expect(getByText('اتضافت «رواية مستوردة»')).toBeTruthy();
+      expect(mockPush).toHaveBeenCalledWith({
+        pathname: '/reader/[id]',
+        params: { id: 'book_imported' },
+      });
     });
+  });
+
+  it('shows مقروء only when progress >= 98% and numeric % for 1%-97% (P3-2)', async () => {
+    const ninetySeven: BookLibraryRecord = {
+      ...SAMPLE_RECORD,
+      id: 'book_97',
+      title: 'كتاب ٩٧',
+      progress: 0.97,
+      lastOpenedAt: 5000,
+    };
+    const ninetyEight: BookLibraryRecord = {
+      ...IMPORTED_RECORD,
+      id: 'book_98',
+      title: 'كتاب ٩٨',
+      progress: 0.98,
+      lastOpenedAt: 4000,
+    };
+    (listBooks as jest.Mock).mockResolvedValueOnce([ninetySeven, ninetyEight]);
+
+    const { getAllByText, getByText } = await render(<LibraryScreen />);
+
+    await waitFor(() => {
+      expect(getByText('97%')).toBeTruthy();
+      expect(getAllByText('مقروء')).toHaveLength(1);
+    });
+  });
+
+  it('ignores reading theme oled-crimson and stays warraq when system is light (P3-7)', async () => {
+    (loadThemePreference as jest.Mock).mockResolvedValue({
+      settings: { theme: 'oled-crimson' },
+      hasManualTheme: true,
+    });
+
+    const { getByTestId, queryByTestId } = await render(<LibraryScreen />);
+    await waitFor(() => {
+      const containerStyle = ReactNative.StyleSheet.flatten(
+        getByTestId('library-screen').props.style,
+      ) as Record<string, unknown>;
+      expect(containerStyle.backgroundColor).toBe('#FAF7F0');
+    });
+    expect(queryByTestId('library-theme-toggle')).toBeNull();
+  });
+
+  it('uses burnt-paper when system colorScheme is dark even if reading theme is sepia (P3-7)', async () => {
+    colorSchemeSpy.mockReturnValue('dark');
+    (loadThemePreference as jest.Mock).mockResolvedValue({
+      settings: { theme: 'sepia' },
+      hasManualTheme: true,
+    });
+
+    const { getByTestId } = await render(<LibraryScreen />);
+    await waitFor(() => {
+      const containerStyle = ReactNative.StyleSheet.flatten(
+        getByTestId('library-screen').props.style,
+      ) as Record<string, unknown>;
+      expect(containerStyle.backgroundColor).toBe('#181310');
+    });
+  });
+
+  it('fits cover text in max 2 lines with adjustsFontSizeToFit and marks only the last unopened book جديدة (P3-8)', async () => {
+    const activeHero: BookLibraryRecord = {
+      ...SAMPLE_RECORD,
+      id: 'book_active',
+      title: 'كتاب حالي',
+      progress: 0.5,
+      addedAt: 500,
+      lastOpenedAt: 5000,
+    };
+    const openedZero: BookLibraryRecord = {
+      ...SAMPLE_RECORD,
+      id: 'book_opened_zero',
+      title: 'كتاب مفتوح بصفر',
+      progress: 0,
+      addedAt: 1000,
+      lastOpenedAt: 4000,
+    };
+    const newestUnopened: BookLibraryRecord = {
+      ...IMPORTED_RECORD,
+      id: 'book_newest_unopened',
+      title: 'أُمُّ الشَّوَاطِئِ',
+      author: 'قسم الجودة',
+      progress: 0,
+      addedAt: 3000,
+      lastOpenedAt: 3000,
+    };
+    const olderUnopened: BookLibraryRecord = {
+      ...SAMPLE_RECORD,
+      id: 'book_old_unopened',
+      title: 'كتاب قديم غير مفتوح',
+      progress: 0,
+      addedAt: 1500,
+      lastOpenedAt: 1500,
+    };
+    (listBooks as jest.Mock).mockResolvedValueOnce([
+      activeHero,
+      openedZero,
+      newestUnopened,
+      olderUnopened,
+    ]);
+
+    const { getAllByText } = await render(<LibraryScreen />);
+
+    await waitFor(() => {
+      // Only newestUnopened gets جديدة; openedZero & olderUnopened show 0%
+      expect(getAllByText('جديدة')).toHaveLength(1);
+      expect(getAllByText('0%')).toHaveLength(2);
+    });
+
+    const coverTitles = getAllByText('أُمُّ الشَّوَاطِئِ');
+    const coverTitle = coverTitles.find((n) => n.props.adjustsFontSizeToFit === true);
+    expect(coverTitle).toBeDefined();
+    expect(coverTitle!.props.numberOfLines).toBe(2);
+
+    const coverAuthors = getAllByText('قسم الجودة');
+    const coverAuthor = coverAuthors.find((n) => n.props.adjustsFontSizeToFit === true);
+    expect(coverAuthor).toBeDefined();
+    expect(coverAuthor!.props.numberOfLines).toBe(1);
   });
 
   it('deletes a book on long-press confirm', async () => {
@@ -147,19 +284,19 @@ describe('LibraryScreen', () => {
     alertSpy.mockRestore();
   });
 
-  it('uses multi-column tablet grid and theme pills on tablet width', async () => {
+  it('uses multi-column tablet grid on tablet width', async () => {
     Dimensions.set({
       window: { width: 1366, height: 1024, scale: 2, fontScale: 1 },
       screen: { width: 1366, height: 1024, scale: 2, fontScale: 1 },
     });
     (listBooks as jest.Mock).mockResolvedValue([IMPORTED_RECORD, SAMPLE_RECORD]);
 
-    const { getByTestId } = await render(<LibraryScreen />);
+    const { getByTestId, queryByTestId } = await render(<LibraryScreen />);
 
     await waitFor(() => {
       const list = getByTestId('library-book-list');
       expect(list.props.numColumns).toBe(4);
-      expect(getByTestId('library-theme-pill-burnt-paper')).toBeTruthy();
+      expect(queryByTestId('library-theme-pill-burnt-paper')).toBeNull();
     });
   });
 
@@ -188,7 +325,7 @@ describe('LibraryScreen', () => {
       return { width: w + left + right, height: h + top + bottom };
     };
 
-    for (const id of ['library-theme-toggle', 'import-book-button', 'continue-reading-button']) {
+    for (const id of ['import-book-button', 'continue-reading-button']) {
       const box = measureTouchBox(getByTestId(id));
       expect(box.height).toBeGreaterThanOrEqual(48);
       expect(box.width).toBeGreaterThanOrEqual(48);

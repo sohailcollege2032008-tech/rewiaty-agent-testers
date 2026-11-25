@@ -279,11 +279,13 @@ export function ReaderHud({
                 { color: palette.text, fontFamily: TYPOGRAPHY.uiFont },
               ]}
               numberOfLines={1}
+              ellipsizeMode="tail"
             >
               {chapterTitle}
             </Text>
             <Text
               testID="reader-page-counter"
+              numberOfLines={1}
               style={[
                 styles.pageCounter,
                 { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
@@ -305,9 +307,11 @@ export function ReaderHud({
             <Text style={[styles.subText, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}>
               {chapterCount ? `${chapterCount} فصول` : 'القراءة الحالية'}
             </Text>
-            <Text style={[styles.subText, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}>
-              {isBookmarked ? 'الصفحة محفوظة بالشريطة' : 'اضغط الشريطة لحفظ الصفحة'}
-            </Text>
+            {isBookmarked ? (
+              <Text style={[styles.subText, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}>
+                الصفحة محفوظة بالشريطة
+              </Text>
+            ) : null}
           </View>
         </View>
       </Animated.View>
@@ -406,11 +410,14 @@ const styles = StyleSheet.create({
   },
   chapterTitle: {
     flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
     fontSize: 12.5,
     fontWeight: '600',
     textAlign: 'right',
   },
   pageCounter: {
+    flexShrink: 0,
     fontSize: 12,
     fontWeight: '500',
     fontVariant: ['tabular-nums'],
