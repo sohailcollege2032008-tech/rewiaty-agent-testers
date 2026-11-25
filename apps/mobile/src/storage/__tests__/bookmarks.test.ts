@@ -233,3 +233,29 @@ describe('bookmarks: normalization and toggling', () => {
     expect(sortBookmarksNewestFirst([first, second]).map((item) => item.id)).toEqual(['b', 'a']);
   });
 });
+
+describe('legacy migration and page drift (Codex #19)', () => {
+  it('a deleted legacy bookmark does not come back on reload once legacy pages are retired', () => {
+    const loaded = normalizeBookmarkItems(undefined, [3, 7]);
+    const afterDelete = removeBookmarkById(loaded, 'legacy-page-3');
+    // persisted as { bookmarkItems: afterDelete, bookmarks: [] }
+    const reloaded = normalizeBookmarkItems(JSON.parse(JSON.stringify(afterDelete)), []);
+    expect(reloaded.map((item) => item.id)).toEqual(['legacy-page-7']);
+    expect(isPositionBookmarked(reloaded, null, 3)).toBe(false);
+    expect(isPositionBookmarked(reloaded, null, 7)).toBe(true);
+  });
+
+  it('an anchored bookmark never matches by its stale page number after reflow', () => {
+    const anchored = makeItem({ id: 'a', page: 5 });
+    expect(isPositionBookmarked([anchored], { blockId: 'other', charOffset: 0 }, 5)).toBe(false);
+    const toggled = toggleBookmarkAtPosition([anchored], {
+      anchor: { blockId: 'other', charOffset: 0 },
+      page: 5,
+      chapterId: 'ch01',
+      chapterTitle: 'x',
+      now: 1,
+    });
+    expect(toggled.added).toBe(true);
+    expect(toggled.items.map((item) => item.id)).toContain('a');
+  });
+});

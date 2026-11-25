@@ -526,7 +526,12 @@ describe('ReaderScreen', () => {
     });
     expect(saveBookReaderState).toHaveBeenCalledWith(
       'book_123',
-      expect.objectContaining({ bookmarks: [2] }),
+      expect.objectContaining({
+        bookmarks: [],
+        bookmarkItems: [
+          expect.objectContaining({ anchor: { blockId: 'ch01_p0003', charOffset: 12 }, page: 2 }),
+        ],
+      }),
     );
   });
 

@@ -115,7 +115,6 @@ export function ReaderScreen() {
   const [fontBaseUrl, setFontBaseUrl] = useState<string | null>(null);
   const [book, setBook] = useState<Book | null>(null);
   const [settings, setSettings] = useState<ReaderSettings>(DEFAULT_SETTINGS);
-  const [bookmarks, setBookmarks] = useState<number[]>([]);
   const [bookmarkItems, setBookmarkItems] = useState<BookmarkItem[]>([]);
   const [readingStats, setReadingStats] = useState<ReadingStats | null>(null);
   const [readingSnapshot, setReadingSnapshot] = useState<ReadingSnapshot | null>(null);
@@ -307,7 +306,6 @@ export function ReaderScreen() {
         }
 
         setSettings(resolvedSettings);
-        setBookmarks(bundle.state.bookmarks ?? []);
         setBookmarkItems(initialBookmarks);
         setFontBaseUrl(resolvedFontsUrl);
         setReaderHtml(html);
@@ -605,14 +603,9 @@ export function ReaderScreen() {
       bookmarkItemsRef.current = nextItems;
       setBookmarkItems(nextItems);
 
-      const nextPages = Array.from(
-        new Set(
-          nextItems
-            .map((item) => item.page)
-            .filter((page): page is number => typeof page === 'number' && Number.isFinite(page)),
-        ),
-      ).sort((a, b) => a - b);
-      setBookmarks(nextPages);
+      // Why: once bookmarks live in bookmarkItems the legacy page list is retired; keeping it
+      // would resurrect deleted legacy bookmarks on the next load (Codex #19 P2).
+      const nextPages: number[] = [];
 
       if (!bookId) return;
       const base = latestStateRef.current ?? {
@@ -678,8 +671,7 @@ export function ReaderScreen() {
       : book?.meta.dir ?? 'rtl';
 
   const isBookmarked =
-    isPositionBookmarked(bookmarkItems, currentAnchorRef.current, pageInfo.page) ||
-    bookmarks.includes(pageInfo.page);
+    isPositionBookmarked(bookmarkItems, currentAnchorRef.current, pageInfo.page);
   const progressRatio =
     pageInfo.pageCount > 1 ? Math.max(0, Math.min(1, (pageInfo.page - 1) / (pageInfo.pageCount - 1))) : 0;
   const pctRead = progressToPercent(pageInfo.bookProgress);

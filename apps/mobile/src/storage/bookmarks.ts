@@ -255,7 +255,10 @@ export function normalizeBookmarkItems(
 
       const blockId = rawAnchor.blockId;
       const charOffset = rawAnchor.charOffset;
-      if (typeof blockId !== 'string' || !blockId) continue;
+      const rawPage = candidate.page;
+      const isLegacyPageItem =
+        blockId === '' && typeof rawPage === 'number' && Number.isFinite(rawPage);
+      if (typeof blockId !== 'string' || (!blockId && !isLegacyPageItem)) continue;
       if (typeof charOffset !== 'number' || !Number.isFinite(charOffset)) continue;
 
       const createdAt =
@@ -276,7 +279,7 @@ export function normalizeBookmarkItems(
         typeof candidate.contextBefore === 'string' ? candidate.contextBefore : '';
       let contextAfter = typeof candidate.contextAfter === 'string' ? candidate.contextAfter : '';
 
-      if (book && (!quote || !chapterTitle || !chapterId)) {
+      if (book && blockId && (!quote || !chapterTitle || !chapterId)) {
         const context = extractBookmarkContext(book, { blockId, charOffset });
         if (!quote) quote = context.quote;
         if (!chapterId) chapterId = context.chapterId;
@@ -344,7 +347,9 @@ export function isPositionBookmarked(
     ) {
       return true;
     }
-    return item.page !== undefined && page > 0 && item.page === page;
+    // Why: page numbers shift with font size/theme/rotation, so only legacy page-only items
+    // (no anchor) may match by page; anchored items match by anchor alone.
+    return !item.anchor.blockId && item.page !== undefined && page > 0 && item.page === page;
   });
 }
 
@@ -379,6 +384,7 @@ export function toggleBookmarkAtPosition(
       if (item.anchor.charOffset === anchor.charOffset) return true;
     }
     return (
+      !item.anchor.blockId &&
       item.page !== undefined &&
       position.page !== undefined &&
       position.page > 0 &&
