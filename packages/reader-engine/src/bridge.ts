@@ -16,6 +16,8 @@ const VALID_INCOMING_TYPES = new Set([
   'next',
   'prev',
   'suppress-taps',
+  'highlights',
+  'clear-selection',
 ]);
 
 /**

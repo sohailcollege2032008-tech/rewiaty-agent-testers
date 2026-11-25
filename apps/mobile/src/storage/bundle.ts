@@ -198,6 +198,9 @@ export async function readBookBundle(bookId: string): Promise<{
         bookmarkItems: Array.isArray(parsedState.bookmarkItems)
           ? (parsedState.bookmarkItems as BookReaderState['bookmarkItems'])
           : undefined,
+        highlights: Array.isArray(parsedState.highlights)
+          ? (parsedState.highlights as BookReaderState['highlights'])
+          : undefined,
         settings: parsedState.settings,
         updatedAt: typeof parsedState.updatedAt === 'number' ? parsedState.updatedAt : Date.now(),
       };

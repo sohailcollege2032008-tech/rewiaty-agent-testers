@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   AppState,
+  Dimensions,
   Linking,
   Platform,
   Pressable,
@@ -20,6 +22,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import WebView, { type WebViewMessageEvent, type WebViewNavigation } from 'react-native-webview';
 
+import { HighlightNoteModal } from '@/components/highlight-note-modal';
+import { HighlightToolbar } from '@/components/highlight-toolbar';
 import { ReaderHud } from '@/components/reader-hud';
 import { ReaderSettingsSheet } from '@/components/reader-settings-sheet';
 import { TocModal } from '@/components/toc-modal';
@@ -30,6 +34,15 @@ import {
   removeBookmarkById,
   toggleBookmarkAtPosition,
 } from '@/storage/bookmarks';
+import {
+  addHighlight,
+  normalizeHighlightItems,
+  removeHighlightById,
+  resolveHighlightsForBook,
+  shareHighlightsMarkdown,
+  updateHighlightColor,
+  updateHighlightNote,
+} from '@/storage/highlights';
 import { readAssetText, readBookBundle, saveBookReaderState } from '@/storage/bundle';
 import { getKv, setKv, touchBookOpened } from '@/storage/database';
 import { ensureOfflineFontsDir } from '@/storage/font-assets';
@@ -59,14 +72,19 @@ import { notifyThemeListeners } from '@/theme/use-app-theme';
 import type {
   BookmarkItem,
   BookReaderState,
+  HighlightColor,
+  HighlightItem,
   ReaderInsets,
   ReaderSettings,
   RNToWebMessage,
+  SelectionInfo,
+  SelectionRect,
   TocEntry,
   WebToRNMessage,
 } from '@/types/reader';
 import { debounce } from '@/utils/debounce';
 import { progressToPercent } from '@/utils/progress';
+import { showToast } from '@/utils/toast';
 
 const POSITION_SAVE_DEBOUNCE_MS = 500;
 const SETTINGS_CLOSE_TAP_COOLDOWN_MS = 300;
@@ -138,6 +156,7 @@ export function ReaderScreen() {
   const lastPageKeyRef = useRef<string | null>(null);
   const currentAnchorRef = useRef<Anchor | null>(null);
   const bookmarkItemsRef = useRef<BookmarkItem[]>([]);
+  const highlightsRef = useRef<HighlightItem[]>([]);
   const bookRef = useRef<Book | null>(null);
   const readingStatsRef = useRef<ReadingStats | null>(null);
   const readingTrackerRef = useRef<ReadingSessionTracker | null>(null);
@@ -147,6 +166,23 @@ export function ReaderScreen() {
   const [book, setBook] = useState<Book | null>(null);
   const [settings, setSettings] = useState<ReaderSettings>(DEFAULT_SETTINGS);
   const [bookmarkItems, setBookmarkItems] = useState<BookmarkItem[]>([]);
+  const [highlights, setHighlights] = useState<HighlightItem[]>([]);
+  const [activeSelection, setActiveSelection] = useState<SelectionInfo | null>(null);
+  const [editingHighlightState, setEditingHighlightState] = useState<{
+    id: string;
+    rect: SelectionRect;
+  } | null>(null);
+  const [noteModalTarget, setNoteModalTarget] = useState<
+    | { mode: 'create'; selection: SelectionInfo; color: HighlightColor }
+    | { mode: 'edit'; highlight: HighlightItem }
+    | null
+  >(null);
+  const noteModalOpenRef = useRef(false);
+  noteModalOpenRef.current = noteModalTarget !== null;
+  const [vesselSize, setVesselSize] = useState<{ width: number; height: number }>(() => {
+    const win = Dimensions.get('window');
+    return { width: win.width, height: win.height };
+  });
   const [readingStats, setReadingStats] = useState<ReadingStats | null>(null);
   const [readingSnapshot, setReadingSnapshot] = useState<ReadingSnapshot | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -192,6 +228,7 @@ export function ReaderScreen() {
 
   bookRef.current = book;
   bookmarkItemsRef.current = bookmarkItems;
+  highlightsRef.current = highlights;
 
   const webviewMarginTop = layout.isTabletLandscape ? 12 : Math.max(insets.top, 8);
   const defaultHeaderHeight =
@@ -329,6 +366,8 @@ export function ReaderScreen() {
           bundle.book,
         );
         bookmarkItemsRef.current = initialBookmarks;
+        const initialHighlights = normalizeHighlightItems(bundle.state.highlights, bundle.book);
+        highlightsRef.current = initialHighlights;
         readingTrackerRef.current = new ReadingSessionTracker({
           chapters: bundle.book.chapters.map((chapter) => ({
             id: chapter.id,
@@ -344,6 +383,7 @@ export function ReaderScreen() {
 
         setSettings(resolvedSettings);
         setBookmarkItems(initialBookmarks);
+        setHighlights(initialHighlights);
         setFontBaseUrl(resolvedFontsUrl);
         setReaderHtml(html);
         setBook(bundle.book);
@@ -404,6 +444,7 @@ export function ReaderScreen() {
       anchor: initialAnchorRef.current,
       settings: loadSettings,
       insets: initialInsets,
+      highlights: resolveHighlightsForBook(book, highlightsRef.current),
       ...(fontBaseUrlRef.current ? { fontBaseUrl: fontBaseUrlRef.current } : {}),
     });
   }, [webLoaded, book, effectiveMaxWidth, layout.isTabletLandscape, postToEngine]);
@@ -465,6 +506,8 @@ export function ReaderScreen() {
 
   const handleOpenSettings = useCallback(() => {
     hudBeforeSettingsRef.current = hudVisible;
+    setActiveSelection(null);
+    setEditingHighlightState(null);
     setHudVisible(false);
     setSettingsVisible(true);
   }, [hudVisible]);
@@ -517,15 +560,37 @@ export function ReaderScreen() {
             if (settingsVisibleRef.current) {
               handleCloseSettings();
             } else {
+              setActiveSelection(null);
+              setEditingHighlightState(null);
               setShowHudHint(false);
               setHudVisible((prev) => !prev);
             }
           }
           break;
+        case 'selection':
+          if (parsed.selection) {
+            setHudVisible(false);
+            setShowHudHint(false);
+            setEditingHighlightState(null);
+            setActiveSelection(parsed.selection);
+          } else if (!noteModalOpenRef.current) {
+            setActiveSelection(null);
+          }
+          break;
+        case 'highlight-tap':
+          setHudVisible(false);
+          setShowHudHint(false);
+          setActiveSelection(null);
+          setEditingHighlightState({ id: parsed.highlightId, rect: parsed.rect });
+          break;
         case 'position': {
           // A swipe turns the page without a 'tap' message; a new page also retires the hint.
           const pageKey = `${parsed.chapterId}:${parsed.page}`;
-          if (lastPageKeyRef.current !== null && lastPageKeyRef.current !== pageKey) setShowHudHint(false);
+          if (lastPageKeyRef.current !== null && lastPageKeyRef.current !== pageKey) {
+            setShowHudHint(false);
+            setActiveSelection(null);
+            setEditingHighlightState(null);
+          }
           lastPageKeyRef.current = pageKey;
           currentAnchorRef.current = parsed.anchor ?? null;
           setPageInfo({
@@ -547,6 +612,7 @@ export function ReaderScreen() {
               pageCount: parsed.pageCount,
               bookmarks: latestStateRef.current?.bookmarks,
               bookmarkItems: bookmarkItemsRef.current,
+              highlights: highlightsRef.current,
               updatedAt: Date.now(),
             };
             latestStateRef.current = nextState;
@@ -695,6 +761,7 @@ export function ReaderScreen() {
         ...base,
         bookmarks: nextPages,
         bookmarkItems: nextItems,
+        highlights: highlightsRef.current,
         updatedAt: Date.now(),
       };
       latestStateRef.current = updatedState;
@@ -739,6 +806,162 @@ export function ReaderScreen() {
     },
     [postToEngine],
   );
+
+  const persistHighlights = useCallback(
+    (nextItems: HighlightItem[]) => {
+      highlightsRef.current = nextItems;
+      setHighlights(nextItems);
+
+      const currentBook = bookRef.current;
+      if (currentBook && hasSentLoadRef.current) {
+        postToEngine({
+          type: 'highlights',
+          highlights: resolveHighlightsForBook(currentBook, nextItems),
+        });
+      }
+
+      if (!bookId) return;
+      const base = latestStateRef.current ?? {
+        anchor: null,
+        progress: 0,
+        chapterId: pageInfo.chapterId,
+        page: pageInfo.page,
+        pageCount: pageInfo.pageCount,
+        updatedAt: Date.now(),
+      };
+      const updatedState: BookReaderState = {
+        ...base,
+        bookmarkItems: bookmarkItemsRef.current,
+        highlights: nextItems,
+        updatedAt: Date.now(),
+      };
+      latestStateRef.current = updatedState;
+      void saveBookReaderState(bookId, updatedState);
+    },
+    [bookId, pageInfo.chapterId, pageInfo.page, pageInfo.pageCount, postToEngine],
+  );
+
+  const editingHighlight = useMemo(
+    () =>
+      editingHighlightState
+        ? (highlights.find((item) => item.id === editingHighlightState.id) ?? null)
+        : null,
+    [editingHighlightState, highlights],
+  );
+
+  const handleSelectHighlightColor = useCallback(
+    (color: HighlightColor) => {
+      if (activeSelection) {
+        const chapterTitle =
+          bookRef.current?.chapters.find((c) => c.id === activeSelection.chapterId)?.title ??
+          activeChapterTitle;
+        const { items } = addHighlight(highlightsRef.current, {
+          anchor: activeSelection.anchor,
+          length: activeSelection.length,
+          color,
+          quote: activeSelection.quote,
+          contextBefore: activeSelection.contextBefore,
+          contextAfter: activeSelection.contextAfter,
+          chapterId: activeSelection.chapterId,
+          chapterTitle,
+        });
+        persistHighlights(items);
+        setActiveSelection(null);
+        postToEngine({ type: 'clear-selection' });
+        return;
+      }
+
+      if (editingHighlightState) {
+        persistHighlights(updateHighlightColor(highlightsRef.current, editingHighlightState.id, color));
+        setEditingHighlightState(null);
+      }
+    },
+    [activeChapterTitle, activeSelection, editingHighlightState, persistHighlights, postToEngine],
+  );
+
+  const handlePressToolbarNote = useCallback(() => {
+    if (activeSelection) {
+      setNoteModalTarget({ mode: 'create', selection: activeSelection, color: 'gold' });
+      setActiveSelection(null);
+      postToEngine({ type: 'clear-selection' });
+      return;
+    }
+    if (editingHighlight) {
+      setNoteModalTarget({ mode: 'edit', highlight: editingHighlight });
+      setEditingHighlightState(null);
+    }
+  }, [activeSelection, editingHighlight, postToEngine]);
+
+  const handlePressToolbarDelete = useCallback(() => {
+    if (!editingHighlightState) return;
+    persistHighlights(removeHighlightById(highlightsRef.current, editingHighlightState.id));
+    setEditingHighlightState(null);
+  }, [editingHighlightState, persistHighlights]);
+
+  const handleSaveNoteModal = useCallback(
+    (note: string) => {
+      if (!noteModalTarget) return;
+      if (noteModalTarget.mode === 'create') {
+        const sel = noteModalTarget.selection;
+        const chapterTitle =
+          bookRef.current?.chapters.find((c) => c.id === sel.chapterId)?.title ??
+          activeChapterTitle;
+        const { items } = addHighlight(highlightsRef.current, {
+          anchor: sel.anchor,
+          length: sel.length,
+          color: noteModalTarget.color,
+          quote: sel.quote,
+          contextBefore: sel.contextBefore,
+          contextAfter: sel.contextAfter,
+          chapterId: sel.chapterId,
+          chapterTitle,
+          note,
+        });
+        persistHighlights(items);
+      } else {
+        persistHighlights(
+          updateHighlightNote(highlightsRef.current, noteModalTarget.highlight.id, note),
+        );
+      }
+      setNoteModalTarget(null);
+    },
+    [activeChapterTitle, noteModalTarget, persistHighlights],
+  );
+
+  const handleDeleteHighlight = useCallback(
+    (id: string) => {
+      persistHighlights(removeHighlightById(highlightsRef.current, id));
+    },
+    [persistHighlights],
+  );
+
+  const handleUpdateHighlightNote = useCallback(
+    (id: string, note: string) => {
+      persistHighlights(updateHighlightNote(highlightsRef.current, id, note));
+    },
+    [persistHighlights],
+  );
+
+  const handleOpenHighlight = useCallback(
+    (_item: HighlightItem, anchor: Anchor | null) => {
+      if (anchor) {
+        postToEngine({ type: 'goto', anchor });
+      }
+    },
+    [postToEngine],
+  );
+
+  const handleExportHighlights = useCallback(() => {
+    const currentBook = bookRef.current;
+    if (!currentBook || highlightsRef.current.length === 0) return;
+    void shareHighlightsMarkdown(currentBook, highlightsRef.current)
+      .then(() => {
+        showToast('تم تجهيز ملف الاقتباسات');
+      })
+      .catch((err) => {
+        Alert.alert('تعذّر التصدير', readerErrorMessage(err));
+      });
+  }, []);
 
   const effectiveDir: 'rtl' | 'ltr' =
     settings.dirOverride && settings.dirOverride !== 'auto'
@@ -822,6 +1045,14 @@ export function ReaderScreen() {
 
       <View
         testID="reader-book-vessel"
+        onLayout={(event: LayoutChangeEvent) => {
+          const { width, height } = event.nativeEvent.layout;
+          if (width > 0 && height > 0) {
+            setVesselSize((prev) =>
+              prev.width === width && prev.height === height ? prev : { width, height },
+            );
+          }
+        }}
         style={[
           styles.bookVessel,
           {
@@ -1075,11 +1306,47 @@ export function ReaderScreen() {
               dir={effectiveDir}
               theme={settings.theme}
               onBack={handleBack}
-              onOpenToc={() => setTocVisible(true)}
+              onOpenToc={() => {
+                setActiveSelection(null);
+                setEditingHighlightState(null);
+                setTocVisible(true);
+              }}
               onOpenSettings={handleOpenSettings}
               onSelectTheme={(theme) => handleSettingsChange({ theme })}
               onSeekPage={handleSeekPage}
               onBarsLayout={setMeasuredHudHeights}
+            />
+
+            <HighlightToolbar
+              visible={Boolean(activeSelection || editingHighlight)}
+              rect={activeSelection?.rect ?? editingHighlightState?.rect ?? null}
+              containerWidth={vesselSize.width}
+              containerHeight={vesselSize.height}
+              topInset={insets.top}
+              bottomInset={effectiveRunningFootHeight}
+              webviewOffsetTop={webviewMarginTop}
+              activeColor={editingHighlight?.color}
+              isEditing={Boolean(editingHighlight)}
+              theme={settings.theme}
+              onSelectColor={handleSelectHighlightColor}
+              onPressNote={handlePressToolbarNote}
+              onPressDelete={editingHighlight ? handlePressToolbarDelete : undefined}
+            />
+
+            <HighlightNoteModal
+              visible={noteModalTarget !== null}
+              quote={
+                noteModalTarget?.mode === 'create'
+                  ? noteModalTarget.selection.quote
+                  : (noteModalTarget?.highlight.quote ?? '')
+              }
+              initialNote={
+                noteModalTarget?.mode === 'edit' ? (noteModalTarget.highlight.note ?? '') : ''
+              }
+              theme={settings.theme}
+              dir={effectiveDir}
+              onSave={handleSaveNoteModal}
+              onCancel={() => setNoteModalTarget(null)}
             />
 
             <TocModal
@@ -1092,6 +1359,11 @@ export function ReaderScreen() {
               book={book}
               onOpenBookmark={handleOpenBookmark}
               onDeleteBookmark={handleDeleteBookmark}
+              highlights={highlights}
+              onOpenHighlight={handleOpenHighlight}
+              onDeleteHighlight={handleDeleteHighlight}
+              onUpdateHighlightNote={handleUpdateHighlightNote}
+              onExportHighlights={handleExportHighlights}
               readingStats={readingStats}
               readingSnapshot={readingSnapshot}
               onSelectChapter={handleSelectChapter}

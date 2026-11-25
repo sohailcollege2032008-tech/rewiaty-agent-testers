@@ -1,11 +1,20 @@
 import type { Block, Book } from '@rewiaty/book-format';
 import { postToHost, subscribeHostMessages } from './bridge.js';
 import { buildFontFaceCss } from './fonts.js';
+import {
+  clearDomSelection,
+  extendSelectionToPoint,
+  extractSelectionInfo,
+  hasNonCollapsedSelection,
+  selectWordAtPoint,
+  type SelectionWordAnchor,
+} from './highlights.js';
 import { Paginator } from './paginator.js';
 import { DEFAULT_SETTINGS, type ReaderSettings, type RNToWebMessage, type TapZone } from './types.js';
 
 const TAP_MAX_MOVEMENT_PX = 14;
 const SWIPE_MIN_DISTANCE_PX = 40;
+const LONG_PRESS_MS = 350;
 const LEFT_ZONE_RATIO = 0.3;
 const RIGHT_ZONE_RATIO = 0.7;
 /**
@@ -34,6 +43,10 @@ export class ReaderEngine {
   private readonly paginator: Paginator;
   private book: Book | null = null;
   private pointerStart: { x: number; y: number; time: number } | null = null;
+  private longPressTimer: number | null = null;
+  private isSelecting = false;
+  private selectionAnchor: SelectionWordAnchor | null = null;
+  private hadSelectionOnDown = false;
   private resizeTimer: number | null = null;
   private fontStyleEl: HTMLStyleElement | null = null;
   private appliedFontBaseUrl = '';
@@ -67,10 +80,88 @@ export class ReaderEngine {
     this.rootEl.addEventListener('pointerdown', (e) => {
       if (!this.footnoteBackdrop.hidden) return;
       if (e.button !== 0 && e.pointerType === 'mouse') return;
+      this.cancelLongPress();
+      this.hadSelectionOnDown = hasNonCollapsedSelection();
+      this.isSelecting = false;
+      this.selectionAnchor = null;
       this.pointerStart = { x: e.clientX, y: e.clientY, time: Date.now() };
+
+      const target = e.target as HTMLElement | null;
+      const onSelectableText = Boolean(
+        target?.closest('.block-p, .block-quote, .block-h2') && !target.closest('.fn-ref'),
+      );
+      if (onSelectableText) {
+        const startX = e.clientX;
+        const startY = e.clientY;
+        this.longPressTimer = window.setTimeout(() => {
+          this.longPressTimer = null;
+          if (!this.pointerStart) return;
+          // Isolate selection from swipe/tap: page turns cannot happen once long-press activates.
+          this.pointerStart = null;
+          this.rootEl.classList.add('is-selecting');
+          const anchor = selectWordAtPoint(startX, startY);
+          if (anchor) {
+            this.isSelecting = true;
+            this.selectionAnchor = anchor;
+          } else {
+            this.rootEl.classList.remove('is-selecting');
+          }
+        }, LONG_PRESS_MS);
+      }
+    });
+
+    this.rootEl.addEventListener('pointermove', (e) => {
+      if (this.isSelecting) {
+        e.preventDefault();
+        if (this.selectionAnchor) {
+          extendSelectionToPoint(this.selectionAnchor, e.clientX, e.clientY);
+        }
+        return;
+      }
+
+      if (!this.pointerStart) return;
+      const dist = Math.hypot(e.clientX - this.pointerStart.x, e.clientY - this.pointerStart.y);
+      if (dist > TAP_MAX_MOVEMENT_PX) {
+        this.cancelLongPress();
+        if (hasNonCollapsedSelection()) {
+          // A native selection or handle drag is active; never turn the page.
+          this.pointerStart = null;
+        }
+      }
+    });
+
+    this.rootEl.addEventListener(
+      'touchmove',
+      (e) => {
+        if (this.isSelecting) {
+          e.preventDefault();
+        }
+      },
+      { passive: false },
+    );
+
+    this.rootEl.addEventListener('contextmenu', (e) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('.chapter')) {
+        e.preventDefault();
+      }
     });
 
     this.rootEl.addEventListener('pointerup', (e) => {
+      this.cancelLongPress();
+
+      if (this.isSelecting) {
+        this.isSelecting = false;
+        this.selectionAnchor = null;
+        this.pointerStart = null;
+        const selection = extractSelectionInfo();
+        if (!selection) {
+          this.rootEl.classList.remove('is-selecting');
+        }
+        postToHost({ type: 'selection', selection });
+        return;
+      }
+
       if (!this.pointerStart) return;
       const start = this.pointerStart;
       this.pointerStart = null;
@@ -90,18 +181,47 @@ export class ReaderEngine {
       const absX = Math.abs(dx);
       const absY = Math.abs(dy);
 
+      if (this.hadSelectionOnDown || hasNonCollapsedSelection()) {
+        // Dismiss active selection cleanly without turning the page or toggling HUD.
+        if (absX <= TAP_MAX_MOVEMENT_PX && absY <= TAP_MAX_MOVEMENT_PX) {
+          this.clearSelection();
+          postToHost({ type: 'selection', selection: null });
+        } else {
+          const selection = extractSelectionInfo();
+          if (selection) {
+            postToHost({ type: 'selection', selection });
+          }
+        }
+        return;
+      }
+
       if (absX >= SWIPE_MIN_DISTANCE_PX && absX > absY * 1.2) {
         this.handleSwipe(dx);
         return;
       }
 
       if (absX <= TAP_MAX_MOVEMENT_PX && absY <= TAP_MAX_MOVEMENT_PX) {
+        const hitHl = this.paginator.hitTestHighlight(e.clientX, e.clientY);
+        if (hitHl) {
+          postToHost({ type: 'highlight-tap', highlightId: hitHl.highlight.id, rect: hitHl.rect });
+          return;
+        }
         this.handleTap(e.clientX);
       }
     });
 
     this.rootEl.addEventListener('pointercancel', () => {
+      this.cancelLongPress();
       this.pointerStart = null;
+      if (this.isSelecting) {
+        this.isSelecting = false;
+        this.selectionAnchor = null;
+        const selection = extractSelectionInfo();
+        if (!selection) {
+          this.rootEl.classList.remove('is-selecting');
+        }
+        postToHost({ type: 'selection', selection });
+      }
     });
 
     this.rootEl.addEventListener('click', (e) => {
@@ -203,8 +323,9 @@ export class ReaderEngine {
           lineHeight: msg.book.meta.dir === 'ltr' ? 1.7 : 1.95,
           ...(msg.settings ?? {}),
         };
+        this.clearSelection();
         this.closeFootnote();
-        this.paginator.setBook(msg.book, merged, msg.anchor, msg.insets);
+        this.paginator.setBook(msg.book, merged, msg.anchor, msg.insets, msg.highlights);
         postToHost({ type: 'ready' });
         this.paginator.scheduleBackgroundWork();
         this.emitAfterSettle();
@@ -227,6 +348,7 @@ export class ReaderEngine {
         break;
       }
       case 'goto': {
+        this.clearSelection();
         this.closeFootnote();
         if (this.paginator.goto(msg)) {
           this.emitPosition();
@@ -234,10 +356,12 @@ export class ReaderEngine {
         break;
       }
       case 'next': {
+        this.clearSelection();
         this.goNext();
         break;
       }
       case 'prev': {
+        this.clearSelection();
         this.goPrev();
         break;
       }
@@ -249,7 +373,30 @@ export class ReaderEngine {
         this.suppressTapUntil = Date.now() + duration;
         break;
       }
+      case 'highlights': {
+        this.paginator.setHighlights(msg.highlights ?? []);
+        break;
+      }
+      case 'clear-selection': {
+        this.clearSelection();
+        break;
+      }
     }
+  }
+
+  private cancelLongPress(): void {
+    if (this.longPressTimer !== null) {
+      window.clearTimeout(this.longPressTimer);
+      this.longPressTimer = null;
+    }
+  }
+
+  private clearSelection(): void {
+    this.cancelLongPress();
+    this.isSelecting = false;
+    this.selectionAnchor = null;
+    clearDomSelection();
+    this.rootEl.classList.remove('is-selecting');
   }
 
   private goNext(): void {

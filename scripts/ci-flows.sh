@@ -2,7 +2,7 @@
 set -euo pipefail
 
 FLOW_TARGET="${1:-}"
-VALID_FLOWS=("first-launch-sample" "import-md" "resume-position" "settings-live" "open-with-telegram")
+VALID_FLOWS=("first-launch-sample" "import-md" "resume-position" "settings-live" "open-with-telegram" "highlight-add")
 
 is_valid_target() {
   local target="$1"
@@ -44,7 +44,12 @@ git push -q -f "https://github.com/${TESTERS_REPO}.git" "HEAD:refs/heads/${SRC_R
 PREV_RUN_ID="$(gh run list -R "$TESTERS_REPO" --workflow "$WORKFLOW_NAME" -L 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || true)"
 
 echo "==> Dispatching $WORKFLOW_NAME on $TESTERS_REPO..."
-gh workflow run "$WORKFLOW_NAME" -R "$TESTERS_REPO" -f src_ref="$SRC_REF" -f flow="$FLOW_TARGET"
+if [ "$FLOW_TARGET" = "all" ]; then
+  DISPATCH_FLOWS="$(IFS=,; echo "${VALID_FLOWS[*]}")"
+else
+  DISPATCH_FLOWS="$FLOW_TARGET"
+fi
+gh workflow run "$WORKFLOW_NAME" -R "$TESTERS_REPO" -f src_ref="$SRC_REF" -f flow="$DISPATCH_FLOWS"
 
 RUN_ID=""
 for _ in $(seq 1 30); do
@@ -114,6 +119,7 @@ flows = [
     "resume-position",
     "settings-live",
     "open-with-telegram",
+    "highlight-add",
 ]
 
 status_map = {}
