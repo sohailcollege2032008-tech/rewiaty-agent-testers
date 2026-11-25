@@ -2,7 +2,7 @@
 set -euo pipefail
 
 FLOW_TARGET="${1:-}"
-VALID_FLOWS=("first-launch-sample" "import-md" "resume-position" "settings-live" "open-with-telegram" "scrubber-direction")
+VALID_FLOWS=("first-launch-sample" "import-md" "import-epub" "resume-position" "settings-live" "open-with-telegram" "scrubber-direction")
 
 is_valid_target() {
   local target="$1"
@@ -111,6 +111,7 @@ arm64_mb = f"{arm64_size / (1024 * 1024):.2f} MB ({arm64_size} bytes)" if arm64_
 flows = [
     "first-launch-sample",
     "import-md",
+    "import-epub",
     "resume-position",
     "settings-live",
     "open-with-telegram",
