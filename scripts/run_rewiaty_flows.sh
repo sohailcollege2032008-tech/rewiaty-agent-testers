@@ -19,12 +19,31 @@ close_system_dialogs() {
 mkdir -p results/junit results/screenshots results/video results/logs results/debug
 : > results/status.tsv
 
+# Why (tech): the workflow passes the requested flow id as $FLOW. Without this gate every dispatch
+# re-ran all journeys (a 4-minute fix cost a 15-minute run). "all" or empty keeps the full sweep.
+WANT_FLOWS="${FLOW:-all}"
+want_flow() {
+  [ "$WANT_FLOWS" = "all" ] && return 0
+  case ",$WANT_FLOWS," in *",$1,"*) return 0 ;; esac
+  return 1
+}
+echo "==> Requested flows: $WANT_FLOWS"
+
 echo "==> Installing APK..."
 adb install -r -g app.apk || adb install -r app.apk
 
 echo "==> Pushing sample MD files to /sdcard/Download/..."
 adb push app/samples/sample-ar.md /sdcard/Download/sample-ar.md
 adb push app/samples/edge-cases.md /sdcard/Download/edge-cases.md
+# Why (tech): the 200k-word novel is generated, not committed (samples/long-ar.md is gitignored),
+# so the runner generates it from samples/gen-long.mjs and pushes the exact file the flow imports.
+if want_flow long-book-open; then
+  echo "==> Generating the 200k-word sample (long-ar.md)..."
+  node app/samples/gen-long.mjs | tee results/logs/long-sample.txt
+  wc -w app/samples/long-ar.md | tee -a results/logs/long-sample.txt
+  adb push app/samples/long-ar.md /sdcard/Download/long-ar.md
+  adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d "file:///storage/emulated/0/Download/long-ar.md" >/dev/null 2>&1 || true
+fi
 adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d "file:///storage/emulated/0/Download/sample-ar.md" >/dev/null 2>&1 || true
 adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d "file:///storage/emulated/0/Download/edge-cases.md" >/dev/null 2>&1 || true
 sleep 2
@@ -59,6 +78,9 @@ run_flow() {
   adb pull "/sdcard/rec_${flow_id}.mp4" "results/video/${flow_id}.mp4" >/dev/null 2>&1 || true
 
   adb logcat -d > "results/logs/${flow_id}-logcat.txt" 2>/dev/null || true
+  # Why (tech): the accessibility tree is the only way to see what Maestro actually saw when a
+  # WebView text selector fails; keep one dump per flow next to the screenshots.
+  maestro hierarchy > "results/logs/hierarchy-${flow_id}.xml" 2>/dev/null || true
 
   # Collect screenshots saved in working directory, debug output, or ~/.maestro/tests
   shopt -s nullglob
@@ -82,70 +104,178 @@ run_flow() {
 }
 
 # 1. first-launch-sample (clean state)
-adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
-run_flow "first-launch-sample" || true
+if want_flow first-launch-sample; then
+  adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
+  run_flow "first-launch-sample" || true
+fi
 
 # 2. import-md (clean state -> delete sample -> DocumentsUI import sample-ar.md)
-adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
-run_flow "import-md" || true
+if want_flow import-md; then
+  adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
+  run_flow "import-md" || true
+fi
 
 # 3. resume-position (clean state -> ch02 -> zoom -> force stop -> relaunch)
-adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
-run_flow "resume-position" || true
+if want_flow resume-position; then
+  adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
+  run_flow "resume-position" || true
+fi
 
 # 4. settings-live (clean state -> OLED + Amiri + size + CSP/font logcat verification)
-adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
-run_flow "settings-live" || true
+if want_flow settings-live; then
+  adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
+  run_flow "settings-live" || true
 
-SETTINGS_LOGCAT="results/logs/settings-live-logcat.txt"
-cp -f "$SETTINGS_LOGCAT" results/logcat.txt 2>/dev/null || true
+  SETTINGS_LOGCAT="results/logs/settings-live-logcat.txt"
+  cp -f "$SETTINGS_LOGCAT" results/logcat.txt 2>/dev/null || true
 
-CSP_VIOLATIONS="$(grep -iE 'Refused to load|Content Security Policy|violates the following Content Security Policy' "$SETTINGS_LOGCAT" || true)"
-AMIRI_CHECK="$(grep -i '\[rewiaty-fonts\]' "$SETTINGS_LOGCAT" | tail -n 1 || true)"
+  CSP_VIOLATIONS="$(grep -iE 'Refused to load|Content Security Policy|violates the following Content Security Policy' "$SETTINGS_LOGCAT" || true)"
+  AMIRI_CHECK="$(grep -i '\[rewiaty-fonts\]' "$SETTINGS_LOGCAT" | tail -n 1 || true)"
 
-if [ -n "$CSP_VIOLATIONS" ]; then
-  echo "CSP VIOLATION DETECTED:" | tee results/logs/csp-check.txt
-  echo "$CSP_VIOLATIONS" | tee -a results/logs/csp-check.txt
-  OVERALL_RC=1
-  sed -i 's/^settings-live\tPASS\t.*/settings-live\tFAIL\tCSP violation detected in logcat/' results/status.tsv
-elif echo "$AMIRI_CHECK" | grep -q 'amiri=true'; then
-  echo "PASS (no CSP violations; $AMIRI_CHECK)" | tee results/logs/csp-check.txt
-else
-  echo "WARN/FAIL (no CSP violation, but Amiri confirmation missing: ${AMIRI_CHECK:-none})" | tee results/logs/csp-check.txt
-  # Check if chromium logged any font error
-  FONT_ERR="$(grep -iE 'chromium.*(woff2|font|Failed to load)' "$SETTINGS_LOGCAT" || true)"
-  if [ -n "$FONT_ERR" ]; then
-    echo "$FONT_ERR" | tee -a results/logs/csp-check.txt
+  if [ -n "$CSP_VIOLATIONS" ]; then
+    echo "CSP VIOLATION DETECTED:" | tee results/logs/csp-check.txt
+    echo "$CSP_VIOLATIONS" | tee -a results/logs/csp-check.txt
     OVERALL_RC=1
-    sed -i 's/^settings-live\tPASS\t.*/settings-live\tFAIL\tfont load error in chromium logcat/' results/status.tsv
+    sed -i 's/^settings-live\tPASS\t.*/settings-live\tFAIL\tCSP violation detected in logcat/' results/status.tsv
+  elif echo "$AMIRI_CHECK" | grep -q 'amiri=true'; then
+    echo "PASS (no CSP violations; $AMIRI_CHECK)" | tee results/logs/csp-check.txt
+  else
+    echo "WARN/FAIL (no CSP violation, but Amiri confirmation missing: ${AMIRI_CHECK:-none})" | tee results/logs/csp-check.txt
+    # Check if chromium logged any font error
+    FONT_ERR="$(grep -iE 'chromium.*(woff2|font|Failed to load)' "$SETTINGS_LOGCAT" || true)"
+    if [ -n "$FONT_ERR" ]; then
+      echo "$FONT_ERR" | tee -a results/logs/csp-check.txt
+      OVERALL_RC=1
+      sed -i 's/^settings-live\tPASS\t.*/settings-live\tFAIL\tfont load error in chromium logcat/' results/status.tsv
+    fi
   fi
 fi
 
 # 5. open-with-telegram (clean state -> VIEW intent on edge-cases.md -> Maestro verifies book opened)
-adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
-# Why (tech): Telegram / file managers hand over a content:// URI with a read grant; file:// between apps
-# is blocked since Android 7. So we index the pushed file in MediaStore and send its content:// URI.
-mkdir -p results/logs; : > results/logs/open-with-intent.txt
-adb shell "content call --uri content://media --method scan_volume --arg external_primary" >> results/logs/open-with-intent.txt 2>&1 || true
-sleep 3
-MEDIA_ID=""
-for coll in downloads file; do
-  # Why (tech): the whole command goes as ONE quoted string; otherwise the device shell strips the inner quotes
-  # of the WHERE clause and the query silently returns nothing (run 45517261586).
-  QOUT="$(adb shell "content query --uri content://media/external/${coll} --projection _id:_display_name --where \"_display_name='edge-cases.md'\"" 2>&1)"
-  echo "[$coll] $QOUT" >> results/logs/open-with-intent.txt
-  MEDIA_ID="$(printf '%s' "$QOUT" | sed -n 's/.*_id=\([0-9]*\).*/\1/p' | head -n 1 | tr -d '\r')"
-  if [ -n "$MEDIA_ID" ]; then INTENT_URI="content://media/external/${coll}/${MEDIA_ID}"; break; fi
-done
-if [ -z "$MEDIA_ID" ]; then
-  echo "ERROR: edge-cases.md not indexed in MediaStore; refusing to fall back to file:// (not a real-world path)" | tee -a results/logs/open-with-intent.txt
-  INTENT_URI=""
+if want_flow open-with-telegram; then
+  adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
+  # Why (tech): Telegram / file managers hand over a content:// URI with a read grant; file:// between apps
+  # is blocked since Android 7. So we index the pushed file in MediaStore and send its content:// URI.
+  mkdir -p results/logs; : > results/logs/open-with-intent.txt
+  adb shell "content call --uri content://media --method scan_volume --arg external_primary" >> results/logs/open-with-intent.txt 2>&1 || true
+  sleep 3
+  MEDIA_ID=""
+  for coll in downloads file; do
+    # Why (tech): the whole command goes as ONE quoted string; otherwise the device shell strips the inner quotes
+    # of the WHERE clause and the query silently returns nothing (run 45517261586).
+    QOUT="$(adb shell "content query --uri content://media/external/${coll} --projection _id:_display_name --where \"_display_name='edge-cases.md'\"" 2>&1)"
+    echo "[$coll] $QOUT" >> results/logs/open-with-intent.txt
+    MEDIA_ID="$(printf '%s' "$QOUT" | sed -n 's/.*_id=\([0-9]*\).*/\1/p' | head -n 1 | tr -d '\r')"
+    if [ -n "$MEDIA_ID" ]; then INTENT_URI="content://media/external/${coll}/${MEDIA_ID}"; break; fi
+  done
+  if [ -z "$MEDIA_ID" ]; then
+    echo "ERROR: edge-cases.md not indexed in MediaStore; refusing to fall back to file:// (not a real-world path)" | tee -a results/logs/open-with-intent.txt
+    INTENT_URI=""
+  fi
+  echo "Triggering ACTION_VIEW with URI: $INTENT_URI" | tee -a results/logs/open-with-intent.txt
+  [ -n "$INTENT_URI" ] && adb shell am start -W -a android.intent.action.VIEW -t text/markdown -d "$INTENT_URI" --grant-read-uri-permission "$APP_ID" \
+    >> results/logs/open-with-intent.txt 2>&1 || true
+  sleep 2
+  run_flow "open-with-telegram" || true
 fi
-echo "Triggering ACTION_VIEW with URI: $INTENT_URI" | tee -a results/logs/open-with-intent.txt
-[ -n "$INTENT_URI" ] && adb shell am start -W -a android.intent.action.VIEW -t text/markdown -d "$INTENT_URI" --grant-read-uri-permission "$APP_ID" \
-  >> results/logs/open-with-intent.txt 2>&1 || true
-sleep 2
-run_flow "open-with-telegram" || true
+
+# 6. footnote-popover (clean state -> bundled novel ch04 -> tap [^1] -> popover -> close -> same page)
+if want_flow footnote-popover; then
+  adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
+  run_flow "footnote-popover" || true
+fi
+
+# 7. rotate-position (clean state -> page 4 -> landscape -> portrait). The flow fails on purpose
+#    when the app never reflows (total page count stays 26), because that is the F3 bug itself.
+if want_flow rotate-position; then
+  adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
+  run_flow "rotate-position" || true
+  adb shell settings put system accelerometer_rotation 1 >/dev/null 2>&1 || true
+fi
+
+# 8. keep-awake: the screen timeout must be shorter than the flow's 25s idle, and the device must
+#    not be kept awake by the cable ("stay awake while plugged in" is what would fake a PASS).
+if want_flow keep-awake; then
+  ORIG_SCREEN_OFF="$(adb shell settings get system screen_off_timeout 2>/dev/null | tr -d '\r')"
+  case "$ORIG_SCREEN_OFF" in ''|null) ORIG_SCREEN_OFF=2147483647 ;; esac
+  echo "==> keep-awake: screen_off_timeout=15000 (was $ORIG_SCREEN_OFF), stay_on_while_plugged_in=0"
+  adb shell settings put system screen_off_timeout 15000
+  adb shell settings put global stay_on_while_plugged_in 0
+  adb shell svc power stayon false >/dev/null 2>&1 || true
+  adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
+  # Warm the app up to the library before Maestro starts, so the 15s timer does not expire during
+  # a cold start (that would test the emulator, not the reader's keep-awake). The wake keyevent
+  # resets the timer if the warm-up itself slept the screen.
+  adb shell monkey -p "$APP_ID" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
+  sleep 10
+  adb shell input keyevent 224 >/dev/null 2>&1 || true
+  adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+  run_flow "keep-awake" || true
+  {
+    echo "== after the 25s reader idle (no input since the idle started) =="
+    echo "screen_off_timeout=$(adb shell settings get system screen_off_timeout 2>/dev/null | tr -d '\r')"
+    echo "stay_on_while_plugged_in=$(adb shell settings get global stay_on_while_plugged_in 2>/dev/null | tr -d '\r')"
+    adb shell dumpsys power | grep -E "mWakefulness=|Display Power: state=" || true
+  } | tee results/logs/keep-awake-power.txt
+
+  KEEP_AWAKE_POWER="$(grep -m1 'mWakefulness=' results/logs/keep-awake-power.txt | tr -d '\r' || true)"
+  KEEP_AWAKE_SECONDS="$(python3 - <<'PY'
+import re
+try:
+    xml = open('results/junit/keep-awake.xml', encoding='utf-8').read()
+    m = re.search(r'time="([0-9.]+)"', xml)
+    print(m.group(1) if m else '0')
+except Exception:
+    print('0')
+PY
+)"
+  if [ "$KEEP_AWAKE_POWER" != "mWakefulness=Awake" ]; then
+    echo "ERROR: keep-awake: device was not Awake after the reader idle ($KEEP_AWAKE_POWER)" | tee -a results/logs/keep-awake-power.txt
+    sed -i 's/^keep-awake\tPASS\t.*/keep-awake\tFAIL\tdevice slept during the 25s reader idle/' results/status.tsv
+    OVERALL_RC=1
+  fi
+  if ! awk -v s="$KEEP_AWAKE_SECONDS" 'BEGIN { exit !(s >= 25) }'; then
+    echo "ERROR: keep-awake: flow only took ${KEEP_AWAKE_SECONDS}s, so the 25s idle did not run" | tee -a results/logs/keep-awake-power.txt
+    sed -i 's/^keep-awake\tPASS\t.*/keep-awake\tFAIL\t25s idle did not elapse/' results/status.tsv
+    OVERALL_RC=1
+  fi
+
+  # Negative control in the same conditions: the library screen (no reader) must sleep inside the
+  # same 15s window, otherwise the emulator never sleeps and the positive result proves nothing.
+  echo "==> keep-awake control: library only, no reader, same screenrecord load"
+  adb shell input keyevent 224 >/dev/null 2>&1 || true
+  adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+  adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
+  adb shell am start -n com.rewiaty.app/.MainActivity >/dev/null 2>&1 || true
+  adb shell rm -f /sdcard/rec_keep_awake_control.mp4 >/dev/null 2>&1 || true
+  adb shell screenrecord --bit-rate 2000000 --time-limit 30 /sdcard/rec_keep_awake_control.mp4 >/dev/null 2>&1 &
+  CONTROL_REC_PID=$!
+  sleep 22
+  {
+    echo "== control: library screen, no reader, 22s after launch =="
+    adb shell dumpsys power | grep -E "mWakefulness=|Display Power: state=" || true
+  } | tee -a results/logs/keep-awake-power.txt
+  adb shell pkill -INT screenrecord >/dev/null 2>&1 || true
+  kill "$CONTROL_REC_PID" >/dev/null 2>&1 || true
+  CONTROL_POWER="$(grep -A3 '== control:' results/logs/keep-awake-power.txt | grep -m1 'mWakefulness=' | tr -d '\r' || true)"
+  if [ "$CONTROL_POWER" = "mWakefulness=Asleep" ]; then
+    echo "==> keep-awake control PASSED: the library screen slept at the same 15s timeout" | tee -a results/logs/keep-awake-power.txt
+  elif [ -n "$CONTROL_POWER" ]; then
+    echo "ERROR: keep-awake control did not sleep ($CONTROL_POWER); the keep-awake result cannot be trusted" | tee -a results/logs/keep-awake-power.txt
+    sed -i 's/^keep-awake\tPASS\t.*/keep-awake\tFAIL\tcontrol screen did not sleep, result inconclusive/' results/status.tsv
+    OVERALL_RC=1
+  fi
+  adb shell input keyevent 224 >/dev/null 2>&1 || true
+  adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+  adb shell input keyevent 82 >/dev/null 2>&1 || true
+  adb shell settings put system screen_off_timeout "$ORIG_SCREEN_OFF" >/dev/null 2>&1 || true
+fi
+
+# 9. long-book-open (clean state -> import the generated 200k-word novel -> cold open timed at 2s)
+if want_flow long-book-open; then
+  adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
+  run_flow "long-book-open" || true
+fi
 
 # Append full logcat at the end as well
 adb logcat -d >> results/logcat.txt 2>/dev/null || true
