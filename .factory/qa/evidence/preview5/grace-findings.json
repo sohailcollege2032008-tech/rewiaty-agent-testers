@@ -1,0 +1,140 @@
+{
+  "score": 5,
+  "issues": [
+    {
+      "title": "Reading header/footer are drawn over the page and cut the first and last line",
+      "severity": "major",
+      "screen": "Reading page",
+      "screens": ["43", "44", "19", "27", "34"],
+      "steps": "Open the imported book, go to a full page (page 8), tap the middle of the page to show the bars.",
+      "actual": "The page does not reflow. The banner covers the top ~260 px and the footer ~370 px. With the bars shown, the red heading «الطَّرِيقُ إِلَى الْبِئْرِ» is cut in half at the top and the blockquote line «يُشْبِهُ شَيْئًا آخَرَ، إِلَّا» is cut in half at the bottom; with the bars hidden (43) both lines are complete.",
+      "expected": "The reading area shrinks between the bars, or the bars do not cover text; no line is ever cut."
+    },
+    {
+      "title": "Reading settings sheet overflows at 200%: clipped font list, broken label, unlabelled default",
+      "severity": "minor",
+      "screen": "Reading settings sheet",
+      "screens": ["20", "22", "24", "29", "30"],
+      "steps": "In a book tap the middle, then the red A (إعدادات القراءة).",
+      "actual": "The last font row (Inter) is half off the bottom edge when the sheet opens; the weight chip «متوسط» wraps as «متوس» / «ط»; close ✕ is 32x32 dp, font +/− 36x32 dp; «افتراضي» (100x30 dp) sits in the tab row without saying what it resets; the sheet background is translucent so page text shows through.",
+      "expected": "All rows fit on one line, the list is fully visible/scrollable with padding, controls are >=48 dp and labelled."
+    },
+    {
+      "title": "Layout is not mirrored for RTL: LTR chrome, TOC numbers and shelf start at the left",
+      "severity": "minor",
+      "screen": "Library / reader header / TOC",
+      "screens": ["01", "09", "27", "33", "35", "41"],
+      "steps": "Inspect the library, the reader header, the footer and the TOC.",
+      "actual": "Text is Arabic and the back arrow points right, but the app title/logo are on the left with actions on the right, the back button is at the far left while TOC/settings are right, TOC page numbers sit at the right of each row, the library shelf title/count are left/right and its only card is at the left with the right half of the row empty, and the + precedes the word «استيراد».",
+      "expected": "Mirrored RTL layout: start edge right, back arrow at the right, page numbers on the trailing (left) edge, shelf filled from the right."
+    },
+    {
+      "title": "Library progress (58%) disagrees with the reading position (8 / 13 · 62%)",
+      "severity": "minor",
+      "screen": "Library",
+      "screens": ["41", "42", "43", "44"],
+      "steps": "Read to page 8 of 13 (62%), return to the library, then force-stop and relaunch.",
+      "actual": "The library card shows 58% / مقروء in both cases, while the book opens and the footer shows 8 / 13 · 62%.",
+      "expected": "The library progress matches the saved reading position."
+    },
+    {
+      "title": "Import gives no confirmation; the new book is only in the hero, shelf says 2 and shows 1",
+      "severity": "minor",
+      "screen": "Import / Library",
+      "screens": ["03", "04", "05", "06", "07", "08", "41"],
+      "steps": "Tap «+ استيراد», choose Show roots > Downloads > qa-import-preview5.md.",
+      "actual": "Recent shows No items and the picker filters offer Images/Audio/Videos; the file is only in Downloads. After selection there is no toast/snackbar; the library just swaps the current-reading card to the new book. The shelf header says «2 روايات» but only the bundled cover is displayed and the shelf does not scroll in either direction.",
+      "expected": "A confirmation after import and the imported book visible in the shelf list (count matching)."
+    },
+    {
+      "title": "Touch targets under 48 dp across the app",
+      "severity": "minor",
+      "screen": "Library / reader header / settings / TOC",
+      "screens": ["01", "09", "20", "22", "25", "33"],
+      "steps": "Read the accessibility check printed on each screenshot.",
+      "actual": "Theme toggle 38x38 dp, import 119x38 dp, continue 159x38 dp, back/TOC/settings 40x40 dp, bookmark 34x52 dp, settings close 32x32 dp, font size -/+ 36x32 dp, TOC close 36x36 dp.",
+      "expected": "Every control at least 48x48 dp."
+    },
+    {
+      "title": "Footer chapter name is truncated with '..' at 200%",
+      "severity": "cosmetic",
+      "screen": "Reading footer",
+      "screens": ["10", "12", "16", "34"],
+      "steps": "Open any chapter with a long title and show the bars.",
+      "actual": "The footer reads e.g. «الْفَصْلُ الْأَوَّلُ: الرِّيحُ الثَّا..» — the end of the chapter name is cut off.",
+      "expected": "The full chapter name, wrapped to a second line or shortened with a clear label."
+    },
+    {
+      "title": "Page break inside a blockquote leaves one word alone on the next page",
+      "severity": "cosmetic",
+      "screen": "Reading page",
+      "screens": ["38", "39"],
+      "steps": "Go to page 8 of chapter 2, then turn one page.",
+      "actual": "Page 9 starts with an almost empty quote box containing only «الْعَطَشَ.» from the quote that starts on page 8.",
+      "expected": "The quote is not split into a one-word orphan."
+    },
+    {
+      "title": "Duplicate page indicators; a status line remains when the chrome is hidden",
+      "severity": "cosmetic",
+      "screen": "Reading page",
+      "screens": ["11", "12", "14", "16", "43"],
+      "steps": "With the bars hidden, look at the bottom of the page; then show the bars.",
+      "actual": "A grey line with the chapter name and «8 / 13 · 62%» stays visible while the bars are hidden; the footer then adds «صفحة 8 من 13» and the bottom bar repeats «8 / 13 · 62%» next to «3 فصول» and a hint.",
+      "expected": "One page indicator, and nothing left on screen when the chrome is hidden."
+    },
+    {
+      "title": "First-open hint contradicts the visible state and persists across page turns",
+      "severity": "cosmetic",
+      "screen": "Reading page",
+      "screens": ["09", "10"],
+      "steps": "Open a book for the first time.",
+      "actual": "The hint «اضغط في نص الصفحة عشان تظهر الإعدادات والفهرس…» is shown while the header and footer are already visible; it covers part of a paragraph and is still present on page 2. It disappears only with a centre tap, which also hides the bars.",
+      "expected": "The hint appears only when the bars are hidden and goes away on the first tap or page turn."
+    },
+    {
+      "title": "Closing the settings sheet hides the bars; the next tap where TOC was turns a page",
+      "severity": "minor",
+      "screen": "Reading settings sheet",
+      "screens": ["30", "31"],
+      "steps": "Open the settings sheet, close it with the ✕, then tap the top-right corner.",
+      "actual": "The header and footer disappear on close, and the next tap at the old TOC position turns the book back one page (6/13 -> 5/13).",
+      "expected": "Closing the sheet restores the bars (the state it was opened from)."
+    },
+    {
+      "title": "The reading theme also turns the whole library dark",
+      "severity": "cosmetic",
+      "screen": "Library",
+      "screens": ["26", "41", "42"],
+      "steps": "Choose «عتمة OLED» in the reading settings, then return to the library.",
+      "actual": "The library, header and cards turn black although the setting is إعدادات القراءة and the system is in light mode.",
+      "expected": "Reading themes stay in the reader, or the theme is presented as app-wide."
+    },
+    {
+      "title": "Bundled book's author is the app name «روايتي»",
+      "severity": "cosmetic",
+      "screen": "Library",
+      "screens": ["01", "06", "41"],
+      "steps": "Look at the bundled novel card.",
+      "actual": "The author line under «حَجَرُ الْمَاءِ» is «روايتي», the app's own name, while the imported book correctly shows «قسم الجودة».",
+      "expected": "A real author name or an 'unknown author' label."
+    },
+    {
+      "title": "Cover/shelf text cut and 'جديدة' badge on the wrong book",
+      "severity": "cosmetic",
+      "screen": "Library",
+      "screens": ["06", "41"],
+      "steps": "Look at the imported book's cover and the shelf card after importing.",
+      "actual": "The cover prints «قسم الج...» cut at the bottom, and the «جديدة» (new) badge is under the bundled book «حَجَرُ الْمَاءِ», not the freshly imported one.",
+      "expected": "Cover text fits (or is omitted) and the new badge belongs to the newly imported book."
+    },
+    {
+      "title": "Arabic-only interface, no language option on an en-US phone",
+      "severity": "minor",
+      "screen": "All screens",
+      "screens": ["01", "09", "20", "33"],
+      "steps": "Use the app with the device set to English.",
+      "actual": "Every label is Arabic with Western digits; there is no language setting or English fallback.",
+      "expected": "Expected for an Arabic-first app, but an en-US user cannot read any control; at minimum a language choice or an English secondary label would help."
+    }
+  ]
+}

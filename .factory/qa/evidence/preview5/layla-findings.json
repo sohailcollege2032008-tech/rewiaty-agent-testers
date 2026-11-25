@@ -1,0 +1,71 @@
+{
+  "score": 7,
+  "issues": [
+    {
+      "title": "Bookmark button is unreachable while the reading header is shown; tapping it exits the book",
+      "severity": "minor",
+      "screen": "Reader",
+      "screens": ["44", "46", "45"]
+    },
+    {
+      "title": "Page total changes between 5, 6 and 7 pages; TOC page numbers disagree with the reader (chapter 2 listed at page 4, lands on page 3)",
+      "severity": "minor",
+      "screen": "Reader / TOC",
+      "screens": ["09", "12", "15", "26", "29", "33", "36", "39", "40"]
+    },
+    {
+      "title": "Showing the reading header overlays and clips the top of the first line / chapter heading (diacritics cut)",
+      "severity": "minor",
+      "screen": "Reader",
+      "screens": ["09", "21", "40", "44"]
+    },
+    {
+      "title": "Continuation pages show a clipped sliver of the previous page's last line at the very top",
+      "severity": "cosmetic",
+      "screen": "Reader",
+      "screens": ["12", "15", "19"]
+    },
+    {
+      "title": "Touch targets under 48 dp throughout library, reader, settings sheet and TOC",
+      "severity": "minor",
+      "screen": "Library / Reader / Settings / TOC",
+      "screens": ["01", "09", "21", "24", "30", "33"]
+    },
+    {
+      "title": "Settings sheet opens with the last row cut at the bottom edge and no scroll affordance",
+      "severity": "minor",
+      "screen": "Settings sheet",
+      "screens": ["24", "31"]
+    },
+    {
+      "title": "Bookshelf says 2 novels but renders one card with an empty column",
+      "severity": "cosmetic",
+      "screen": "Library",
+      "screens": ["05", "22", "41"]
+    },
+    {
+      "title": "No confirmation after import; the new unopened book is marked current reading at 0%",
+      "severity": "cosmetic",
+      "screen": "Library",
+      "screens": ["05"]
+    },
+    {
+      "title": "A 60%-read book is labelled «مقروء» (read) instead of in progress",
+      "severity": "cosmetic",
+      "screen": "Library",
+      "screens": ["22", "41"]
+    },
+    {
+      "title": "Mixed Latin font/theme labels and an invisible English 'Rewiaty Reader Engine' string in the accessibility tree",
+      "severity": "cosmetic",
+      "screen": "Settings / Reader",
+      "screens": ["24", "27", "43"]
+    },
+    {
+      "title": "First-open hint says a middle tap shows the controls, but the controls are already shown and a middle tap hides them",
+      "severity": "cosmetic",
+      "screen": "Reader",
+      "screens": ["08", "10"]
+    }
+  ]
+}
