@@ -16,12 +16,37 @@ export function escapeHtml(input: string): string {
 }
 
 /**
- * Validate image source paths to prevent scriptable URIs.
+ * Validate image source paths to prevent scriptable URIs and bundle escapes.
  * Allows relative paths, http(s), and safe raster data:image/* URIs (excluding SVG).
  */
+const UNSAFE_TRAVERSAL_RE = /(?:^|[/\\])\.\.(?:[/\\]|$)/;
+
+function hasUnsafePathShape(rawSrc: string): boolean {
+  const looksUnsafe = (value: string): boolean =>
+    value.includes('\\') ||
+    value.startsWith('/') ||
+    UNSAFE_TRAVERSAL_RE.test(value);
+
+  if (looksUnsafe(rawSrc)) return true;
+  // Percent-encoded segments would be decoded by the WebView before it resolves the path.
+  let decoded = rawSrc;
+  try {
+    decoded = decodeURIComponent(rawSrc);
+  } catch {
+    decoded = rawSrc;
+  }
+  return decoded !== rawSrc && looksUnsafe(decoded);
+}
+
+export function hasSafeRasterExtension(rawSrc: string): boolean {
+  const path = rawSrc.split(/[?#]/, 1)[0] ?? rawSrc;
+  return /\.(?:png|jpe?g|gif|webp|avif)$/i.test(path);
+}
+
 export function isSafeImageSrc(rawSrc: string): boolean {
   const trimmed = rawSrc.trim();
   if (!trimmed) return false;
+  if (hasUnsafePathShape(trimmed)) return false;
   const normalized = trimmed.replace(/[\u0000-\u0020]+/g, '').toLowerCase();
   if (
     normalized.startsWith('javascript:') ||
@@ -38,6 +63,8 @@ export function isSafeImageSrc(rawSrc: string): boolean {
   if (normalized.startsWith('//')) return false;
   const scheme = /^([a-z][a-z0-9+.-]*):/.exec(normalized);
   if (scheme) return scheme[1] === 'http' || scheme[1] === 'https';
+  // SVG is a scriptable document format; the reader only renders raster images.
+  if (/\.svg$/i.test(normalized)) return false;
   return true; // relative path inside the bundle (assets/...)
 }
 

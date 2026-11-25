@@ -30,9 +30,15 @@ flows:
     target: release-apk
     run: "bash scripts/ci-flows.sh open-with-telegram"
     artifact: ".factory/evidence/latest/apk/app.apk"
+  - id: scrubber-direction
+    who: "قارئ عربي بيسحب شريط الصفحات"
+    steps: "يفتح الرواية ← يسحب الشريط ناحية اليمين فيروح لأول الكتاب ← يسحبه ناحية الشمال فيروح لآخره (النقطة ماشية مع صباعه)"
+    target: release-apk
+    run: "bash scripts/ci-flows.sh scrubber-direction"
+    artifact: ".factory/evidence/latest/apk/app.apk"
   - id: highlight-add
     who: "قارئ بيظلل جملة"
-    steps: "يفتح الرواية التجريبية ← ضغط مطوّل على النص ← يختار لون ← يقفل الكتاب ويفتحه ← التظليل لسه موجود"
+    steps: "يفتح الرواية التجريبية ← ضغط مطوّل على النص ← يختار لون ← يتأكد إن التظليل نزل على النص نفسه مش المعكوس ← يقفل الكتاب ويفتحه ← التظليل لسه موجود"
     target: release-apk
     run: "bash scripts/ci-flows.sh highlight-add"
     artifact: ".factory/evidence/latest/apk/app.apk"
