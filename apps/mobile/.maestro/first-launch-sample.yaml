@@ -16,21 +16,32 @@ appId: com.rewiaty.app
     timeout: 20000
 - waitForAnimationToEnd
 - takeScreenshot: "02-page-1-tashkeel"
-# RTL: tapping left edge (15%) advances to the next page (5 pages -> page 6)
-- tapOn:
-    point: "15%,50%"
+# R5: page turns are made with the finger — in RTL a swipe to the right advances.
+# Five swipes take the reader from page 1 to page 6 (edges no longer turn pages).
+- swipe:
+    start: "20%,50%"
+    end: "80%,50%"
+    duration: 400
 - waitForAnimationToEnd
-- tapOn:
-    point: "15%,50%"
+- swipe:
+    start: "20%,50%"
+    end: "80%,50%"
+    duration: 400
 - waitForAnimationToEnd
-- tapOn:
-    point: "15%,50%"
+- swipe:
+    start: "20%,50%"
+    end: "80%,50%"
+    duration: 400
 - waitForAnimationToEnd
-- tapOn:
-    point: "15%,50%"
+- swipe:
+    start: "20%,50%"
+    end: "80%,50%"
+    duration: 400
 - waitForAnimationToEnd
-- tapOn:
-    point: "15%,50%"
+- swipe:
+    start: "20%,50%"
+    end: "80%,50%"
+    duration: 400
 - waitForAnimationToEnd
 - takeScreenshot: "03-page-6-tashkeel"
 # Open the bars only if they are closed (they open on their own with a hint on first launch).

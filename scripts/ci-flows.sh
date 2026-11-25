@@ -2,7 +2,7 @@
 set -euo pipefail
 
 FLOW_TARGET="${1:-}"
-VALID_FLOWS=("first-launch-sample" "import-md" "resume-position" "settings-live" "open-with-telegram" "scrubber-direction")
+VALID_FLOWS=("first-launch-sample" "import-md" "resume-position" "settings-live" "open-with-telegram" "drag-page-direction" "scrubber-direction")
 
 is_valid_target() {
   local target="$1"
@@ -44,7 +44,16 @@ git push -q -f "https://github.com/${TESTERS_REPO}.git" "HEAD:refs/heads/${SRC_R
 PREV_RUN_ID="$(gh run list -R "$TESTERS_REPO" --workflow "$WORKFLOW_NAME" -L 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || true)"
 
 echo "==> Dispatching $WORKFLOW_NAME on $TESTERS_REPO..."
-gh workflow run "$WORKFLOW_NAME" -R "$TESTERS_REPO" -f src_ref="$SRC_REF" -f flow="$FLOW_TARGET"
+# Why (tech): the testers workflow has its own journey list and keeps growing (9 at the time of writing),
+# and its runner treats a flow file that is missing from the source snapshot as a failure (run 45622404149:
+# footnote-popover/rotate-position/keep-awake/long-book-open live on another branch). The list that defines a
+# green verdict is this script's VALID_FLOWS, so "all" dispatches exactly those ids.
+if [ "$FLOW_TARGET" = "all" ]; then
+  DISPATCH_FLOWS="$(IFS=,; echo "${VALID_FLOWS[*]}")"
+else
+  DISPATCH_FLOWS="$FLOW_TARGET"
+fi
+gh workflow run "$WORKFLOW_NAME" -R "$TESTERS_REPO" -f src_ref="$SRC_REF" -f flow="$DISPATCH_FLOWS"
 
 RUN_ID=""
 for _ in $(seq 1 30); do
@@ -114,6 +123,7 @@ flows = [
     "resume-position",
     "settings-live",
     "open-with-telegram",
+    "drag-page-direction",
     "scrubber-direction",
 ]
 
