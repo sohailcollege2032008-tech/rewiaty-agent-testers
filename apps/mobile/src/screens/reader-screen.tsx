@@ -85,6 +85,7 @@ export function ReaderScreen() {
   const latestStateRef = useRef<BookReaderState | null>(null);
   // 'ready' can arrive again (WebView reload); the first-open hint is checked once per screen.
   const hintCheckedRef = useRef(false);
+  const lastPageKeyRef = useRef<string | null>(null);
 
   const [readerHtml, setReaderHtml] = useState<string | null>(null);
   const [fontBaseUrl, setFontBaseUrl] = useState<string | null>(null);
@@ -386,6 +387,8 @@ export function ReaderScreen() {
           if (Date.now() < suppressTapUntilRef.current) {
             break;
           }
+          // Why (QA preview 5, P3-5): the hint covers two lines; any touch means the reader got it.
+          setShowHudHint(false);
           if (parsed.zone === 'center') {
             if (settingsVisibleRef.current) {
               handleCloseSettings();
@@ -396,6 +399,10 @@ export function ReaderScreen() {
           }
           break;
         case 'position': {
+          // A swipe turns the page without a 'tap' message; a new page also retires the hint.
+          const pageKey = `${parsed.chapterId}:${parsed.page}`;
+          if (lastPageKeyRef.current !== null && lastPageKeyRef.current !== pageKey) setShowHudHint(false);
+          lastPageKeyRef.current = pageKey;
           setPageInfo({
             chapterId: parsed.chapterId,
             page: parsed.page,

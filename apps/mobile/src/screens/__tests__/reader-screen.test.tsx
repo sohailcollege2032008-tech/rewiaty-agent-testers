@@ -420,6 +420,20 @@ describe('ReaderScreen', () => {
     expect(mockKv.get('reader_hud_hint_seen_v1')).toBe(true);
   });
 
+  it('retires the first-open hint on any tap or page change (QA P3-5)', async () => {
+    mockKv.clear();
+    const screen = await renderLoadedReader();
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({ type: 'position', chapterId: 'ch01', page: 1, pageCount: 6, anchor: { blockId: 'ch01_p0001', charOffset: 0 }, bookProgress: 0 });
+    });
+    await waitFor(() => expect(screen.getByTestId('reader-hud-hint')).toBeTruthy());
+    await act(async () => {
+      emitWebMessage({ type: 'position', chapterId: 'ch01', page: 2, pageCount: 6, anchor: { blockId: 'ch01_p0004', charOffset: 0 }, bookProgress: 0.05 });
+    });
+    expect(screen.queryByTestId('reader-hud-hint')).toBeNull();
+  });
+
   it('does not show the hint again once it was seen', async () => {
     // One render per test: two renders in one test overlapped act() and broke the following tests.
     mockKv.clear();
