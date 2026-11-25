@@ -249,3 +249,15 @@ describe('parseTxt — cleanArabic option', () => {
     expect(book.chapters[0]!.blocks).toHaveLength(2);
   });
 });
+
+describe('cleanArabicText performance (Codex #20)', () => {
+  it('cleans a ~200k-word book full of spaced punctuation in linear time', () => {
+    const para = 'قال الرجل ، ثم سكت ؛ وسأل : لماذا ؟ لا أعرف ! انتهى …\n\n';
+    const text = para.repeat(20000); // ~240k words, 120k spaced marks
+    const t0 = Date.now();
+    const out = cleanArabicText(text);
+    const ms = Date.now() - t0;
+    expect(out).toContain('قال الرجل، ثم سكت؛');
+    expect(ms).toBeLessThan(2000);
+  });
+});

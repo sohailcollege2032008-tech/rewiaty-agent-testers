@@ -95,9 +95,14 @@ function fixPunctuationSpacing(text: string): string {
   return text.replace(
     PUNCTUATION_BEFORE_SPACE_RE,
     (match: string, punct: string, offset: number) => {
-      const nextStart = offset + match.length;
-      const prevNonSpace = text.slice(0, offset).replace(/[ \t]+$/, '').slice(-1);
-      const nextNonSpace = text.slice(nextStart).replace(/^[ \t]+/, '').charAt(0);
+      // Why (perf): scan outward from the match instead of slicing/regex-ing the whole prefix
+      // and suffix, which made a long book O(n²) (Codex #20 P2).
+      let p = offset - 1;
+      while (p >= 0 && (text[p] === ' ' || text[p] === '\t')) p--;
+      const prevNonSpace = p >= 0 ? text.charAt(p) : '';
+      let n = offset + match.length;
+      while (n < text.length && (text[n] === ' ' || text[n] === '\t')) n++;
+      const nextNonSpace = text.charAt(n);
       return canDropSpaceBefore(punct, prevNonSpace, nextNonSpace) ? punct : match;
     },
   );
