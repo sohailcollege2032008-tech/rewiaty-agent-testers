@@ -12,7 +12,7 @@ export const warraqTheme: AppThemeTokens = {
   surface: '#F3EDE2',
   surfaceElevated: '#FFFDF8',
   hudBg: 'rgba(250, 247, 240, 0.94)',
-  sheetBg: 'rgba(252, 249, 243, 0.96)',
+  sheetBg: 'rgba(252, 249, 243, 1)',
   border: '#E3DACB',
   accentSoft: 'rgba(158, 62, 47, 0.11)',
   ctaBg: '#9E3E2F',

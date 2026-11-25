@@ -24,6 +24,7 @@ export class ReaderEngine {
   private resizeTimer: number | null = null;
   private fontStyleEl: HTMLStyleElement | null = null;
   private appliedFontBaseUrl = '';
+  private suppressTapUntil = 0;
 
   constructor() {
     this.rootEl = document.getElementById('reader-root')!;
@@ -188,7 +189,7 @@ export class ReaderEngine {
           ...(msg.settings ?? {}),
         };
         this.closeFootnote();
-        this.paginator.setBook(msg.book, merged, msg.anchor);
+        this.paginator.setBook(msg.book, merged, msg.anchor, msg.insets);
         postToHost({ type: 'ready' });
         this.emitPositionAndToc();
         this.paginator.scheduleBackgroundWork();
@@ -203,7 +204,7 @@ export class ReaderEngine {
       }
       case 'settings': {
         const partial = msg.partial ?? {};
-        this.paginator.updateSettings(partial);
+        this.paginator.updateSettings(partial, msg.insets);
         this.emitPositionAndToc();
         if (partial.fontFamily !== undefined) {
           void document.fonts?.ready?.then(() => this.logFontStatus());
@@ -225,6 +226,14 @@ export class ReaderEngine {
         this.goPrev();
         break;
       }
+      case 'suppress-taps': {
+        const duration =
+          typeof msg.durationMs === 'number' && Number.isFinite(msg.durationMs)
+            ? Math.max(0, msg.durationMs)
+            : 0;
+        this.suppressTapUntil = Date.now() + duration;
+        break;
+      }
     }
   }
 
@@ -241,6 +250,9 @@ export class ReaderEngine {
   }
 
   private handleTap(clientX: number): void {
+    if (Date.now() < this.suppressTapUntil) {
+      return;
+    }
     const rect = this.rootEl.getBoundingClientRect();
     const width = rect.width || window.innerWidth || 1;
     const ratio = (clientX - rect.left) / width;

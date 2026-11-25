@@ -8,7 +8,15 @@ declare global {
   }
 }
 
-const VALID_INCOMING_TYPES = new Set(['load', 'settings', 'fonts', 'goto', 'next', 'prev']);
+const VALID_INCOMING_TYPES = new Set([
+  'load',
+  'settings',
+  'fonts',
+  'goto',
+  'next',
+  'prev',
+  'suppress-taps',
+]);
 
 /**
  * Send a structured bridge message to React Native WebView, falling back to

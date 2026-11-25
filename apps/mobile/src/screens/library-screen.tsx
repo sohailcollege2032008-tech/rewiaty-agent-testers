@@ -299,6 +299,7 @@ export function LibraryScreen() {
               <Pressable
                 testID="continue-reading-button"
                 onPress={() => handleOpenBook(heroBook)}
+                hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
                 style={({ pressed }) => [
                   styles.continueCta,
                   { backgroundColor: palette.ctaBg },
@@ -404,6 +405,7 @@ export function LibraryScreen() {
             />
           </Svg>
           <Text
+            testID="library-brand-name"
             style={[
               styles.brandName,
               {
@@ -448,6 +450,7 @@ export function LibraryScreen() {
                     key={t.id}
                     testID={`library-theme-pill-${t.id}`}
                     onPress={() => void selectTheme(t.id)}
+                    hitSlop={{ top: 10, bottom: 10, left: 2, right: 2 }}
                     style={[
                       styles.themePillBtn,
                       active && { backgroundColor: palette.surfaceElevated },
@@ -475,6 +478,7 @@ export function LibraryScreen() {
             <Pressable
               testID="library-theme-toggle"
               onPress={handleCycleTheme}
+              hitSlop={6}
               style={({ pressed }) => [
                 styles.iconBtn,
                 { borderColor: palette.border },
@@ -511,6 +515,7 @@ export function LibraryScreen() {
             testID="import-book-button"
             onPress={() => void handleImport()}
             disabled={importing}
+            hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
             style={({ pressed }) => [
               styles.importBtn,
               {
@@ -570,6 +575,7 @@ export function LibraryScreen() {
             <Pressable
               testID="library-retry-button"
               onPress={() => void refreshBooks()}
+              hitSlop={4}
               style={({ pressed }) => [
                 styles.retryBtn,
                 { backgroundColor: palette.ctaBg },
@@ -644,7 +650,9 @@ export function LibraryScreen() {
                   اضغط «+ استيراد» لإضافة رواية بصيغة .md أو .txt
                 </Text>
                 <Pressable
+                  testID="library-empty-import-button"
                   onPress={() => void handleImport()}
+                  hitSlop={4}
                   style={({ pressed }) => [
                     styles.emptyCta,
                     { backgroundColor: palette.ctaBg },
