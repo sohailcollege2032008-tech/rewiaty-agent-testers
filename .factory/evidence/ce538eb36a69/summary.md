@@ -41,7 +41,7 @@ pointerdown@346 → pointerup@346 target=A → OPEN 1 → backdrop click target=
   against the backdrop that just became visible, so the same gesture closes it.
 - If the ref sits inside the sheet's own band (bottom ~45% of the page) the click target is
   `footnote-popover` and it stays open — which is why the pre-merge run passed: in `95301310bfd3` the tap
-  landed at y=1880/2000 (94%), in this run at y=917 (46%) because P2 changed the pagination.
+  landed at y=1880 of the 2400px screen (78%), in this run at y=917 (38%) because P2 changed the pagination.
 - Fix direction (app owner, not this PR): open on `click`, or ignore backdrop clicks for ~300ms after opening.
 
 ### `long-book-open` — 2000ms budget missed
