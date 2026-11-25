@@ -1,0 +1,45 @@
+name: Rewiaty Gates
+
+# Why (Sohail's decision + measured): gates run here on a clean runner, not on the shared server. The perf gate
+# (ready <= 1500ms) failed on the server whenever its load average passed ~40 and passed when it dropped.
+# The threshold is never relaxed; the machine is made quiet instead.
+
+on:
+  workflow_dispatch:
+    inputs:
+      src_ref:
+        description: Branch holding the Rewiaty source snapshot (src/<sha12>)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout Rewiaty source snapshot
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.src_ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Gates
+        run: bash gates.sh 2>&1 | tee gates.log
+      - name: Upload gates log + Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rewiaty-gates
+          path: |
+            gates.log
+            packages/reader-engine/test-results/
+            packages/reader-engine/playwright-report/
+          retention-days: 14
