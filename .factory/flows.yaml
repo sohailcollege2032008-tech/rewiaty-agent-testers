@@ -50,7 +50,7 @@ flows:
     artifact: ".factory/evidence/latest/apk/app.apk"
   - id: long-book-open
     who: "قارئ عنده رواية ضخمة"
-    steps: "يستورد رواية 200 ألف كلمة ← يرجع للمكتبة ← يقفل التطبيق ويفتحه ← يفتح الرواية ← أول صفحة تظهر في أقل من ثانيتين"
+    steps: "يدخل رواية 200 ألف كلمة (الـ runner بيدخّلها بـ ACTION_VIEW) ← يرجع للمكتبة ← يقفل التطبيق ويفتحه ← يفتح الرواية ← أول صفحة تظهر في أقل من ثانيتين"
     target: release-apk
     run: "bash scripts/ci-flows.sh long-book-open"
     artifact: ".factory/evidence/latest/apk/app.apk"
