@@ -11,8 +11,14 @@ appId: com.rewiaty.app
     timeout: 20000
 - waitForAnimationToEnd
 # Center tap -> Settings -> OLED Night -> Font Amiri -> Font Size
-- tapOn:
-    point: "50%,50%"
+# Open the bars only if they are closed (they open on their own with a hint on first launch).
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-settings-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
 - extendedWaitUntil:
     visible:
       id: "reader-settings-button"

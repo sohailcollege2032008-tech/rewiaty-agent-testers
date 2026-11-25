@@ -22,7 +22,7 @@ import { ReaderHud } from '@/components/reader-hud';
 import { ReaderSettingsSheet } from '@/components/reader-settings-sheet';
 import { TocModal } from '@/components/toc-modal';
 import { readAssetText, readBookBundle, saveBookReaderState } from '@/storage/bundle';
-import { touchBookOpened } from '@/storage/database';
+import { getKv, setKv, touchBookOpened } from '@/storage/database';
 import { ensureOfflineFontsDir } from '@/storage/font-assets';
 import {
   DEFAULT_SETTINGS,
@@ -49,6 +49,8 @@ const POSITION_SAVE_DEBOUNCE_MS = 500;
 const READER_ORIGIN_WHITELIST: string[] = ['file://*', 'about:blank'];
 /** Used when the offline fonts folder is unavailable; needs no whitelist entry. */
 const READER_FALLBACK_BASE_URL = 'about:blank';
+export const HUD_HINT_KV_KEY = 'reader_hud_hint_seen_v1';
+export const HUD_HINT_TEXT = 'اضغط في نص الصفحة عشان تظهر الإعدادات والفهرس، وعلى الأطراف عشان تقلّب.';
 
 // `spread` comes from the engine's ReaderSettings ('auto' | 'single').
 type EngineSettingsPayload = Partial<ReaderSettings>;
@@ -93,6 +95,7 @@ export function ReaderScreen() {
   readerBaseUrlRef.current = readerBaseUrl;
 
   const [hudVisible, setHudVisible] = useState(false);
+  const [showHudHint, setShowHudHint] = useState(false);
   const [tocVisible, setTocVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const settingsVisibleRef = useRef(false);
@@ -300,6 +303,14 @@ export function ReaderScreen() {
       switch (parsed.type) {
         case 'ready':
           setEngineReady(true);
+          // Why (product): Sohail could not find the settings in preview 1 — nothing told him the page
+          // centre opens the bars. The first time a reader opens a book, show the bars with a hint.
+          void getKv<boolean>(HUD_HINT_KV_KEY, false).then((seen) => {
+            if (seen) return;
+            setHudVisible(true);
+            setShowHudHint(true);
+            void setKv(HUD_HINT_KV_KEY, true);
+          });
           break;
         case 'toc':
           setTocEntries(parsed.chapters);
@@ -309,6 +320,7 @@ export function ReaderScreen() {
             if (settingsVisibleRef.current) {
               setSettingsVisible(false);
             } else {
+              setShowHudHint(false);
               setHudVisible((prev) => !prev);
             }
           }
@@ -718,6 +730,17 @@ export function ReaderScreen() {
 
         {book ? (
           <>
+            {showHudHint && hudVisible ? (
+              <View
+                testID="reader-hud-hint"
+                pointerEvents="none"
+                style={[styles.hudHint, { backgroundColor: themeTokens.surface, borderColor: themeTokens.border }]}
+              >
+                <Text style={[styles.hudHintText, { color: themeTokens.text, fontFamily: TYPOGRAPHY.uiFont }]}>
+                  {HUD_HINT_TEXT}
+                </Text>
+              </View>
+            ) : null}
             <ReaderHud
               visible={hudVisible}
               bookTitle={book.meta.title}
@@ -761,6 +784,19 @@ export function ReaderScreen() {
 }
 
 const styles = StyleSheet.create({
+  hudHint: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: '42%',
+    marginHorizontal: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: RADIUS.button,
+    borderWidth: 1,
+    zIndex: 5,
+    maxWidth: 420,
+  },
+  hudHintText: { fontSize: 15, lineHeight: 24, textAlign: 'center' },
   container: {
     flex: 1,
   },

@@ -11,8 +11,14 @@ appId: com.rewiaty.app
     timeout: 20000
 - waitForAnimationToEnd
 # Jump to Chapter 2 via TOC
-- tapOn:
-    point: "50%,50%"
+# Open the bars only if they are closed (they open on their own with a hint on first launch).
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-toc-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
 - extendedWaitUntil:
     visible:
       id: "reader-toc-button"

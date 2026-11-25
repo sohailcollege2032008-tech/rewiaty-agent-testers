@@ -29,8 +29,14 @@ appId: com.rewiaty.app
     point: "15%,50%"
 - waitForAnimationToEnd
 - takeScreenshot: "03-page-6-tashkeel"
-- tapOn:
-    point: "50%,50%"
+# Open the bars only if they are closed (they open on their own with a hint on first launch).
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-page-counter"
+    commands:
+      - tapOn:
+          point: "50%,50%"
 - extendedWaitUntil:
     visible:
       id: "reader-page-counter"

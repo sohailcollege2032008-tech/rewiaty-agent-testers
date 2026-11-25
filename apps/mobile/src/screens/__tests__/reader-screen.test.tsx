@@ -67,8 +67,13 @@ jest.mock('@/storage/bundle', () => ({
   saveBookReaderState: jest.fn(),
 }));
 
+const mockKv = new Map<string, unknown>();
 jest.mock('@/storage/database', () => ({
   touchBookOpened: jest.fn(),
+  getKv: jest.fn(async (key: string, fallback: unknown) => (mockKv.has(key) ? mockKv.get(key) : fallback)),
+  setKv: jest.fn(async (key: string, value: unknown) => {
+    mockKv.set(key, value);
+  }),
 }));
 
 jest.mock('@/storage/font-assets', () => ({
@@ -402,5 +407,22 @@ describe('ReaderScreen', () => {
     await fireEvent.press(getByTestId('reader-settings-button'));
     expect(getByTestId('mock-bottom-sheet')).toBeTruthy();
     expect(queryByTestId('reader-settings-side-panel')).toBeNull();
+  });
+
+  it('shows the bars with a hint the first time a reader opens a book, and only once', async () => {
+    mockKv.clear();
+    const first = await renderLoadedReader();
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+    });
+    await waitFor(() => expect(first.getByTestId('reader-hud-hint')).toBeTruthy());
+    expect(first.getByTestId('reader-settings-button')).toBeTruthy();
+    first.unmount();
+
+    const second = await renderLoadedReader();
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+    });
+    expect(second.queryByTestId('reader-hud-hint')).toBeNull();
   });
 });
