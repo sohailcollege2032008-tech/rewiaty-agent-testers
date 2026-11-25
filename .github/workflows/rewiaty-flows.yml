@@ -69,6 +69,24 @@ jobs:
             apk.sha256
           retention-days: 14
 
+      - name: Build release APK (arm64-v8a only)
+        working-directory: app
+        run: SKIP_PREP=1 ABIS=arm64-v8a bash scripts/build-apk.sh
+
+      - name: Stage ARM64 APK
+        run: |
+          mkdir -p arm64-stage
+          cp app/apps/mobile/android/app/build/outputs/apk/release/app-release.apk arm64-stage/app.apk
+          (cd arm64-stage && sha256sum app.apk | tee apk.sha256)
+          ls -lh arm64-stage/app.apk
+
+      - name: Upload ARM64 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rewiaty-apk-arm64
+          path: arm64-stage/
+          retention-days: 14
+
       - name: Install Maestro CLI
         run: |
           curl -fsSL "https://get.maestro.mobile.dev" | bash
