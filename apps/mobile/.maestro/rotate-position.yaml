@@ -1,0 +1,45 @@
+appId: com.rewiaty.app
+---
+# F3: the reading position survives a screen rotation. Page 4 of the bundled
+# novel starts mid-paragraph; that fragment is the page's top text and must stay
+# on screen across portrait -> landscape -> portrait.
+- launchApp
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 20000
+- waitForAnimationToEnd
+# RTL: tapping the left edge advances. 3 taps -> page 4.
+- tapOn:
+    point: "15%,50%"
+- waitForAnimationToEnd
+- tapOn:
+    point: "15%,50%"
+- waitForAnimationToEnd
+- tapOn:
+    point: "15%,50%"
+- waitForAnimationToEnd
+- assertVisible: ".* / ~?26.*"
+- assertVisible: ".*خَيْطٌ أَحْمَرُ بَالٍ.*"
+- takeScreenshot: "01-page-4-portrait"
+# Landscape reflows the whole book (26 pages -> fewer, wider pages). If the app
+# never actually rotates, the total stays 26 and this journey fails on purpose:
+# that is the F3 bug, not a flaky selector.
+- setOrientation: LANDSCAPE
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    notVisible: ".* / ~?26.*"
+    timeout: 15000
+- assertVisible: ".*خَيْطٌ أَحْمَرُ بَالٍ.*"
+- takeScreenshot: "02-page-4-landscape"
+- setOrientation: PORTRAIT
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: ".* / ~?26.*"
+    timeout: 15000
+- assertVisible: ".*خَيْطٌ أَحْمَرُ بَالٍ.*"
+- takeScreenshot: "03-page-4-portrait-again"

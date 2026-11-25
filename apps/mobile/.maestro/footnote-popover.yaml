@@ -1,0 +1,63 @@
+appId: com.rewiaty.app
+---
+# F10: footnote popover. The bundled novel keeps footnote [^1] in chapter 4; the
+# reference renders as a bare "1" link inside the reader WebView. Turning pages
+# until that link is on screen keeps the journey independent of page metrics.
+- launchApp
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 20000
+- waitForAnimationToEnd
+- takeScreenshot: "01-book-open"
+# Jump to the chapter that carries the footnote.
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-toc-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-toc-button"
+    timeout: 5000
+- tapOn:
+    id: "reader-toc-button"
+- extendedWaitUntil:
+    visible:
+      id: "toc-item-ch04"
+    timeout: 5000
+- tapOn:
+    id: "toc-item-ch04"
+- waitForAnimationToEnd
+- takeScreenshot: "02-chapter-4-start"
+# RTL: tapping the left edge advances. Stop on the page that shows the [^1] link.
+- repeat:
+    times: 14
+    while:
+      notVisible: "^1$"
+    commands:
+      - tapOn:
+          point: "15%,50%"
+      - waitForAnimationToEnd
+- assertVisible: "^1$"
+- takeScreenshot: "03-footnote-reference-visible"
+- tapOn: "^1$"
+- extendedWaitUntil:
+    visible: ".*حاشية.*"
+    timeout: 5000
+- assertVisible: ".*الصَّدَفَةُ الْبَيْضَاءُ.*"
+- takeScreenshot: "04-footnote-popover"
+# The popover closes on a backdrop tap; the page underneath must stay the same.
+- tapOn:
+    point: "8%,8%"
+- extendedWaitUntil:
+    notVisible: ".*حاشية.*"
+    timeout: 5000
+- assertVisible: "^1$"
+- takeScreenshot: "05-back-to-same-page"

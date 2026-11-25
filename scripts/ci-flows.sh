@@ -2,7 +2,7 @@
 set -euo pipefail
 
 FLOW_TARGET="${1:-}"
-VALID_FLOWS=("first-launch-sample" "import-md" "resume-position" "settings-live" "open-with-telegram")
+VALID_FLOWS=("first-launch-sample" "import-md" "resume-position" "settings-live" "open-with-telegram" "footnote-popover" "rotate-position" "keep-awake" "long-book-open")
 
 is_valid_target() {
   local target="$1"
@@ -109,6 +109,10 @@ flows = [
     "resume-position",
     "settings-live",
     "open-with-telegram",
+    "footnote-popover",
+    "rotate-position",
+    "keep-awake",
+    "long-book-open",
 ]
 
 status_map = {}

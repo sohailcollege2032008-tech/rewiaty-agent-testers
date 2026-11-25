@@ -1,0 +1,22 @@
+appId: com.rewiaty.app
+---
+# F13: the reading screen keeps the display awake. The runner sets the emulator
+# screen timeout to 15s (stay_on_while_plugged_in off) right before this flow, so
+# the 25s idle below is longer than the timeout, then it reads `dumpsys power`
+# immediately after: the device must still be Awake. A control run on the library
+# screen (no reader) must go Asleep in the same window.
+- launchApp
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 20000
+- waitForAnimationToEnd
+- assertVisible: "1 / .*"
+- takeScreenshot: "01-before-idle"
+- runScript: wait-25s.js
+- assertVisible: "1 / .*"
+- takeScreenshot: "02-after-25s-idle"
