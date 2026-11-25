@@ -3,26 +3,41 @@ import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
+import { HighlightNoteModal } from '@/components/highlight-note-modal';
 import { ReadingStatsPanel } from '@/components/reading-stats-panel';
 import { resolveBookmarkAnchor, sortBookmarksNewestFirst } from '@/storage/bookmarks';
+import { resolveHighlightRange, sortHighlightsNewestFirst } from '@/storage/highlights';
 import {
   emptyReadingStats,
   toArabicDigits,
   type ReadingSnapshot,
   type ReadingStats,
 } from '@/storage/reading-stats';
-import { TYPOGRAPHY, useResponsiveLayout } from '@/theme/layout';
+import { RADIUS, TYPOGRAPHY, useResponsiveLayout } from '@/theme/layout';
 import { getAppThemeTokens } from '@/theme/reader-theme';
-import type { BookmarkItem, ThemeId, TocEntry } from '@/types/reader';
+import {
+  HIGHLIGHT_COLORS,
+  type BookmarkItem,
+  type HighlightColor,
+  type HighlightItem,
+  type ThemeId,
+  type TocEntry,
+} from '@/types/reader';
 import type { Anchor, Book } from '@rewiaty/book-format';
 
-type TocTab = 'chapters' | 'bookmarks' | 'stats';
+type TocTab = 'chapters' | 'bookmarks' | 'highlights' | 'stats';
 
 const TABS: ReadonlyArray<{ id: TocTab; label: string; testID: string }> = [
   { id: 'chapters', label: 'الفصول', testID: 'toc-tab-chapters' },
   { id: 'bookmarks', label: 'العلامات', testID: 'toc-tab-bookmarks' },
+  { id: 'highlights', label: 'الاقتباسات', testID: 'toc-tab-highlights' },
   { id: 'stats', label: 'الإحصائيات', testID: 'toc-tab-stats' },
 ];
+
+function getHighlightSwatchColor(color: HighlightColor, isDark: boolean): string {
+  const found = HIGHLIGHT_COLORS.find((c) => c.id === color) ?? HIGHLIGHT_COLORS[0]!;
+  return isDark ? found.swatchDark : found.swatchLight;
+}
 
 export type TocModalProps = {
   visible: boolean;
@@ -38,7 +53,13 @@ export type TocModalProps = {
   book?: Book | null;
   onOpenBookmark?: (item: BookmarkItem, anchor: Anchor | null) => void;
   onDeleteBookmark?: (id: string) => void;
-  /** F23 reading statistics shown in the third tab. */
+  /** Text-anchored highlights & notes (F17). */
+  highlights?: HighlightItem[];
+  onOpenHighlight?: (item: HighlightItem, anchor: Anchor | null) => void;
+  onDeleteHighlight?: (id: string) => void;
+  onUpdateHighlightNote?: (id: string, note: string) => void;
+  onExportHighlights?: () => void;
+  /** F23 reading statistics shown in the stats tab. */
   readingStats?: ReadingStats | null;
   readingSnapshot?: ReadingSnapshot | null;
   now?: number;
@@ -56,6 +77,11 @@ export function TocModal({
   book,
   onOpenBookmark,
   onDeleteBookmark,
+  highlights,
+  onOpenHighlight,
+  onDeleteHighlight,
+  onUpdateHighlightNote,
+  onExportHighlights,
   readingStats,
   readingSnapshot,
   now = Date.now(),
@@ -66,17 +92,131 @@ export function TocModal({
   const isRtl = dir === 'rtl';
 
   const [activeTab, setActiveTab] = useState<TocTab>('chapters');
+  const [editingNoteItem, setEditingNoteItem] = useState<HighlightItem | null>(null);
   useEffect(() => {
-    if (visible) setActiveTab('chapters');
+    if (visible) {
+      setActiveTab('chapters');
+      setEditingNoteItem(null);
+    }
   }, [visible]);
 
   const sortedBookmarks = sortBookmarksNewestFirst(bookmarks ?? []);
+  const sortedHighlights = sortHighlightsNewestFirst(highlights ?? []);
 
   const handleOpenBookmark = (item: BookmarkItem) => {
     const resolved = book ? resolveBookmarkAnchor(book, item) : item.anchor;
     const usable = resolved.blockId ? resolved : null;
     onOpenBookmark?.(item, usable);
     onClose();
+  };
+
+  const handleOpenHighlight = (item: HighlightItem) => {
+    const resolved = (book && resolveHighlightRange(book, item)?.anchor) || item.anchor;
+    const usable = resolved.blockId ? resolved : null;
+    onOpenHighlight?.(item, usable);
+    onClose();
+  };
+
+  const renderHighlight = ({ item }: { item: HighlightItem }) => {
+    const swatch = getHighlightSwatchColor(item.color, palette.isDark);
+    return (
+      <Pressable
+        testID={`toc-highlight-${item.id}`}
+        onPress={() => handleOpenHighlight(item)}
+        style={({ pressed }) => [
+          styles.highlightRow,
+          { borderColor: palette.border, backgroundColor: palette.surface },
+          pressed && { backgroundColor: palette.chipBg },
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel={`اقتباس${item.chapterTitle ? ` في ${item.chapterTitle}` : ''}`}
+      >
+        <View style={[styles.highlightSwatchBar, { backgroundColor: swatch }]} />
+        <View style={styles.bookmarkTextWrap}>
+          <Text
+            style={[
+              styles.bookmarkChapter,
+              {
+                color: palette.text,
+                fontFamily: TYPOGRAPHY.displayFont,
+                writingDirection: isRtl ? 'rtl' : 'ltr',
+              },
+            ]}
+            numberOfLines={1}
+          >
+            {item.chapterTitle || 'اقتباس محفوظ'}
+          </Text>
+          {item.quote ? (
+            <Text
+              style={[
+                styles.bookmarkQuote,
+                {
+                  color: palette.text,
+                  fontFamily: TYPOGRAPHY.uiFont,
+                  writingDirection: isRtl ? 'rtl' : 'ltr',
+                },
+              ]}
+              numberOfLines={3}
+            >
+              {`«${item.quote}»`}
+            </Text>
+          ) : null}
+          {item.note ? (
+            <Text
+              testID={`toc-highlight-note-${item.id}`}
+              style={[
+                styles.highlightNote,
+                {
+                  color: palette.muted,
+                  backgroundColor: palette.chipBg,
+                  fontFamily: TYPOGRAPHY.uiFont,
+                  writingDirection: isRtl ? 'rtl' : 'ltr',
+                },
+              ]}
+              numberOfLines={3}
+            >
+              {`ملاحظة: ${item.note}`}
+            </Text>
+          ) : null}
+        </View>
+        <View style={styles.highlightActions}>
+          <Pressable
+            testID={`highlight-edit-note-${item.id}`}
+            onPress={() => setEditingNoteItem(item)}
+            hitSlop={8}
+            style={styles.highlightActionBtn}
+            accessibilityRole="button"
+            accessibilityLabel={item.note ? 'تعديل الملاحظة' : 'إضافة ملاحظة'}
+          >
+            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M4 20h4l10.5-10.5a2.1 2.1 0 00-3-3L5 17v3z"
+                stroke={palette.accent}
+                strokeWidth={1.8}
+                strokeLinejoin="round"
+              />
+            </Svg>
+          </Pressable>
+          <Pressable
+            testID={`highlight-delete-${item.id}`}
+            onPress={() => onDeleteHighlight?.(item.id)}
+            hitSlop={8}
+            style={styles.highlightActionBtn}
+            accessibilityRole="button"
+            accessibilityLabel="حذف الاقتباس"
+          >
+            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M18 6L6 18M6 6l12 12"
+                stroke={palette.muted}
+                strokeWidth={1.9}
+                strokeLinecap="round"
+              />
+            </Svg>
+          </Pressable>
+        </View>
+      </Pressable>
+    );
   };
 
   const renderBookmark = ({ item }: { item: BookmarkItem }) => (
@@ -326,6 +466,71 @@ export function TocModal({
             />
           ) : null}
 
+          {activeTab === 'highlights' ? (
+            <View style={styles.highlightsContainer}>
+              {sortedHighlights.length > 0 ? (
+                <View style={[styles.exportBar, { borderBottomColor: palette.border }]}>
+                  <Text
+                    style={[
+                      styles.exportCount,
+                      { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
+                    ]}
+                  >
+                    {`${toArabicDigits(sortedHighlights.length)} اقتباس`}
+                  </Text>
+                  <Pressable
+                    testID="highlights-export-button"
+                    onPress={() => onExportHighlights?.()}
+                    style={({ pressed }) => [
+                      styles.exportBtn,
+                      { backgroundColor: palette.accentSoft, borderColor: palette.border },
+                      pressed && { opacity: 0.78 },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="تصدير الاقتباسات والملاحظات"
+                  >
+                    <Svg width={15} height={15} viewBox="0 0 24 24" fill="none">
+                      <Path
+                        d="M12 3v12M8 7l4-4 4 4M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4"
+                        stroke={palette.accent}
+                        strokeWidth={1.9}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </Svg>
+                    <Text
+                      style={[
+                        styles.exportBtnText,
+                        { color: palette.accent, fontFamily: TYPOGRAPHY.uiFont },
+                      ]}
+                    >
+                      تصدير Markdown
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : null}
+              <FlatList
+                data={sortedHighlights}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.listContent}
+                renderItem={renderHighlight}
+                ListEmptyComponent={
+                  <View style={styles.empty}>
+                    <Text
+                      testID="highlights-empty"
+                      style={[
+                        styles.emptyText,
+                        { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
+                      ]}
+                    >
+                      لا توجد اقتباسات بعد. اضغط مطولاً واسحب على أي جملة لتظليلها.
+                    </Text>
+                  </View>
+                }
+              />
+            </View>
+          ) : null}
+
           {activeTab === 'stats' ? (
             <ReadingStatsPanel
               stats={readingStats ?? emptyReadingStats()}
@@ -337,6 +542,21 @@ export function TocModal({
           ) : null}
         </View>
       </View>
+
+      <HighlightNoteModal
+        visible={editingNoteItem !== null}
+        quote={editingNoteItem?.quote ?? ''}
+        initialNote={editingNoteItem?.note ?? ''}
+        theme={theme}
+        dir={dir}
+        onCancel={() => setEditingNoteItem(null)}
+        onSave={(note) => {
+          if (editingNoteItem) {
+            onUpdateHighlightNote?.(editingNoteItem.id, note);
+          }
+          setEditingNoteItem(null);
+        }}
+      />
     </Modal>
   );
 }
@@ -475,5 +695,70 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 22,
+  },
+  highlightsContainer: {
+    flex: 1,
+  },
+  exportBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  exportCount: {
+    fontSize: 12.5,
+    fontWeight: '600',
+  },
+  exportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 38,
+    paddingHorizontal: 12,
+    borderRadius: RADIUS.button,
+    borderWidth: 1,
+  },
+  exportBtnText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  highlightRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 6,
+  },
+  highlightSwatchBar: {
+    width: 4,
+    borderRadius: 2,
+    flexShrink: 0,
+  },
+  highlightNote: {
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'right',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 6,
+    marginTop: 4,
+  },
+  highlightActions: {
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 2,
+  },
+  highlightActionBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 6,
   },
 });

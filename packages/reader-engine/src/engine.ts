@@ -1,9 +1,18 @@
 import type { Block, Book } from '@rewiaty/book-format';
 import { postToHost, subscribeHostMessages } from './bridge.js';
 import { buildFontFaceCss } from './fonts.js';
+import {
+  clearDomSelection,
+  extendSelectionToPoint,
+  extractSelectionInfo,
+  hasNonCollapsedSelection,
+  selectWordAtPoint,
+  type SelectionWordAnchor,
+} from './highlights.js';
 import { Paginator } from './paginator.js';
 import { DEFAULT_SETTINGS, type ReaderSettings, type RNToWebMessage } from './types.js';
 
+const LONG_PRESS_MS = 350;
 /**
  * Movement (px) after which a touch is a drag, not a tap. A tap on the page centre
  * toggles the bars; a drag turns the page with the finger.
@@ -42,6 +51,11 @@ export class ReaderEngine {
 
   private readonly paginator: Paginator;
   private book: Book | null = null;
+  private pointerStart: { x: number; y: number; time: number } | null = null;
+  private longPressTimer: number | null = null;
+  private isSelecting = false;
+  private selectionAnchor: SelectionWordAnchor | null = null;
+  private hadSelectionOnDown = false;
   private gesture: {
     pointerId: number;
     startX: number;
@@ -89,6 +103,11 @@ export class ReaderEngine {
     this.rootEl.addEventListener('pointerdown', (e) => {
       if (!this.footnoteBackdrop.hidden) return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
+      this.cancelLongPress();
+      this.hadSelectionOnDown = hasNonCollapsedSelection();
+      this.isSelecting = false;
+      this.selectionAnchor = null;
+      this.pointerStart = { x: e.clientX, y: e.clientY, time: Date.now() };
       this.gesture = {
         pointerId: e.pointerId,
         startX: e.clientX,
@@ -102,9 +121,46 @@ export class ReaderEngine {
       } catch {
         // Synthetic pointer events (tests) have no capturable pointer id.
       }
+
+      const target = e.target as HTMLElement | null;
+      const onSelectableText = Boolean(
+        target?.closest('.block-p, .block-quote, .block-h2') && !target.closest('.fn-ref'),
+      );
+      if (onSelectableText) {
+        const startX = e.clientX;
+        const startY = e.clientY;
+        this.longPressTimer = window.setTimeout(() => {
+          this.longPressTimer = null;
+          if (!this.pointerStart) return;
+          // Why (product, F17): a hold is a selection, never a page turn. Dropping the
+          // gesture here means the drag pipeline cannot claim the same finger, even if
+          // the reader keeps moving it to extend the selection.
+          this.pointerStart = null;
+          this.gesture = null;
+          this.paginator.cancelDrag();
+          this.rootEl.classList.add('is-selecting');
+          const anchor = selectWordAtPoint(startX, startY);
+          if (anchor) {
+            this.isSelecting = true;
+            this.selectionAnchor = anchor;
+          } else {
+            this.rootEl.classList.remove('is-selecting');
+          }
+        }, LONG_PRESS_MS);
+      }
     });
 
     this.rootEl.addEventListener('pointermove', (e) => {
+      // Why (product, F17): an active selection owns the finger. Extending it must never
+      // slide the page, which is the one thing that separates a hold from a drag.
+      if (this.isSelecting) {
+        e.preventDefault();
+        if (this.selectionAnchor) {
+          extendSelectionToPoint(this.selectionAnchor, e.clientX, e.clientY);
+        }
+        return;
+      }
+
       const gesture = this.gesture;
       if (!gesture) return;
 
@@ -121,6 +177,14 @@ export class ReaderEngine {
           this.gesture = null;
           return;
         }
+        // Text selected before this touch keeps the gesture: the finger extends the
+        // selection instead of starting a drag.
+        if (this.hadSelectionOnDown || hasNonCollapsedSelection()) {
+          this.cancelLongPress();
+          this.gesture = null;
+          return;
+        }
+        this.cancelLongPress();
         gesture.dragging = true;
         this.paginator.beginDrag();
       }
@@ -128,10 +192,35 @@ export class ReaderEngine {
       this.paginator.dragBy(e.clientX - gesture.startX);
     });
 
+    this.rootEl.addEventListener(
+      'touchmove',
+      (e) => {
+        if (this.isSelecting) {
+          e.preventDefault();
+        }
+      },
+      { passive: false },
+    );
+
+    this.rootEl.addEventListener('contextmenu', (e) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('.chapter')) {
+        e.preventDefault();
+      }
+    });
+
     this.rootEl.addEventListener('pointerup', (e) => {
+      this.cancelLongPress();
+
+      if (this.isSelecting) {
+        this.finishSelectionGesture();
+        return;
+      }
+
       const gesture = this.gesture;
-      if (!gesture) return;
       this.gesture = null;
+      this.pointerStart = null;
+      if (!gesture) return;
 
       // Ignore taps on footnote links
       const target = e.target as HTMLElement | null;
@@ -151,16 +240,54 @@ export class ReaderEngine {
         return;
       }
 
-      const dx = Math.abs(e.clientX - gesture.startX);
-      const dy = Math.abs(e.clientY - gesture.startY);
-      if (dx <= DRAG_START_PX && dy <= DRAG_START_PX) {
+      const absX = Math.abs(e.clientX - gesture.startX);
+      const absY = Math.abs(e.clientY - gesture.startY);
+
+      if (this.hadSelectionOnDown || hasNonCollapsedSelection()) {
+        // Dismiss active selection cleanly without turning the page or toggling HUD.
+        if (absX <= DRAG_START_PX && absY <= DRAG_START_PX) {
+          this.clearSelection();
+          postToHost({ type: 'selection', selection: null });
+        } else {
+          const selection = extractSelectionInfo();
+          if (selection) {
+            postToHost({ type: 'selection', selection });
+          }
+        }
+        return;
+      }
+
+      if (absX <= DRAG_START_PX && absY <= DRAG_START_PX) {
+        const hitHl = this.paginator.hitTestHighlight(e.clientX, e.clientY);
+        if (hitHl) {
+          postToHost({ type: 'highlight-tap', highlightId: hitHl.highlight.id, rect: hitHl.rect });
+          return;
+        }
         this.handleTap();
       }
     });
 
     this.rootEl.addEventListener('pointercancel', () => {
+      this.cancelLongPress();
+      this.pointerStart = null;
       this.gesture = null;
       this.paginator.cancelDrag();
+      this.finishSelectionGesture();
+    });
+
+    // Why (product, F17): Android can end a touch without a matching pointerup when the
+    // selection magnifier takes the pointer, which would leave `isSelecting` stuck on.
+    window.addEventListener('touchend', () => {
+      this.cancelLongPress();
+      this.finishSelectionGesture();
+    });
+
+    window.addEventListener('touchcancel', () => {
+      this.cancelLongPress();
+      this.pointerStart = null;
+      this.gesture = null;
+      this.paginator.cancelDrag();
+      this.finishSelectionGesture();
     });
 
     this.rootEl.addEventListener('click', (e) => {
@@ -263,11 +390,12 @@ export class ReaderEngine {
           lineHeight: msg.book.meta.dir === 'ltr' ? 1.7 : 1.95,
           ...(msg.settings ?? {}),
         };
+        this.clearSelection();
         this.closeFootnote();
         this.gesture = null;
         this.paginator.cancelDrag();
         this.awaitingExactPosition = true;
-        this.paginator.setBook(msg.book, merged, msg.anchor, msg.insets);
+        this.paginator.setBook(msg.book, merged, msg.anchor, msg.insets, msg.highlights);
         postToHost({ type: 'ready' });
         this.paginator.scheduleBackgroundWork();
         this.emitAfterSettle();
@@ -294,6 +422,7 @@ export class ReaderEngine {
         break;
       }
       case 'goto': {
+        this.clearSelection();
         this.closeFootnote();
         if (this.paginator.goto(msg)) {
           this.emitPosition();
@@ -301,10 +430,12 @@ export class ReaderEngine {
         break;
       }
       case 'next': {
+        this.clearSelection();
         this.goNext();
         break;
       }
       case 'prev': {
+        this.clearSelection();
         this.goPrev();
         break;
       }
@@ -316,7 +447,42 @@ export class ReaderEngine {
         this.suppressTapUntil = Date.now() + duration;
         break;
       }
+      case 'highlights': {
+        this.paginator.setHighlights(msg.highlights ?? []);
+        break;
+      }
+      case 'clear-selection': {
+        this.clearSelection();
+        break;
+      }
     }
+  }
+
+  private finishSelectionGesture(): void {
+    if (!this.isSelecting) return;
+    this.isSelecting = false;
+    this.selectionAnchor = null;
+    this.pointerStart = null;
+    const selection = extractSelectionInfo();
+    if (!selection) {
+      this.rootEl.classList.remove('is-selecting');
+    }
+    postToHost({ type: 'selection', selection });
+  }
+
+  private cancelLongPress(): void {
+    if (this.longPressTimer !== null) {
+      window.clearTimeout(this.longPressTimer);
+      this.longPressTimer = null;
+    }
+  }
+
+  private clearSelection(): void {
+    this.cancelLongPress();
+    this.isSelecting = false;
+    this.selectionAnchor = null;
+    clearDomSelection();
+    this.rootEl.classList.remove('is-selecting');
   }
 
   private goNext(): void {
