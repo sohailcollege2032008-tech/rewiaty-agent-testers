@@ -14,7 +14,8 @@ import type { RNToWebMessage, WebToRNMessage } from '../src/types.js';
  *   (b) changing the font size never loses the reader's place: the first character that was
  *       visible before the change is still on screen after it;
  *   (c) a page follows the finger: a long drag or a quick flick turns it, a short slow drag
- *       settles back;
+ *       settles back, and the direction is the book's own (RTL: rightward advances, LTR: the
+ *       mirror) so the paper never moves against the hand;
  *   (d) a tap on the edges no longer turns anything — every tap is a centre tap.
  */
 
@@ -32,8 +33,8 @@ const DENSE =
  * quotes). A page map built on a words-per-page guess cannot line up across these, which
  * is exactly the condition that used to restore page 9 as page 7.
  */
-function buildTortureBook(): Book {
-  const lines = ['---', 'title: "كِتَابٌ مُخْتَلِطٌ"', 'lang: ar', 'dir: rtl', '---', ''];
+function buildTortureBook(dir: 'rtl' | 'ltr' = 'rtl'): Book {
+  const lines = ['---', 'title: "كِتَابٌ مُخْتَلِطٌ"', 'lang: ar', `dir: ${dir}`, '---', ''];
   const plan = [
     { short: 55, dense: 0, quote: 0 },
     { short: 0, dense: 34, quote: 12 },
@@ -424,6 +425,42 @@ test.describe('R5 — drag paging', () => {
     expect(during.full).toBe(Math.round(width * 0.4));
     expect(during.after).toBe(0);
     expect((await latestPosition(page))?.page).toBe(1);
+  });
+
+  test('(c4) in an LTR book the mirror holds: a leftward drag advances, a rightward drag goes back', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize(PORTRAIT);
+    await mountEngine(page);
+    const book = buildTortureBook('ltr');
+    const start = await openBook(page, book);
+    expect(start.page).toBe(1);
+    expect(start.pageCount).toBeGreaterThan(6);
+
+    const width = await pageWidth(page);
+
+    // LTR: the next page is to the right, so pulling the paper leftward brings it in. The
+    // same physical gesture that advances an RTL book must go BACK here — this is the half
+    // of the contract the RTL-only journeys never pinned down.
+    await swipe(page, -width * 0.4, 500);
+    await expect
+      .poll(async () => (await latestPosition(page))?.page, { timeout: 5_000 })
+      .toBe(2);
+    expect(await trackOffset(page)).toBe(-Math.round(width));
+
+    // Mirror on the way back.
+    await swipe(page, width * 0.4, 500);
+    await expect
+      .poll(async () => (await latestPosition(page))?.page, { timeout: 5_000 })
+      .toBe(1);
+    expect(await trackOffset(page)).toBe(0);
+
+    // A short slow nudge is not a turn in the LTR direction either.
+    await swipe(page, -width * 0.2, 500);
+    await page.waitForTimeout(400);
+    expect((await latestPosition(page))?.page).toBe(1);
+    expect(await trackOffset(page)).toBe(0);
   });
 });
 
