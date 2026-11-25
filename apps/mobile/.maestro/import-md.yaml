@@ -38,6 +38,13 @@ appId: com.rewiaty.app
     visible: "sample-ar.md"
     timeout: 15000
 - tapOn: "sample-ar.md"
+# On a slow emulator DocumentsUI sometimes reads the tap as a long-press and enters
+# selection mode ("1 selected" + "Select"); confirm the selection instead of hanging.
+- runFlow:
+    when:
+      visible: "Select"
+    commands:
+      - tapOn: "Select"
 - extendedWaitUntil:
     notVisible:
       id: "reader-loading-overlay"
