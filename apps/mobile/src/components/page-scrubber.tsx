@@ -210,6 +210,11 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   touchArea: {
+    // Why: the app forces RTL (I18nManager.forceRTL), so RN would flip `left` to `right` for the
+    // thumb and fill while the gesture's `e.x` stays physical (from the left edge). That made the
+    // thumb move opposite to the finger. The track is laid out in physical LTR coordinates and the
+    // reading direction is applied only in computePageFromX / currentProgress.
+    direction: 'ltr',
     height: 32,
     justifyContent: 'center',
     position: 'relative',

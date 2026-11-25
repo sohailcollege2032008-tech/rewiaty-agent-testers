@@ -1,0 +1,62 @@
+appId: com.rewiaty.app
+---
+# The page scrubber must follow the finger in RTL: dragging toward the right edge goes to the
+# start of the book, dragging toward the left edge goes to the end (Sohail 2026-11-25:
+# «السلايدر بيتحرك بالعكس»).
+- launchApp
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 20000
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-scrubber-track"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-scrubber-track"
+    timeout: 5000
+# Finger toward the RIGHT edge -> beginning of the book.
+- swipe:
+    from:
+      id: "reader-scrubber-track"
+    direction: RIGHT
+    duration: 800
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-page-counter"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- assertVisible:
+    id: "reader-page-counter"
+    text: "صفحة [1-3] من.*"
+- takeScreenshot: "01-dragged-right-start"
+# Finger toward the LEFT edge -> end of the book.
+- swipe:
+    from:
+      id: "reader-scrubber-track"
+    direction: LEFT
+    duration: 800
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-page-counter"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- assertVisible:
+    id: "reader-page-counter"
+    text: "صفحة [1-9][0-9]+ من.*"
+- takeScreenshot: "02-dragged-left-end"
