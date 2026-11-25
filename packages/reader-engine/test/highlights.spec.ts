@@ -130,6 +130,57 @@ test.describe('Reader Engine Highlights & Selection', () => {
     await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(2);
   });
 
+  test('stationary long-press without drag emits selection while keeping native user-select disabled', async ({
+    page,
+  }) => {
+    await mountEngine(page);
+    const book = parseBook(sampleArText, 'sample-ar.md');
+
+    await sendBridge(page, {
+      type: 'load',
+      book,
+      fontBaseUrl: fontsDirUrl,
+      settings: { disableAnimation: true, fontFamily: 'Amiri', fontSize: 20 },
+    });
+    await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(1);
+
+    const pt = await page.evaluate(() => {
+      const p = document.querySelector<HTMLElement>('.chapter[aria-hidden="false"] .block-p')!;
+      const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+      const textNode = walker.nextNode() as Text;
+      const r = document.createRange();
+      r.setStart(textNode, 14);
+      r.setEnd(textNode, 15);
+      const rect = r.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    });
+
+    const beforeCount = (await getMessages(page)).length;
+    await page.mouse.move(pt.x, pt.y);
+    await page.mouse.down();
+    await page.waitForTimeout(550);
+    await page.mouse.up();
+
+    await expect
+      .poll(async () =>
+        (await getMessages(page)).slice(beforeCount).some((m) => m.type === 'selection' && m.selection !== null),
+      )
+      .toBe(true);
+
+    const visual = await page.evaluate(() => {
+      const p = document.querySelector<HTMLElement>('.chapter[aria-hidden="false"] .block-p')!;
+      const cssHighlights = (CSS as unknown as { highlights?: Map<string, { size: number }> }).highlights;
+      return {
+        userSelect: getComputedStyle(p).userSelect,
+        activeHighlightCount: cssHighlights?.get('rewiaty-hl-active')?.size ?? 0,
+      };
+    });
+
+    expect(visual.userSelect).toBe('none');
+    expect(visual.activeHighlightCount).toBe(1);
+    expect((await getLatestPosition(page))?.page).toBe(1);
+  });
+
   test('renders highlights via CSS Highlight API without inserting spans inside Arabic words', async ({
     page,
   }, testInfo) => {

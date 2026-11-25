@@ -151,14 +151,7 @@ export class ReaderEngine {
       this.cancelLongPress();
 
       if (this.isSelecting) {
-        this.isSelecting = false;
-        this.selectionAnchor = null;
-        this.pointerStart = null;
-        const selection = extractSelectionInfo();
-        if (!selection) {
-          this.rootEl.classList.remove('is-selecting');
-        }
-        postToHost({ type: 'selection', selection });
+        this.finishSelectionGesture();
         return;
       }
 
@@ -213,15 +206,18 @@ export class ReaderEngine {
     this.rootEl.addEventListener('pointercancel', () => {
       this.cancelLongPress();
       this.pointerStart = null;
-      if (this.isSelecting) {
-        this.isSelecting = false;
-        this.selectionAnchor = null;
-        const selection = extractSelectionInfo();
-        if (!selection) {
-          this.rootEl.classList.remove('is-selecting');
-        }
-        postToHost({ type: 'selection', selection });
-      }
+      this.finishSelectionGesture();
+    });
+
+    window.addEventListener('touchend', () => {
+      this.cancelLongPress();
+      this.finishSelectionGesture();
+    });
+
+    window.addEventListener('touchcancel', () => {
+      this.cancelLongPress();
+      this.pointerStart = null;
+      this.finishSelectionGesture();
     });
 
     this.rootEl.addEventListener('click', (e) => {
@@ -382,6 +378,18 @@ export class ReaderEngine {
         break;
       }
     }
+  }
+
+  private finishSelectionGesture(): void {
+    if (!this.isSelecting) return;
+    this.isSelecting = false;
+    this.selectionAnchor = null;
+    this.pointerStart = null;
+    const selection = extractSelectionInfo();
+    if (!selection) {
+      this.rootEl.classList.remove('is-selecting');
+    }
+    postToHost({ type: 'selection', selection });
   }
 
   private cancelLongPress(): void {

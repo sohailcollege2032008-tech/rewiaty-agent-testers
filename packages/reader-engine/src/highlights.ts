@@ -17,6 +17,9 @@ const CONTEXT_CHARS = 20;
 const WORD_SEP_RE = /[\s.,;:!?،؛؟«»"'()[\]{}…—–\-]/;
 const SELECTABLE_SELECTOR = '.block-p, .block-quote, .block-h2';
 const HIGHLIGHT_PREFIX = 'rewiaty-hl-';
+const ACTIVE_HIGHLIGHT_NAME = 'rewiaty-hl-active';
+
+let activeSelectionRange: Range | null = null;
 
 export function supportsCssHighlights(): boolean {
   if (typeof CSS === 'undefined') return false;
@@ -188,7 +191,54 @@ function findWordBounds(text: string, rawOffset: number): { start: number; end: 
   return end > start ? { start, end } : null;
 }
 
+function renderActiveSelectionVisual(range: Range | null): void {
+  if (supportsCssHighlights()) {
+    const cssHighlights = (CSS as unknown as { highlights: Map<string, unknown> }).highlights;
+    const HighlightCtor = (globalThis as unknown as {
+      Highlight: new (...ranges: Range[]) => unknown;
+    }).Highlight;
+    if (range && !range.collapsed) {
+      cssHighlights.set(ACTIVE_HIGHLIGHT_NAME, new HighlightCtor(range));
+    } else {
+      cssHighlights.delete(ACTIVE_HIGHLIGHT_NAME);
+    }
+    document.querySelectorAll('.hl-selection-layer').forEach((el) => el.remove());
+    return;
+  }
+
+  document.querySelectorAll('.hl-selection-layer').forEach((el) => el.remove());
+  if (!range || range.collapsed) return;
+
+  const startEl =
+    range.startContainer.nodeType === Node.TEXT_NODE
+      ? range.startContainer.parentElement
+      : (range.startContainer as Element | null);
+  const chapterEl = startEl?.closest<HTMLElement>('.chapter[aria-hidden="false"]');
+  if (!chapterEl) return;
+
+  const layer = document.createElement('div');
+  layer.className = 'hl-selection-layer';
+  layer.setAttribute('aria-hidden', 'true');
+  const chRect = chapterEl.getBoundingClientRect();
+  const rects = range.getClientRects();
+  for (let i = 0; i < rects.length; i++) {
+    const r = rects[i]!;
+    if (r.width <= 0 || r.height <= 0) continue;
+    const div = document.createElement('div');
+    div.className = 'hl-rect';
+    div.setAttribute('data-hl-active', 'true');
+    div.style.left = `${r.left - chRect.left}px`;
+    div.style.top = `${r.top - chRect.top}px`;
+    div.style.width = `${r.width}px`;
+    div.style.height = `${r.height}px`;
+    layer.appendChild(div);
+  }
+  chapterEl.insertBefore(layer, chapterEl.firstChild);
+}
+
 function applyDomSelectionRange(range: Range): void {
+  activeSelectionRange = range.cloneRange();
+  renderActiveSelectionVisual(activeSelectionRange);
   const sel = window.getSelection();
   if (!sel) return;
   sel.removeAllRanges();
@@ -196,10 +246,13 @@ function applyDomSelectionRange(range: Range): void {
 }
 
 export function clearDomSelection(): void {
+  activeSelectionRange = null;
+  renderActiveSelectionVisual(null);
   window.getSelection()?.removeAllRanges();
 }
 
 export function hasNonCollapsedSelection(): boolean {
+  if (activeSelectionRange && !activeSelectionRange.collapsed) return true;
   const sel = window.getSelection();
   return Boolean(sel && !sel.isCollapsed && sel.rangeCount > 0 && sel.toString().trim().length > 0);
 }
@@ -298,9 +351,14 @@ function unionRects(rects: DOMRectList | DOMRect[], fallback: DOMRect): Selectio
 
 export function extractSelectionInfo(): SelectionInfo | null {
   const sel = window.getSelection();
-  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
+  const range =
+    activeSelectionRange && !activeSelectionRange.collapsed
+      ? activeSelectionRange
+      : sel && !sel.isCollapsed && sel.rangeCount > 0
+        ? sel.getRangeAt(0)
+        : null;
+  if (!range || range.collapsed) return null;
 
-  const range = sel.getRangeAt(0);
   const startNode = range.startContainer;
   const startEl =
     startNode.nodeType === Node.TEXT_NODE ? startNode.parentElement : (startNode as Element | null);

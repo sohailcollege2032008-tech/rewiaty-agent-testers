@@ -56,6 +56,8 @@ body {
   color: var(--text-color);
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -265,12 +267,14 @@ body {
   widows: 2;
 }
 
-.reader-root.is-selecting .chapter .block-p,
-.reader-root.is-selecting .chapter .block-quote,
-.reader-root.is-selecting .chapter .block-h2 {
-  user-select: text;
-  -webkit-user-select: text;
+/* Keep native WebView text-selection / Android Magnifier disabled so it never steals touch-up;
+   selection ranges are tracked in JS and painted via CSS Highlight API / overlay rects. */
+.reader-root.is-selecting,
+.reader-root.is-selecting * {
+  touch-action: none;
   -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .chapter .fn-ref {
@@ -278,6 +282,9 @@ body {
   -webkit-user-select: none;
 }
 
+::highlight(rewiaty-hl-active) {
+  background-color: rgba(58, 128, 214, 0.28);
+}
 ::highlight(rewiaty-hl-gold) {
   background-color: var(--hl-gold, rgba(229, 184, 66, 0.36));
 }
@@ -291,7 +298,8 @@ body {
   background-color: var(--hl-rose, rgba(201, 122, 126, 0.34));
 }
 
-.hl-overlay-layer {
+.hl-overlay-layer,
+.hl-selection-layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -302,6 +310,10 @@ body {
   position: absolute;
   pointer-events: none;
   border-radius: 2px;
+}
+
+.hl-rect[data-hl-active="true"] {
+  background-color: rgba(58, 128, 214, 0.28);
 }
 
 .hl-rect[data-hl-color="gold"] {
