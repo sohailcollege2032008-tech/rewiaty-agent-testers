@@ -1,93 +1,13 @@
 appId: com.rewiaty.app
 ---
-- launchApp
-- extendedWaitUntil:
-    visible: "حَجَرُ الْمَاءِ"
-    timeout: 20000
-# Delete the seeded sample so the imported book is the only one in the library
-- longPressOn: "حَجَرُ الْمَاءِ"
-- extendedWaitUntil:
-    visible: "حذف"
-    timeout: 5000
-- tapOn: "حذف"
-- extendedWaitUntil:
-    visible: "المكتبة فارغة"
-    timeout: 5000
-- tapOn:
-    id: "import-book-button"
-# First 3 imports show the Telegram-first guide sheet before the system picker
-- runFlow:
-    when:
-      visible:
-        id: "import-guide-pick-button"
-    commands:
-      - tapOn:
-          id: "import-guide-pick-button"
-# Navigate Android system file picker (DocumentsUI) to /sdcard/Download/${EPUB_FILE}
-- runFlow:
-    when:
-      notVisible: "${EPUB_FILE || 'import-f20.epub'}"
-    commands:
-      - tapOn:
-          text: "Show roots"
-          optional: true
-      - tapOn:
-          text: "Downloads"
-          optional: true
-- extendedWaitUntil:
-    visible: "${EPUB_FILE || 'import-f20.epub'}"
-    timeout: 15000
-- tapOn: "${EPUB_FILE || 'import-f20.epub'}"
-# On a slow emulator DocumentsUI sometimes reads the tap as a long-press and enters
-# selection mode ("1 selected" + "Select"); confirm the selection instead of hanging.
-- runFlow:
-    when:
-      visible: "Select"
-    commands:
-      - tapOn: "Select"
-- extendedWaitUntil:
-    notVisible:
-      id: "reader-loading-overlay"
-    timeout: 30000
-- waitForAnimationToEnd
-- takeScreenshot: "01-imported-epub-opened"
-# Open the bars only if they are closed (they open on their own with a hint on first launch).
-- runFlow:
-    when:
-      notVisible:
-        id: "reader-toc-button"
-    commands:
-      - tapOn:
-          point: "50%,50%"
-- extendedWaitUntil:
-    visible:
-      id: "reader-toc-button"
-    timeout: 5000
-- tapOn:
-    id: "reader-toc-button"
-- extendedWaitUntil:
-    visible:
-      id: "toc-item-ch01"
-    timeout: 5000
-- assertVisible:
-    id: "toc-item-ch02"
-- assertVisible:
-    id: "toc-item-ch03"
-- takeScreenshot: "02-epub-toc"
-# Jump into the middle chapter to prove spine order and the converted content are readable.
-- tapOn:
-    id: "toc-item-ch02"
-- extendedWaitUntil:
-    notVisible:
-      id: "toc-item-ch02"
-    timeout: 5000
-- waitForAnimationToEnd
-- takeScreenshot: "03-epub-chapter-two"
-# The figure in chapter two must actually *paint*: the engine posts the decoded box to React Native,
-# which exposes it as `reader-image-proof`. The engine only emits that message when an image decoded
-# (naturalWidth > 0) *and* its rendered rect is positive, so the mere presence of this view is the
-# non-zero-dimension proof. A path that resolved but could not decode leaves it absent — which is
-# exactly what the negative control (import-epub-broken) relies on.
+# Positive journey: an imported EPUB whose chapter two holds a real 240x160 figure.
+# The shared steps (import -> TOC in spine order -> chapter two) live in import-epub-steps.yaml.
+- runFlow: import-epub-steps.yaml
+# The figure in chapter two must actually *paint*: the engine measures the mounted figure and posts
+# its box to React Native, which exposes it as `reader-image-proof`. The engine only reports a
+# positive count when an image decoded (naturalWidth > 0) *and* its rendered rect is positive, so the
+# presence of this view is the non-zero-dimension proof. A figure that was mounted but decoded to
+# nothing is reported as `count: 0` and shows `reader-image-error` instead (see import-epub-broken).
 - extendedWaitUntil:
     visible:
       id: "reader-image-proof"

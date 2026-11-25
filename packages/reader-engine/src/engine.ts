@@ -30,6 +30,19 @@ const SETTLE_POLL_MS = 50;
  * book from leaving the footer empty.
  */
 const EXACT_POSITION_MAX_WAIT_MS = 4000;
+/**
+ * How long the image proof keeps re-reading the mounted figures before it gives up and reports
+ * `count: 0`. Long enough for a `file://` figure on a cold emulator, short enough that a journey
+ * waiting on `reader-image-error` is not left hanging.
+ */
+const IMAGE_PROOF_POLL_MS = 120;
+const IMAGE_PROOF_MAX_TRIES = 25;
+/**
+ * Extra looks granted when the mounted pages hold no figure at all. A `goto` can report before the
+ * target chapter is attached, and one more frame is all that separates "no figure here" from
+ * "the figure is about to appear".
+ */
+const IMAGE_PROOF_EMPTY_CHECKS = 5;
 
 export class ReaderEngine {
   private readonly rootEl: HTMLElement;
@@ -52,6 +65,11 @@ export class ReaderEngine {
   private dragSamples: Array<{ x: number; t: number }> = [];
   private resizeTimer: number | null = null;
   private imageSettleTimer: number | null = null;
+  private imageProofTimer: number | null = null;
+  private imageProofTries = 0;
+  private imageProofEmptyChecks = 0;
+  /** Last box reported for the current book, so the pump cannot spam the host. */
+  private imageProofSignature = '';
   private fontStyleEl: HTMLStyleElement | null = null;
   private appliedFontBaseUrl = '';
   /** Bumped on every `load`, so a settle pass for an old book can't report over a new one. */
@@ -73,8 +91,14 @@ export class ReaderEngine {
     this.footnoteCloseBtn = document.getElementById('footnote-close')!;
 
     this.paginator = new Paginator(this.rootEl, this.stageEl, this.trackEl, DEFAULT_SETTINGS, {
-      onBackgroundProgress: () => this.emitPositionAndToc(),
-      onChapterLayoutComplete: (chapterId) => postToHost({ type: 'layout-complete', chapterId }),
+      onBackgroundProgress: () => {
+        this.emitPositionAndToc();
+        this.scheduleImageProof();
+      },
+      onChapterLayoutComplete: (chapterId) => {
+        postToHost({ type: 'layout-complete', chapterId });
+        this.scheduleImageProof();
+      },
       onExactPagination: () => this.emitPositionAndToc(),
     });
 
@@ -214,7 +238,15 @@ export class ReaderEngine {
 
     // `load` does not bubble but capture catches it for every image inserted later. A figure
     // landing after the first measurement changes the chapter height, so remeasure and re-report.
+    //
+    // Capture on the container is a *convenience*, not the contract: Android WebView can insert
+    // an `<img>` that is already decoded (Chromium starts fetching on `src` assignment, and a
+    // detached element can finish before it is appended), in which case the browser dispatches
+    // **no** `load` at insertion. Relying on the event alone meant the on-device proof never
+    // arrived while the figure was plainly painted on screen (CI run 45687065853). The pump in
+    // `scheduleImageProof()` reads the DOM instead, so it cannot miss that case.
     this.trackEl.addEventListener('load', this.handleImageLoad, true);
+    this.trackEl.addEventListener('error', this.handleImageError, true);
 
     document.fonts?.addEventListener?.('loadingdone', () => {
       if (this.paginator.handleFontLoad()) {
@@ -230,20 +262,90 @@ export class ReaderEngine {
     this.imageSettleTimer = window.setTimeout(() => {
       this.imageSettleTimer = null;
       if (this.paginator.settleLayout()) this.emitPositionAndToc();
-      this.emitImageProof();
+      this.scheduleImageProof();
     }, 60);
   };
 
-  /** Tell the host an image really painted, with dimensions, so an import can be proven. */
-  private emitImageProof(): void {
+  /**
+   * A figure failed to decode. It is still *mounted*, which is what the negative control needs:
+   * the host must be told `count: 0` so a broken image is distinguishable from "no image here".
+   */
+  private readonly handleImageError = (event: Event): void => {
+    if (!(event.target instanceof HTMLImageElement)) return;
+    this.scheduleImageProof();
+  };
+
+  /** A new book starts with no figure reported, so the same box can be reported again. */
+  private resetImageProof(): void {
+    if (this.imageProofTimer !== null) {
+      window.clearTimeout(this.imageProofTimer);
+      this.imageProofTimer = null;
+    }
+    this.imageProofTries = 0;
+    this.imageProofEmptyChecks = 0;
+    this.imageProofSignature = '';
+  }
+
+  /**
+   * Start (or keep) looking for a figure that has painted.
+   *
+   * Deliberately DOM-driven: a mounted `<img>` that is `complete` *without* a `load` event
+   * (already decoded before insertion) is the normal case on Android, so the engine measures
+   * the track on a short bounded loop instead of waiting to be told.
+   */
+  private scheduleImageProof(): void {
+    if (this.imageProofTimer !== null) return;
+    this.stepImageProof();
+  }
+
+  private stepImageProof(): void {
+    this.imageProofTimer = null;
+    const mounted = this.paginator.getImages();
+    if (mounted.length === 0) {
+      // No figure on the mounted pages yet. Nothing to prove and nothing to fail, but the chapter
+      // holding one may be attached a frame later, so grant a few quick re-checks first.
+      this.imageProofTries = 0;
+      this.imageProofEmptyChecks += 1;
+      if (this.imageProofEmptyChecks > IMAGE_PROOF_EMPTY_CHECKS) {
+        this.imageProofEmptyChecks = 0;
+        return;
+      }
+      this.imageProofTimer = window.setTimeout(() => this.stepImageProof(), IMAGE_PROOF_POLL_MS);
+      return;
+    }
+    this.imageProofEmptyChecks = 0;
+
     const report = this.paginator.measureImages();
-    if (report.rendered <= 0) return;
-    postToHost({
-      type: 'image-rendered',
-      count: report.rendered,
-      width: report.width,
-      height: report.height,
-    });
+    if (report.rendered > 0) {
+      this.imageProofTries = 0;
+      this.postImageProof(report.rendered, report.width, report.height);
+      return;
+    }
+
+    // Every mounted figure has finished loading and none of them produced pixels: that is a
+    // broken image, reported as count 0 rather than staying silent.
+    const decided = mounted.every((img) => img.complete && (img.getAttribute('src') ?? '') !== '');
+    if (decided) {
+      this.imageProofTries = 0;
+      this.postImageProof(0, 0, 0);
+      return;
+    }
+
+    this.imageProofTries += 1;
+    if (this.imageProofTries > IMAGE_PROOF_MAX_TRIES) {
+      this.imageProofTries = 0;
+      this.postImageProof(0, 0, 0);
+      return;
+    }
+    this.imageProofTimer = window.setTimeout(() => this.stepImageProof(), IMAGE_PROOF_POLL_MS);
+  }
+
+  /** Tell the host what a figure did: `count` 0 means a figure was mounted but painted nothing. */
+  private postImageProof(count: number, width: number, height: number): void {
+    const signature = `${count}:${width}:${height}`;
+    if (signature === this.imageProofSignature) return;
+    this.imageProofSignature = signature;
+    postToHost({ type: 'image-rendered', count, width, height });
   }
 
   private logFontStatus(): void {
@@ -294,6 +396,7 @@ export class ReaderEngine {
         this.gesture = null;
         this.paginator.cancelDrag();
         this.awaitingExactPosition = true;
+        this.resetImageProof();
         this.paginator.setBook(msg.book, merged, msg.anchor, msg.insets);
         postToHost({ type: 'ready' });
         this.paginator.scheduleBackgroundWork();
@@ -324,6 +427,9 @@ export class ReaderEngine {
         this.closeFootnote();
         if (this.paginator.goto(msg)) {
           this.emitPosition();
+          // A TOC jump remounts chapters without a `load`/`error` event when the figure is
+          // already decoded, so ask the pump to look at what is on screen now.
+          this.scheduleImageProof();
         }
         break;
       }
@@ -437,7 +543,7 @@ export class ReaderEngine {
       if (token !== this.settleToken) return;
       this.paginator.settleLayout();
       this.emitPositionAndToc();
-      this.emitImageProof();
+      this.scheduleImageProof();
       if (this.awaitingExactPosition) {
         window.setTimeout(() => {
           if (token !== this.settleToken || !this.awaitingExactPosition) return;

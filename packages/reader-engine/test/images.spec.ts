@@ -118,24 +118,41 @@ async function mountEngine(page: Page): Promise<void> {
 
 type Proof = Extract<WebToRNMessage, { type: 'image-rendered' }>;
 
-async function waitForImageProof(page: Page, timeoutMs = 15_000): Promise<Proof> {
+/**
+ * Wait for an `image-rendered` report and return the latest one that matches `want`.
+ *
+ * The page runs under `script-src 'unsafe-inline'`, so a predicate must not be built with
+ * `new Function`; the comparison is passed as a small literal instead.
+ */
+async function waitForProof(
+  page: Page,
+  want: 'painted' | 'nothing-painted',
+  timeoutMs = 15_000,
+): Promise<Proof> {
   await page.waitForFunction(
-    () =>
-      (window as unknown as { __bridgeMessages: WebToRNMessage[] }).__bridgeMessages.some(
-        (m) => m.type === 'image-rendered',
+    (mode) =>
+      (
+        window as unknown as { __bridgeMessages: WebToRNMessage[] }
+      ).__bridgeMessages.some((m) =>
+        m.type === 'image-rendered' ? (mode === 'painted' ? m.count > 0 : m.count === 0) : false,
       ),
-    undefined,
+    want,
     { timeout: timeoutMs },
   );
-  return page.evaluate(() => {
+  return page.evaluate((mode) => {
     const messages = (window as unknown as { __bridgeMessages: WebToRNMessage[] })
       .__bridgeMessages;
     for (let i = messages.length - 1; i >= 0; i -= 1) {
       const m = messages[i];
-      if (m?.type === 'image-rendered') return m as Proof;
+      if (m?.type !== 'image-rendered') continue;
+      if (mode === 'painted' ? m.count > 0 : m.count === 0) return m as Proof;
     }
     throw new Error('image-rendered never arrived');
-  });
+  }, want);
+}
+
+async function waitForImageProof(page: Page, timeoutMs = 15_000): Promise<Proof> {
+  return waitForProof(page, 'painted', timeoutMs);
 }
 
 /** One chapter whose only block is a figure, so the figure is on the chapter's first page. */
@@ -253,4 +270,53 @@ test('a figure taller than the page is shrunk onto one page instead of being cut
   // The figure is the first block of its chapter, so the whole box must be on screen.
   expect(g.top).toBeGreaterThanOrEqual(g.stageTop - 1);
   expect(g.bottom).toBeLessThanOrEqual(g.stageBottom + 1);
+});
+
+test('a figure the browser decodes before it is inserted still gets reported (no `load` event)', async ({
+  page,
+}) => {
+  // Android WebView starts fetching at `src` assignment; an `<img>` that finished decoding while
+  // detached is inserted already `complete` and the browser dispatches **no** `load` at insertion.
+  // The on-device journey went red for exactly this (CI run 45687065853) while the figure was
+  // visibly painted, so the proof must be DOM-driven. Swallow every `load` event at document
+  // capture to reproduce that: the engine's own listener can never see one.
+  await page.addInitScript(() => {
+    const win = window as unknown as { __loadEventsSeen: number };
+    win.__loadEventsSeen = 0;
+    document.addEventListener(
+      'load',
+      (event) => {
+        win.__loadEventsSeen += 1;
+        event.stopPropagation();
+      },
+      true,
+    );
+  });
+
+  await mountEngine(page);
+  await openBook(page, figureBook(LANDSCAPE.name));
+
+  const proof = await waitForImageProof(page);
+  expect(proof.count).toBe(1);
+  expect(proof.width).toBeGreaterThan(0);
+  expect(proof.height).toBeGreaterThan(0);
+});
+
+test('a mounted figure that cannot be decoded is reported as count 0, not left silent', async ({
+  page,
+}) => {
+  const broken = path.join(assetsDir, 'fig-broken.png');
+  fs.writeFileSync(broken, Buffer.from('this is not a png, it only pretends to be one'));
+
+  try {
+    await mountEngine(page);
+    await openBook(page, figureBook('fig-broken.png'));
+
+    const proof = await waitForProof(page, 'nothing-painted', 15_000);
+    expect(proof.count).toBe(0);
+    expect(proof.width).toBe(0);
+    expect(proof.height).toBe(0);
+  } finally {
+    fs.rmSync(broken, { force: true });
+  }
 });

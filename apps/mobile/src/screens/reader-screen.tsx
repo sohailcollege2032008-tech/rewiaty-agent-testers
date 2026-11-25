@@ -950,17 +950,26 @@ export function ReaderScreen() {
         ) : null}
 
         {/* Why (tech): an import journey must prove the figure actually painted. The engine posts
-            the decoded image's box; this tiny invisible view exposes it to the accessibility tree
-            (Maestro `assertVisible id: reader-image-proof`) without changing the reading surface. */}
+            the figure's measured box; this tiny invisible view exposes it to the accessibility
+            tree (Maestro `assertVisible id: reader-image-proof`) without changing the reading
+            surface. A figure that was mounted but decoded to nothing is reported as `count: 0` and
+            gets its own node, so "nothing rendered" can be told apart from "nothing reported" —
+            without it the negative control could pass for the wrong reason. */}
         {imageProof ? (
           // A real Text node: text views are what the on-device accessibility tree always exposes
           // (`reader-page-counter` proves that), whereas a 1px, 1%-opacity blank View was skipped
           // entirely (CI run 45672094646). Its colour is transparent, so a reader sees nothing;
           // the container takes no touches.
           <View pointerEvents="none" style={styles.imageProof}>
-            <Text testID="reader-image-proof" style={styles.imageProofLabel}>
-              {`صورة ${imageProof.width}×${imageProof.height}`}
-            </Text>
+            {imageProof.count > 0 ? (
+              <Text testID="reader-image-proof" style={styles.imageProofLabel}>
+                {`صورة ${imageProof.width}×${imageProof.height}`}
+              </Text>
+            ) : (
+              <Text testID="reader-image-error" style={styles.imageProofLabel}>
+                {'الصورة مش ظاهرة'}
+              </Text>
+            )}
           </View>
         ) : null}
 

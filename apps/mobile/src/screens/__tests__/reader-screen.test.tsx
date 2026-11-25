@@ -230,6 +230,22 @@ describe('ReaderScreen', () => {
 
     const proof = utils.getByTestId('reader-image-proof');
     expect(proof.props.children).toBe('صورة 240×160');
+    expect(utils.queryByTestId('reader-image-error')).toBeNull();
+  });
+
+  it('surfaces a mounted figure that painted nothing as an explicit error, not as silence', async () => {
+    const utils = await renderLoadedReader();
+
+    // The engine reports `count: 0` when a figure was mounted but decoded to nothing. An absent
+    // node would be indistinguishable from "the engine never reported", which is what let the
+    // negative control pass for the wrong reason (CI run 45687065853).
+    await act(async () => {
+      emitWebMessage({ type: 'image-rendered', count: 0, width: 0, height: 0 });
+    });
+
+    const failure = utils.getByTestId('reader-image-error');
+    expect(failure.props.children).toBe('الصورة مش ظاهرة');
+    expect(utils.queryByTestId('reader-image-proof')).toBeNull();
   });
 
   it('automatically uses burnt-paper when system colorScheme is dark and no manual theme is set', async () => {
