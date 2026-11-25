@@ -1,6 +1,6 @@
 appId: com.rewiaty.app
 ---
-# The page scrubber must follow the finger in RTL: dragging toward the right edge goes to the
+# The page scrubber (number AND thumb) must follow the finger in RTL: dragging toward the right edge goes to the
 # start of the book, dragging toward the left edge goes to the end (Sohail 2026-11-25:
 # «السلايدر بيتحرك بالعكس»).
 - launchApp
@@ -41,6 +41,11 @@ appId: com.rewiaty.app
 - assertVisible:
     id: "reader-page-counter"
     text: "صفحة [1-3] من.*"
+# The thumb must sit where the finger went (right half), not mirrored.
+- assertVisible:
+    id: "reader-scrubber-thumb"
+    rightOf:
+      id: "reader-scrubber-mid"
 - takeScreenshot: "01-dragged-right-start"
 # Finger toward the LEFT edge -> end of the book.
 - swipe:
@@ -59,4 +64,8 @@ appId: com.rewiaty.app
 - assertVisible:
     id: "reader-page-counter"
     text: "صفحة [1-9][0-9]+ من.*"
+- assertVisible:
+    id: "reader-scrubber-thumb"
+    leftOf:
+      id: "reader-scrubber-mid"
 - takeScreenshot: "02-dragged-left-end"

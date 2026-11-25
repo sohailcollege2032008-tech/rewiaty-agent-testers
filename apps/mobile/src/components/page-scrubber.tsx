@@ -175,7 +175,11 @@ export function PageScrubber({ page, pageCount, dir, theme, onSeekPage }: PageSc
           <View style={[styles.track, { backgroundColor: palette.border }]}>
             <Animated.View style={[styles.fill, { backgroundColor: palette.accent }, fillStyle]} />
           </View>
+          {/* Fixed reference at the physical middle of the track; journeys assert the thumb is
+              left/right of it, because the RTL bug was visual (the page math was right). */}
+          <View testID="reader-scrubber-mid" pointerEvents="none" style={styles.midMarker} />
           <Animated.View
+            testID="reader-scrubber-thumb"
             style={[
               styles.thumb,
               {
@@ -230,6 +234,14 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     borderRadius: 2,
+  },
+  midMarker: {
+    position: 'absolute',
+    left: '50%',
+    top: 15,
+    width: 2,
+    height: 2,
+    opacity: 0.01,
   },
   thumb: {
     position: 'absolute',
