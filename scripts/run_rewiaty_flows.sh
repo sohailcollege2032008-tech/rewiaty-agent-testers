@@ -134,6 +134,12 @@ if want_flow resume-position; then
   run_flow "resume-position" || true
 fi
 
+# 3b. scrubber-direction (clean state -> drag the page scrubber right then left in RTL)
+if want_flow scrubber-direction; then
+  adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
+  run_flow "scrubber-direction" || true
+fi
+
 # 4. settings-live (clean state -> OLED + Amiri + size + CSP/font logcat verification)
 if want_flow settings-live; then
   adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
