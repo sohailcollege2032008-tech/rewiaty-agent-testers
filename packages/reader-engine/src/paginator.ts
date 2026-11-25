@@ -572,9 +572,16 @@ export class Paginator {
     return `<header class="chapter-header"><h1 class="chapter-title">${escapeHtml(chapter.title)}</h1><div class="chapter-ornament" aria-hidden="true">✦</div></header>${blocks.map(renderBlockHtml).join('')}`;
   }
 
-  /** `+1` when a forward turn moves the track rightwards (RTL), `-1` otherwise. */
+  /**
+   * NEGATIVE CONTROL — NOT FOR MERGE.
+   *
+   * `+1` when a forward turn moves the track rightwards (RTL), `-1` otherwise. This proof
+   * branch returns the mirror on purpose: it is the exact bug Sohail hit in the scrubber, where
+   * the forced-RTL styles flipped the direction while the gesture stayed physical, so the paper
+   * travelled against the hand. `drag-page-direction.yaml` must FAIL on this build.
+   */
   private nextSign(): 1 | -1 {
-    return this.dir === 'rtl' ? 1 : -1;
+    return this.dir === 'rtl' ? -1 : 1;
   }
 
   /**
