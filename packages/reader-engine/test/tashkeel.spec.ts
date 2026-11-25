@@ -58,10 +58,81 @@ function buildBook(paragraphsPerChapter: number[], mode: TashkeelMode = 'full'):
   return parseBook(lines.join('\n'), 'f18-tashkeel.md');
 }
 
+/**
+ * The same 20,000-word fixture the engine suite uses (`samples/gen-long.mjs` scaled to one
+ * huge chapter): a 50-word vocalised sentence repeated 420 times.
+ */
+function buildTwentyThousandWordChapterBook(): Book {
+  const fiftyWords =
+    'كَانَ الْفَجْرُ يَتَسَلَّلُ بِهُدُوءٍ فَوْقَ أَرْصِفَةِ الْمِينَاءِ الْقَدِيمِ حَيْثُ تَرْتَطِمُ الْأَمْوَاجُ الْهَادِئَةُ بِأَخْشَابِ الْمَرَاكِبِ الرَّاسِيَةِ وَوَقَفَ سَلِيمٌ يُرَاقِبُ عَوْدَةَ الصَّيَّادِينَ بَعْدَ لَيْلَةٍ طَوِيلَةٍ مِنَ الْإِبْحَارِ فِي عُرْضِ الْبَحْرِ الْعَمِيقِ حَامِلًا دَفْتَرَهُ الصَّغِيرَ الَّذِي كُتِبَتْ صَفَحَاتُهُ بِخَطٍّ دَقِيقٍ وَمُتَّزِنٍ قَبْلَ عَشْرِ سَنَوَاتٍ كَامِلَةٍ مِنَ الِانْتِظَارِ وَالصَّبْرِ وَالْأَمَلِ فِي غَدٍ جَدِيدٍ.';
+  const lines = [
+    '---',
+    'title: "فَصْلٌ ضَخْمٌ"',
+    'lang: ar',
+    'dir: rtl',
+    '---',
+    '',
+    '# الْفَصْلُ الْأَوَّلُ: عِشْرُونَ أَلْفَ كَلِمَةٍ',
+    '',
+  ];
+  for (let i = 0; i < 420; i++) {
+    lines.push(fiftyWords);
+    lines.push('');
+  }
+  lines.push('# الْفَصْلُ الثَّانِي: خَاتِمَةٌ');
+  lines.push('');
+  lines.push('نِهَايَةٌ قَصِيرَةٌ لِلِاخْتِبَارِ.');
+  return parseBook(lines.join('\n'), 'f18-20k.md');
+}
+
 type Position = Extract<WebToRNMessage, { type: 'position' }>;
 type Toc = Extract<WebToRNMessage, { type: 'toc' }>;
 
-async function mountEngine(page: Page): Promise<void> {
+interface IdleStubWindow {
+  requestIdleCallback?: (cb: (deadline: { didTimeout: boolean; timeRemaining: () => number }) => void) => number;
+  cancelIdleCallback?: (id: number) => void;
+  __flushIdle?: () => boolean;
+  __idlePending?: () => number;
+}
+
+/**
+ * Make the engine's progressive mount deterministic: `requestIdleCallback` is replaced by a
+ * queue that only the test drains, one callback at a time. The engine asks for idle work
+ * right after `ready` (and on every settings change), so without this stub "did the chapter
+ * really mount in batches?" would be a race against the browser's scheduler.
+ *
+ * Must be installed as an init script, before the reader page loads.
+ */
+async function installManualIdle(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const win = window as unknown as IdleStubWindow;
+    const queue: Array<{ id: number; cb: (deadline: { didTimeout: boolean; timeRemaining: () => number }) => void }> =
+      [];
+    let nextId = 1;
+    win.requestIdleCallback = (cb) => {
+      const id = nextId++;
+      queue.push({ id, cb });
+      return id;
+    };
+    win.cancelIdleCallback = (id) => {
+      const index = queue.findIndex((entry) => entry.id === id);
+      if (index >= 0) queue.splice(index, 1);
+    };
+    win.__flushIdle = () => {
+      const entry = queue.shift();
+      if (!entry) return false;
+      entry.cb({ didTimeout: true, timeRemaining: () => 0 });
+      return true;
+    };
+    win.__idlePending = () => queue.length;
+  });
+}
+
+async function mountEngine(
+  page: Page,
+  options: { manualIdle?: boolean } = {},
+): Promise<void> {
+  if (options.manualIdle) await installManualIdle(page);
   await page.addInitScript(() => {
     const win = window as unknown as {
       __bridgeMessages: WebToRNMessage[];
@@ -149,6 +220,17 @@ async function exactPosition(page: Page): Promise<Position> {
     settled = await settledPosition(page);
   }
   return settled;
+}
+
+/** Wait until every chapter's page count is a real measurement, not a projection. */
+async function waitUntilMeasured(page: Page, timeoutMs = 180_000): Promise<Position> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const position = await latestPosition(page);
+    if (position && !position.estimated) return position;
+    await page.waitForTimeout(200);
+  }
+  throw new Error('the page map never became exact');
 }
 
 /** The laid-out width of the chapter that holds `blockId` — its real column geometry. */
@@ -312,6 +394,77 @@ function countChar(text: string, code: string): number {
   let count = 0;
   for (const ch of text) if (ch === code) count++;
   return count;
+}
+
+/** Run ONE queued idle callback (the stub installed by {@link installManualIdle}). */
+async function flushIdle(page: Page): Promise<boolean> {
+  return page.evaluate(() => (window as unknown as IdleStubWindow).__flushIdle?.() ?? false);
+}
+
+async function idlePending(page: Page): Promise<number> {
+  return page.evaluate(() => (window as unknown as IdleStubWindow).__idlePending?.() ?? 0);
+}
+
+/** Drain the manual idle queue: run callbacks until the engine stops asking for work. */
+async function drainIdle(page: Page, limit = 80): Promise<number> {
+  let ran = 0;
+  while (ran < limit && (await flushIdle(page))) ran++;
+  return ran;
+}
+
+type MountState = { chapterId: string; blocks: number; chars: number };
+
+/** Every chapter currently in the DOM, with how much of it is mounted. */
+async function mountedChapters(page: Page): Promise<MountState[]> {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll<HTMLElement>('#reader-track .chapter')).map((el) => ({
+      chapterId: el.getAttribute('data-chapter-id') ?? '',
+      blocks: el.querySelectorAll('[data-block-id]').length,
+      chars: el.textContent?.length ?? 0,
+    })),
+  );
+}
+
+async function mountedBlocksOf(page: Page, chapterId: string): Promise<number> {
+  const entry = (await mountedChapters(page)).find((c) => c.chapterId === chapterId);
+  return entry?.blocks ?? 0;
+}
+
+/** The rendered text of every mounted block of one chapter, in document order. */
+async function chapterBlockTexts(page: Page, chapterId: string): Promise<string[]> {
+  return page.evaluate((id) => {
+    const chapter = document.querySelector<HTMLElement>(`[data-chapter-id="${id}"]`);
+    if (!chapter) return [];
+    return Array.from(chapter.querySelectorAll<HTMLElement>('[data-block-id]')).map(
+      (el) => el.textContent ?? '',
+    );
+  }, chapterId);
+}
+
+/** Per-block mismatches between the DOM and an expected list — a precise, char-level diff. */
+async function blockTextMismatches(
+  page: Page,
+  chapterId: string,
+  expected: string[],
+): Promise<Array<{ index: number; actual: string; expected: string }>> {
+  const actual = await chapterBlockTexts(page, chapterId);
+  const mismatches: Array<{ index: number; actual: string; expected: string }> = [];
+  const length = Math.max(actual.length, expected.length);
+  for (let index = 0; index < length; index++) {
+    if (actual[index] !== expected[index]) {
+      mismatches.push({ index, actual: actual[index] ?? '<missing>', expected: expected[index] ?? '<missing>' });
+    }
+  }
+  return mismatches;
+}
+
+/** The book's own text for every block of a chapter, exactly as the file has it. */
+async function bookBlockTexts(book: Book, chapterId: string): Promise<string[]> {
+  const chapter = book.chapters.find((c) => c.id === chapterId);
+  if (!chapter) throw new Error(`chapter ${chapterId} not found in the book`);
+  const texts: string[] = [];
+  for (const block of chapter.blocks) texts.push(await originalTextOfBlock(book, block.id));
+  return texts;
 }
 
 /**
@@ -574,6 +727,219 @@ test.describe('F18 — tashkeel modes', () => {
     const finalPosition = await settledPosition(page);
     const sum = finalToc.chapters.reduce((acc, c) => acc + c.pageCount, 0);
     expect(sum).toBe(finalPosition.pageCount);
+  });
+
+  test('(f18-3) unmount → progressive remount applies the mode to every batch, and «كامل» restores the file', async ({
+    page,
+  }) => {
+    test.setTimeout(600_000);
+    await page.setViewportSize(PORTRAIT);
+    // Progressive mount is a browser-scheduler detail; the stub makes it deterministic so
+    // "the chapter mounted in batches" is an observed fact, not a timing coincidence.
+    await mountEngine(page, { manualIdle: true });
+
+    const CHAPTER_PARAGRAPHS = 320; // ≈ 8,000 words: more than INITIAL_WORD_BUDGET (2,500)
+    const book = buildBook([CHAPTER_PARAGRAPHS, 3, 3, 3, 3]);
+    const expectedFull = await bookBlockTexts(book, 'ch01');
+    expect(expectedFull.length, 'one block per paragraph').toBe(CHAPTER_PARAGRAPHS);
+    const expectedNone = expectedFull.map((text) => stripTashkeel(text, 'none'));
+    expect(countMarks(expectedFull.join('')), 'the fixture must be heavily vocalised').toBeGreaterThan(
+      3000,
+    );
+
+    await sendBridge(page, {
+      type: 'load',
+      book,
+      fontBaseUrl: fontsDirUrl,
+      settings: { disableAnimation: true, tashkeel: 'none' },
+    });
+    await expect.poll(async () => (await latestPosition(page))?.page, { timeout: 20_000 }).toBe(1);
+    await settledPosition(page);
+
+    // ---------- progressive mount, first pass ----------
+    const firstSlice = await mountedBlocksOf(page, 'ch01');
+    expect(firstSlice, 'the initial slice must not be the whole chapter').toBeGreaterThan(0);
+    expect(firstSlice, 'the initial slice must be partial').toBeLessThan(CHAPTER_PARAGRAPHS);
+
+    // What is already on screen is already in «بدون» — the initial slice included.
+    expect(await chapterBlockTexts(page, 'ch01')).toEqual(expectedNone.slice(0, firstSlice));
+    expect(countMarks((await chapterBlockTexts(page, 'ch01')).join(''))).toBe(0);
+
+    const series: number[] = [];
+    for (let step = 0; step < 60; step++) {
+      if (!(await flushIdle(page))) break;
+      series.push(await mountedBlocksOf(page, 'ch01'));
+    }
+    expect(series.length, 'the chapter must mount in more than one idle batch').toBeGreaterThanOrEqual(2);
+    expect(series.at(-1), 'progressive mount must finish the chapter').toBe(CHAPTER_PARAGRAPHS);
+    const stillPartial = series.filter((count) => count < CHAPTER_PARAGRAPHS);
+    for (let i = 1; i < stillPartial.length; i++) {
+      expect(stillPartial[i]!, 'every batch must add blocks').toBeGreaterThan(stillPartial[i - 1]!);
+    }
+    expect(await idlePending(page), 'the idle queue must drain').toBe(0);
+
+    // Every batch — the appended ones included — was written in the current mode.
+    expect(await blockTextMismatches(page, 'ch01', expectedNone)).toEqual([]);
+
+    // ---------- unmount a far chapter, then remount it ----------
+    await sendBridge(page, { type: 'goto', chapterId: 'ch05' });
+    await settledPosition(page);
+    await drainIdle(page);
+    const afterJump = (await mountedChapters(page)).map((entry) => entry.chapterId);
+    expect(afterJump, 'the target chapter must be mounted').toContain('ch05');
+    expect(afterJump, 'a far chapter must be unmounted when the reader jumps away').not.toContain('ch01');
+    expect(
+      await page.evaluate(() => document.querySelector('[data-chapter-id="ch01"]') !== null),
+      'the evicted chapter element must be gone from the DOM',
+    ).toBe(false);
+
+    await sendBridge(page, { type: 'goto', chapterId: 'ch01' });
+    await settledPosition(page);
+
+    // The remount starts from a partial slice again — same budget, same slice.
+    const remountSlice = await mountedBlocksOf(page, 'ch01');
+    expect(remountSlice, 'a remount starts partial, exactly like the first load').toBe(firstSlice);
+    const remountMounted = await chapterBlockTexts(page, 'ch01');
+    expect(remountMounted.length).toBe(remountSlice);
+    expect(remountMounted, 'the partially-mounted text is already stripped').toEqual(
+      expectedNone.slice(0, remountSlice),
+    );
+
+    await drainIdle(page);
+    expect(await mountedBlocksOf(page, 'ch01'), 'the remount must complete').toBe(CHAPTER_PARAGRAPHS);
+    expect(await blockTextMismatches(page, 'ch01', expectedNone), '«بدون» after remount').toEqual([]);
+
+    // ---------- back to «كامل»: the file's text, character by character ----------
+    await sendBridge(page, { type: 'settings', partial: { tashkeel: 'full' } });
+    await settledPosition(page);
+    expect(
+      await mountedBlocksOf(page, 'ch01'),
+      'a mode switch must not unmount or remount the chapter',
+    ).toBe(CHAPTER_PARAGRAPHS);
+    expect(
+      await blockTextMismatches(page, 'ch01', expectedFull),
+      '«كامل» must give the book file back char by char',
+    ).toEqual([]);
+
+    // The whole chapter text, not just the blocks: the header plus every block, in order.
+    const chapterText = await page.evaluate(
+      () => document.querySelector<HTMLElement>('[data-chapter-id="ch01"]')?.textContent ?? '',
+    );
+    expect(chapterText.endsWith(expectedFull.join(''))).toBe(true);
+  });
+
+  test('(f18-4) switching the mode on a 20,000-word chapter is fast and never moves the anchor', async ({
+    page,
+  }) => {
+    test.setTimeout(600_000);
+    await page.setViewportSize(PORTRAIT);
+    await mountEngine(page);
+
+    const book = buildTwentyThousandWordChapterBook();
+    expect(book.chapters[0]!.wordCount).toBeGreaterThanOrEqual(20_000);
+    const chapterBlockCount = book.chapters[0]!.blocks.length;
+    const chapterWords = book.chapters[0]!.wordCount;
+
+    await sendBridge(page, {
+      type: 'load',
+      book,
+      fontBaseUrl: fontsDirUrl,
+      settings: { disableAnimation: true, tashkeel: 'full' },
+    });
+    await expect.poll(async () => (await latestPosition(page))?.page, { timeout: 20_000 }).toBe(1);
+
+    // A page deep inside the huge chapter that starts mid-block, so the anchor has a real
+    // offset and a raw DOM offset would visibly disagree with the original-text one.
+    let landed: Position | null = null;
+    for (let pageNumber = 3; pageNumber <= 30 && !landed; pageNumber++) {
+      await sendBridge(page, { type: 'goto', chapterId: 'ch01', page: pageNumber });
+      const position = await settledPosition(page);
+      if (position.chapterId !== 'ch01' || position.chapterPage !== pageNumber) continue;
+      if (position.anchor.charOffset <= 40) continue;
+      landed = position;
+    }
+    expect(landed, 'the 20k chapter must offer a mid-block page').toBeTruthy();
+    const anchor = landed!.anchor;
+    const anchorOriginal = await originalTextOfBlock(book, anchor.blockId);
+    expect(countMarks(anchorOriginal), 'the anchor block must be vocalised').toBeGreaterThan(40);
+
+    // Let the whole chapter be measured: the timings below must be about real numbers.
+    const measured = await waitUntilMeasured(page);
+    expect(measured.anchor, 'measuring the chapter must not move the anchor').toEqual(anchor);
+    expect(await mountedBlocksOf(page, 'ch01'), 'the whole chapter is mounted now').toBe(
+      chapterBlockCount,
+    );
+    const measuredPage = measured.page;
+    const measuredChapterPage = measured.chapterPage;
+    const measuredPageCount = measured.pageCount;
+
+    // ---------- the timed switch: settings message → first position with clean text ----------
+    const timing = await page.evaluate(() => {
+      const win = window as unknown as {
+        __bridgeMessages: Array<Record<string, unknown> & { type: string }>;
+      };
+      const hasMarks = (text: string) => /[\u064b-\u065f\u0670\u06d6-\u06ed]/.test(text);
+      const start = performance.now();
+      const beforePositions = win.__bridgeMessages.filter((m) => m.type === 'position').length;
+      return new Promise<{ ms: number; position: Record<string, unknown> }>((resolve, reject) => {
+        const deadline = start + 30_000;
+        const tick = () => {
+          const positions = win.__bridgeMessages.filter((m) => m.type === 'position');
+          const chapter = document.querySelector<HTMLElement>('[data-chapter-id="ch01"]');
+          if (positions.length > beforePositions && chapter && !hasMarks(chapter.textContent ?? '')) {
+            resolve({ ms: performance.now() - start, position: positions[positions.length - 1]! });
+            return;
+          }
+          if (performance.now() > deadline) {
+            reject(new Error('the mode switch never produced a stripped position'));
+            return;
+          }
+          requestAnimationFrame(tick);
+        };
+        window.postMessage(JSON.stringify({ type: 'settings', partial: { tashkeel: 'none' } }), '*');
+        requestAnimationFrame(tick);
+      });
+    });
+
+    console.log(
+      `F18 timing — «بدون» on ${chapterWords} words / ${chapterBlockCount} blocks: ${timing.ms.toFixed(1)} ms`,
+    );
+    test.info().annotations.push({
+      type: 'F18 timing',
+      description: `${timing.ms.toFixed(1)} ms to switch «بدون» on a ${chapterWords}-word chapter (${chapterBlockCount} blocks)`,
+    });
+    expect(timing.ms, 'switching the mode must stay interactive').toBeLessThan(5000);
+
+    const nonePosition = timing.position as unknown as Position;
+    expect(nonePosition.anchor, 'the anchor must not move when the marks are hidden').toEqual(anchor);
+    expect(nonePosition.chapterId, 'a tashkeel change must never jump to another chapter').toBe('ch01');
+    // The diacritics are combining marks: zero advance width, so the page cannot change.
+    expect(nonePosition.chapterPage, 'the anchor stays on the same page').toBe(measuredChapterPage);
+    expect(nonePosition.page).toBe(measuredPage);
+
+    expect(await renderedBlockText(page, anchor.blockId), '«بدون» on screen').toBe(
+      stripTashkeel(anchorOriginal, 'none'),
+    );
+    expect(countMarks(await renderedBlockText(page, anchor.blockId))).toBe(0);
+
+    // ---------- «شدّة وتنوين بس» ----------
+    const intermediate = await setMode(page, 'shadda-tanween');
+    expect(intermediate.anchor).toEqual(anchor);
+    expect(intermediate.chapterId).toBe('ch01');
+    expect(intermediate.chapterPage).toBe(measuredChapterPage);
+    expect(await renderedBlockText(page, anchor.blockId)).toBe(
+      stripTashkeel(anchorOriginal, 'shadda-tanween'),
+    );
+
+    // ---------- back to «كامل» ----------
+    const restored = await setMode(page, 'full');
+    expect(restored.anchor).toEqual(anchor);
+    expect(restored.page, 'the original layout must come back exactly').toBe(measuredPage);
+    expect(restored.chapterPage).toBe(measuredChapterPage);
+    expect(restored.pageCount).toBe(measuredPageCount);
+    expect(await renderedBlockText(page, anchor.blockId), '«كامل» must be lossless').toBe(
+      anchorOriginal,
+    );
   });
 });
 
