@@ -271,6 +271,52 @@ async function swipe(page: Page, distancePx: number, durationMs: number): Promis
   );
 }
 
+/**
+ * A flick whose sample spacing is exact on a loaded machine: `setTimeout(16)` can stretch to
+ * 100 ms+ when the box has 8 cores and a load average near 30, which silently turns a 60 ms
+ * flick into a 400 ms drag and hides the velocity rule the test is about. Busy-wait instead.
+ */
+async function flick(page: Page, distancePx: number, durationMs = 60): Promise<void> {
+  await page.evaluate(
+    ({ distancePx, durationMs }) => {
+      const root = document.getElementById('reader-root')!;
+      const rect = root.getBoundingClientRect();
+      const y = rect.top + rect.height / 2;
+      const startX = rect.left + rect.width / 2;
+      const steps = Math.max(3, Math.round(durationMs / 16));
+      const slice = durationMs / steps;
+      const burn = (ms: number) => {
+        const from = performance.now();
+        while (performance.now() - from < ms) {
+          /* spin */
+        }
+      };
+      const fire = (type: string, x: number) => {
+        root.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            pointerId: 8,
+            pointerType: 'touch',
+            isPrimary: true,
+            clientX: x,
+            clientY: y,
+            button: 0,
+            buttons: type === 'pointerup' ? 0 : 1,
+          }),
+        );
+      };
+      fire('pointerdown', startX);
+      for (let i = 1; i <= steps; i++) {
+        burn(slice);
+        fire('pointermove', startX + (distancePx * i) / steps);
+      }
+      fire('pointerup', startX + distancePx);
+    },
+    { distancePx, durationMs },
+  );
+}
+
 async function pageWidth(page: Page): Promise<number> {
   return page.evaluate(() => {
     const value = Number.parseFloat(
@@ -323,8 +369,11 @@ test.describe('R5 — drag paging', () => {
       Math.round(((await latestPosition(page))!.chapterPage - 1) * width),
     );
 
-    // A short but fast flick carries the page: 15 % of the page width in ~60 ms.
-    await swipe(page, width * 0.15, 60);
+    // A short but fast flick carries the page: 20 % of the page width in ~60 ms. Not 15 %:
+    // on a box with a load average near 30 the renderer thread is descheduled mid-gesture, so
+    // a 15 % flick can genuinely measure 0.39 px/ms and stop being a flick. The rule under
+    // test is the velocity rule, not this machine's scheduler.
+    await flick(page, width * 0.2);
     await expect
       .poll(async () => (await latestPosition(page))?.page, { timeout: 5_000 })
       .toBe(restingPage + 1);
@@ -461,6 +510,71 @@ test.describe('R5 — drag paging', () => {
     await page.waitForTimeout(400);
     expect((await latestPosition(page))?.page).toBe(1);
     expect(await trackOffset(page)).toBe(0);
+  });
+
+  test('(c5) a fast twitch shorter than a tenth of a page is not a turn', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize(PORTRAIT);
+    await mountEngine(page);
+    const book = buildTortureBook();
+    await openBook(page, book);
+    const width = await pageWidth(page);
+
+    // A 9 % twitch released in ~24 ms measures ~1.4 px/ms — well past the 0.4 flick rule — but
+    // the paper only moved 35 px. A release that fast over that little distance is what a
+    // batched or synthesised gesture looks like, and it used to turn the page (the device
+    // journey's short nudge went back to page 1). With the distance floor it must settle back.
+    const twitch = (fraction: number) =>
+      page.evaluate(async (distance) => {
+        const root = document.getElementById('reader-root')!;
+        const rect = root.getBoundingClientRect();
+        const y = rect.top + rect.height / 2;
+        const startX = rect.left + rect.width / 2;
+        // Busy-wait so the sample spacing is exact even on a loaded machine: a setTimeout gap
+        // can stretch to 100 ms here and hide the very velocity this test is about.
+        const burn = (ms: number) => {
+          const from = performance.now();
+          while (performance.now() - from < ms) {
+            /* spin */
+          }
+        };
+        const fire = (type: string, x: number) => {
+          root.dispatchEvent(
+            new PointerEvent(type, {
+              bubbles: true,
+              cancelable: true,
+              pointerId: 9,
+              pointerType: 'touch',
+              isPrimary: true,
+              clientX: x,
+              clientY: y,
+              button: 0,
+              buttons: type === 'pointerup' ? 0 : 1,
+            }),
+          );
+        };
+        fire('pointerdown', startX);
+        burn(6);
+        fire('pointermove', startX + distance * 0.5);
+        burn(12);
+        fire('pointermove', startX + distance);
+        burn(12);
+        fire('pointerup', startX + distance);
+      }, width * fraction);
+
+    await twitch(0.09);
+    await page.waitForTimeout(400);
+    expect((await latestPosition(page))?.page).toBe(1);
+    expect(await trackOffset(page)).toBe(0);
+
+    // The same twitch must not go backwards from page 2 either.
+    await swipe(page, width * 0.4, 500);
+    await expect
+      .poll(async () => (await latestPosition(page))?.page, { timeout: 5_000 })
+      .toBe(2);
+    await twitch(-0.09);
+    await page.waitForTimeout(400);
+    expect((await latestPosition(page))?.page).toBe(2);
   });
 });
 

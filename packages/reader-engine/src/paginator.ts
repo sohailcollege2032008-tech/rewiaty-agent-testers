@@ -39,6 +39,13 @@ const DRAG_RUBBER_BAND = 0.25;
 const DRAG_COMMIT_RATIO = 0.3;
 /** …or when the finger was still moving this fast (px/ms) in the drag direction. */
 const DRAG_FLICK_VELOCITY = 0.4;
+/**
+ * A flick also has to have MOVED the paper this fraction of the stride. Without a floor the
+ * velocity rule turns a 3 mm twitch into a page whenever the last two pointer samples land
+ * close together (batching, a janky frame, a synthesised gesture): Maestro's 7 % slow nudge
+ * measured > 0.4 px/ms and turned the page back, which is exactly what the reader must not do.
+ */
+const DRAG_FLICK_MIN_RATIO = 0.1;
 /** Matches the `--page-transition` duration so a released page lands where it was heading. */
 const DRAG_SETTLE_MS = 220;
 /**
@@ -693,11 +700,18 @@ export class Paginator {
     const signed = dx * sign;
     const signedVelocity = velocityPxPerMs * sign;
     const threshold = stride * DRAG_COMMIT_RATIO;
+    const flickDistance = stride * DRAG_FLICK_MIN_RATIO;
 
     let turn: 1 | -1 | 0 = 0;
-    if (signed > 0 && (signed >= threshold || signedVelocity >= DRAG_FLICK_VELOCITY)) {
+    if (
+      signed > 0 &&
+      (signed >= threshold || (signedVelocity >= DRAG_FLICK_VELOCITY && signed >= flickDistance))
+    ) {
       turn = 1;
-    } else if (signed < 0 && (-signed >= threshold || -signedVelocity >= DRAG_FLICK_VELOCITY)) {
+    } else if (
+      signed < 0 &&
+      (-signed >= threshold || (-signedVelocity >= DRAG_FLICK_VELOCITY && -signed >= flickDistance))
+    ) {
       turn = -1;
     }
     if (turn !== 0 && !this.canTurn(turn)) turn = 0;
