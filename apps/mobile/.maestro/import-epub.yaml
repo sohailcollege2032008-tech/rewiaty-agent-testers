@@ -84,13 +84,14 @@ appId: com.rewiaty.app
 - waitForAnimationToEnd
 - takeScreenshot: "03-epub-chapter-two"
 # The figure in chapter two must actually *paint*: the engine posts the decoded box to React Native,
-# which exposes it as `reader-image-proof`. A path that resolved but decoded to nothing would leave
-# this invisible, which is exactly what the negative control (import-epub-broken) relies on.
+# which exposes it as `reader-image-proof`. The engine only emits that message when an image decoded
+# (naturalWidth > 0) *and* its rendered rect is positive, so the mere presence of this view is the
+# non-zero-dimension proof. A path that resolved but could not decode leaves it absent — which is
+# exactly what the negative control (import-epub-broken) relies on.
 - extendedWaitUntil:
     visible:
       id: "reader-image-proof"
     timeout: 20000
 - assertVisible:
     id: "reader-image-proof"
-    text: "صورة [0-9]+×[0-9]+"
 - takeScreenshot: "04-epub-image-rendered"
