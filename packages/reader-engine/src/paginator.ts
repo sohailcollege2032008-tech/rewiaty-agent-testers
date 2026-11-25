@@ -30,6 +30,36 @@ const RAGGED_END_PAGE_FRACTION = 0.5;
 /** Element that pads a chapter to an even page count so every chapter starts on the same side. */
 const CHAPTER_PAD_CLASS = 'chapter-pad';
 
+/**
+ * How far the running page is allowed to travel past a book edge while the finger keeps
+ * pulling (rubber band), as a fraction of the raw drag distance.
+ */
+const DRAG_RUBBER_BAND = 0.25;
+/** A released drag completes the turn past this fraction of the visible page advance. */
+const DRAG_COMMIT_RATIO = 0.3;
+/** …or when the finger was still moving this fast (px/ms) in the drag direction. */
+const DRAG_FLICK_VELOCITY = 0.4;
+/**
+ * A flick also has to have MOVED the paper this fraction of the stride. Without a floor the
+ * velocity rule turns a 3 mm twitch into a page whenever the last two pointer samples land
+ * close together (batching, a janky frame, a synthesised gesture): Maestro's 7 % slow nudge
+ * measured > 0.4 px/ms and turned the page back, which is exactly what the reader must not do.
+ */
+const DRAG_FLICK_MIN_RATIO = 0.1;
+/** Matches the `--page-transition` duration so a released page lands where it was heading. */
+const DRAG_SETTLE_MS = 220;
+/**
+ * Layout budget spent per frame on the exact pagination pass. Two or three chapters fit
+ * in it; the rest yield to the next frame so scrolling and taps stay responsive.
+ */
+const EXACT_PASS_FRAME_MS = 12;
+/**
+ * Longest the idle mount may wait for the exact page map. The pass is frame-chunked and
+ * normally finishes in well under this; a book (or a WebView that throttles frames) that
+ * does not must still mount, so the wait is bounded.
+ */
+const BACKGROUND_DEFER_MAX_MS = 1500;
+
 export type ViewportMetrics = {
   width: number; // stage width (the physical width of the open book)
   height: number;
@@ -104,6 +134,12 @@ type PageMap = {
 export type PaginatorCallbacks = {
   onBackgroundProgress?: () => void;
   onChapterLayoutComplete?: (chapterId: string) => void;
+  /**
+   * Fired when the exact-pagination pass has measured the chapters the reader's page
+   * number depends on (`allExact=false`) or the whole book (`allExact=true`), so the
+   * host can publish the corrected position/TOC.
+   */
+  onExactPagination?: (allExact: boolean) => void;
 };
 
 const FONT_FALLBACKS: Record<string, string> = {
@@ -296,6 +332,28 @@ export class Paginator {
   private transitionResetRaf: number | null = null;
   private layoutGeneration = 0;
 
+  // --- exact pagination pass (offscreen, frame-chunked) ---
+  /** Chapters still to measure, in priority order (see `startExactPagination`). */
+  private exactQueue: number[] = [];
+  private exactRaf: number | null = null;
+  /** Bumped whenever measurements from the running pass become invalid. */
+  private exactToken = 0;
+  /** Hidden host for the throwaway `.chapter` copies the pass measures. */
+  private probeEl: HTMLElement | null = null;
+  private exactPrefixNotified = false;
+  private exactAllNotified = false;
+  /** A mount was requested while the map was still estimated (see `scheduleBackgroundWork`). */
+  private backgroundWanted = false;
+  private backgroundFallbackTimer: number | null = null;
+
+  // --- finger-tracked page turns ---
+  private dragging = false;
+  private dragBaseOffset = 0;
+  private dragPendingDx: number | null = null;
+  private dragRaf: number | null = null;
+  private dragSettleTimer: number | null = null;
+
+
   constructor(
     rootEl: HTMLElement,
     stageEl: HTMLElement,
@@ -339,8 +397,378 @@ export class Paginator {
     return this.rendered.get(this.currentChapterIdx)?.isComplete ?? false;
   }
 
+  /**
+   * true when every chapter has a real measurement for the current layout, so both the
+   * page number and the book total are exact and never need a correction.
+   */
+  isPageMapExact(): boolean {
+    if (!this.book) return false;
+    for (const chapter of this.book.chapters) {
+      if (this.pageCache.get(this.cacheKey(chapter)) === undefined) return false;
+    }
+    return true;
+  }
+
+  /**
+   * true when the chapters that precede the current one are measured, i.e. the page
+   * number the reader sees is exact even if the total is still an estimate.
+   */
+  isPageNumberExact(): boolean {
+    if (!this.book) return false;
+    const last = Math.min(this.currentChapterIdx, this.book.chapters.length - 1);
+    for (let i = 0; i <= last; i++) {
+      const chapter = this.book.chapters[i];
+      if (!chapter) return false;
+      if (this.pageCache.get(this.cacheKey(chapter)) === undefined) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Measure every chapter that has no real count for this layout, offscreen and in
+   * budgeted frames, so the page map stops depending on estimates.
+   *
+   * Why (product, S3): restoring "كمّل القراية" only mounts the anchor's chapter; the
+   * chapters before it were never measured, so their pages came from a words-per-page
+   * guess and the reader landed on a different page number (saved 9, restored 7). A page
+   * map that is a pure function of (book, layout) makes the restored number the same
+   * number — and the total the same total.
+   *
+   * Order matters for perceived speed: the current chapter first (it can be partially
+   * mounted), then the prefix before it, then the rest. Once the prefix is measured the
+   * page number is final even while the later chapters are still being counted.
+   */
+  startExactPagination(): void {
+    if (!this.book) return;
+    this.cancelExactPagination();
+    if (!this.metricsTrusted) return;
+
+    const book = this.book;
+    const missing: number[] = [];
+    for (let i = 0; i < book.chapters.length; i++) {
+      const chapter = book.chapters[i];
+      if (!chapter) continue;
+      if (this.pageCache.get(this.cacheKey(chapter)) === undefined) missing.push(i);
+    }
+
+    this.exactPrefixNotified = this.isPageNumberExact();
+    this.exactAllNotified = missing.length === 0;
+    if (missing.length === 0) {
+      this.callbacks.onExactPagination?.(true);
+      return;
+    }
+
+    const current = this.currentChapterIdx;
+    const ordered: number[] = [];
+    if (missing.includes(current)) ordered.push(current);
+    for (const idx of missing) {
+      if (idx < current) ordered.push(idx);
+    }
+    for (const idx of missing) {
+      if (idx > current) ordered.push(idx);
+    }
+    this.exactQueue = ordered;
+    // Measure the first slice synchronously: the common book's prefix fits in one
+    // budgeted frame, so its first page number is ready inside this task instead of
+    // waiting on a `requestAnimationFrame` that a background WebView can throttle.
+    this.pumpExactPagination(this.exactToken);
+  }
+
+  /** Drop a running exact pass (its measurements describe a layout that just changed). */
+  private cancelExactPagination(): void {
+    this.exactToken++;
+    this.exactQueue = [];
+    this.exactPrefixNotified = false;
+    this.exactAllNotified = false;
+    if (this.exactRaf !== null) {
+      window.cancelAnimationFrame(this.exactRaf);
+      this.exactRaf = null;
+    }
+  }
+
+  private scheduleExactFrame(): void {
+    if (this.exactRaf !== null) return;
+    const token = this.exactToken;
+    this.exactRaf = window.requestAnimationFrame(() => {
+      this.exactRaf = null;
+      this.pumpExactPagination(token);
+    });
+  }
+
+  private pumpExactPagination(token: number): void {
+    if (token !== this.exactToken) return;
+    const book = this.book;
+    if (!book) return;
+
+    const started = performance.now();
+    while (this.exactQueue.length > 0) {
+      const idx = this.exactQueue.shift();
+      if (idx === undefined) break;
+      const chapter = book.chapters[idx];
+      if (!chapter) continue;
+      if (this.pageCache.get(this.cacheKey(chapter)) !== undefined) continue;
+      this.measureChapterOffscreen(chapter);
+      if (performance.now() - started >= EXACT_PASS_FRAME_MS && this.exactQueue.length > 0) break;
+    }
+    if (token !== this.exactToken) return;
+
+    this.invalidatePageMap();
+
+    const allExact = this.exactQueue.length === 0;
+    const prefixExact = this.isPageNumberExact();
+    if ((prefixExact && !this.exactPrefixNotified) || (allExact && !this.exactAllNotified)) {
+      this.exactPrefixNotified = this.exactPrefixNotified || prefixExact;
+      this.exactAllNotified = this.exactAllNotified || allExact;
+      this.callbacks.onExactPagination?.(allExact);
+    }
+
+    if (!allExact) {
+      this.scheduleExactFrame();
+    } else if (this.probeEl) {
+      this.probeEl.remove();
+      this.probeEl = null;
+    }
+
+    // A mount that was waiting for a final page map starts now (the reader has already
+    // been told its first page number by `onExactPagination`, so the progress ticks that
+    // follow re-publish numbers that cannot move).
+    if (allExact && this.backgroundWanted) {
+      this.runBackgroundWork();
+    }
+  }
+
+  /** Hidden container with the chapter box, so a lone `.chapter` lays out exactly as in the track. */
+  private ensureProbe(): HTMLElement {
+    if (this.probeEl?.isConnected) return this.probeEl;
+    const probe = document.createElement('div');
+    probe.id = 'rewiaty-measure-probe';
+    probe.setAttribute('aria-hidden', 'true');
+    probe.style.cssText =
+      'position:fixed;top:0;left:-100000px;width:var(--page-width);height:var(--page-height);' +
+      'visibility:hidden;pointer-events:none;contain:layout style;';
+    document.body.appendChild(probe);
+    this.probeEl = probe;
+    return probe;
+  }
+
+  /** Measure one whole chapter without touching the mounted (virtualized) DOM. */
+  private measureChapterOffscreen(chapter: Chapter): void {
+    if (this.metrics.pageWidth <= 0) return;
+    const probe = this.ensureProbe();
+    const el = document.createElement('article');
+    el.className = 'chapter';
+    el.setAttribute('dir', this.dir);
+    el.innerHTML = this.chapterInnerHtml(chapter);
+    probe.appendChild(el);
+    try {
+      this.pageCache.set(this.cacheKey(chapter), Math.max(1, this.measureChapterScrollPages(el)));
+    } finally {
+      el.remove();
+    }
+  }
+
+  private chapterInnerHtml(chapter: Chapter, endBlockCount?: number): string {
+    const blocks = endBlockCount === undefined ? chapter.blocks : chapter.blocks.slice(0, endBlockCount);
+    return `<header class="chapter-header"><h1 class="chapter-title">${escapeHtml(chapter.title)}</h1><div class="chapter-ornament" aria-hidden="true">✦</div></header>${blocks.map(renderBlockHtml).join('')}`;
+  }
+
+  /** `+1` when a forward turn moves the track rightwards (RTL), `-1` otherwise. */
+  private nextSign(): 1 | -1 {
+    return this.dir === 'rtl' ? 1 : -1;
+  }
+
+  /**
+   * Would a page turn in this direction move to another page? Used to apply the edge
+   * rubber band instead of promising a turn that `nextPage`/`prevPage` would refuse.
+   */
+  private canTurn(direction: 1 | -1): boolean {
+    if (!this.book) return false;
+    if (direction === 1) {
+      const curr = this.rendered.get(this.currentChapterIdx);
+      if (!curr) return false;
+      if (this.currentChapterPage + this.pageStep() < curr.layoutPageCount) return true;
+      return this.currentChapterIdx + 1 < this.book.chapters.length;
+    }
+    if (this.currentChapterPage > 0) return true;
+    return this.currentChapterIdx > 0;
+  }
+
+  /** Track offset of the page currently shown. */
+  private currentPageOffset(): number {
+    const pageW = Math.round(this.metrics.pageWidth);
+    const raw =
+      this.dir === 'rtl' ? this.currentChapterPage * pageW : -(this.currentChapterPage * pageW);
+    return Math.round(raw) || 0;
+  }
+
+  /**
+   * Start following the finger. The track is frozen for the duration of the gesture and
+   * only `transform` changes per move (no layout, no re-measure).
+   */
+  beginDrag(): void {
+    if (!this.book || this.dragging) return;
+    this.cancelDragSettle();
+
+    // A turn that lands past the end of the mounted slice would reveal empty paper, so
+    // make sure the page being pulled into view actually exists.
+    const curr = this.rendered.get(this.currentChapterIdx);
+    if (curr) {
+      const step = this.pageStep();
+      let guard = 0;
+      while (!curr.isComplete && this.currentChapterPage + step >= curr.pageCount && guard < 8) {
+        guard++;
+        this.appendNextBatch(curr, BATCH_WORD_BUDGET);
+      }
+      this.layoutVirtualizedChapterOffsets();
+    }
+
+    this.dragging = true;
+    this.dragBaseOffset = this.currentPageOffset();
+    this.dragPendingDx = 0;
+    this.trackEl.style.transition = 'none';
+  }
+
+  /** Follow the finger; `dx` is the total horizontal distance from `beginDrag`. */
+  dragBy(dx: number): void {
+    if (!this.dragging) return;
+    const sign = this.nextSign();
+    const signed = dx * sign;
+    let travelled = dx;
+    if (signed > 0 && !this.canTurn(1)) {
+      travelled = dx * DRAG_RUBBER_BAND;
+    } else if (signed < 0 && !this.canTurn(-1)) {
+      travelled = dx * DRAG_RUBBER_BAND;
+    } else if (signed > 0 && this.book) {
+      // Reveal the neighbouring chapter before the finger gets there.
+      this.ensureNeighbourMounted(1);
+    } else if (signed < 0) {
+      this.ensureNeighbourMounted(-1);
+    }
+
+    this.dragPendingDx = travelled;
+    if (this.dragRaf !== null) return;
+    this.dragRaf = window.requestAnimationFrame(() => {
+      this.dragRaf = null;
+      if (!this.dragging || this.dragPendingDx === null) return;
+      const offset = Math.round(this.dragBaseOffset + this.dragPendingDx) || 0;
+      this.trackEl.style.transform = `translate3d(${offset}px, 0, 0)`;
+    });
+  }
+
+  /** Mount the first slice of the chapter a drag is heading into (if it is not there yet). */
+  private ensureNeighbourMounted(direction: 1 | -1): void {
+    if (!this.book) return;
+    const idx = this.currentChapterIdx + direction;
+    if (idx < 0 || idx >= this.book.chapters.length) return;
+    if (this.rendered.has(idx)) return;
+    const chapter = this.book.chapters[idx];
+    if (!chapter) return;
+    const entry = this.mountChapterInitial(idx, chapter, 0);
+    this.rendered.set(idx, entry);
+    if (entry.isComplete) this.pageCache.set(this.cacheKey(chapter), entry.pageCount);
+    this.layoutVirtualizedChapterOffsets();
+  }
+
+  /** Forget the gesture and put the page back under the reader's eye. */
+  cancelDrag(): void {
+    if (!this.dragging) return;
+    this.dragging = false;
+    if (this.dragRaf !== null) {
+      window.cancelAnimationFrame(this.dragRaf);
+      this.dragRaf = null;
+    }
+    this.dragPendingDx = null;
+    this.trackEl.style.transition = '';
+    this.applyTrackTransform(false);
+  }
+
+  /**
+   * Finish a drag: keep the turn when the finger travelled past the commit distance or
+   * was still flicking in the same direction, otherwise settle back onto this page.
+   */
+  endDrag(dx: number, velocityPxPerMs: number, onTurned?: () => void): void {
+    if (!this.dragging) return;
+    this.dragging = false;
+    if (this.dragRaf !== null) {
+      window.cancelAnimationFrame(this.dragRaf);
+      this.dragRaf = null;
+    }
+    this.dragPendingDx = null;
+
+    const stride = this.pageStep() * Math.max(1, Math.round(this.metrics.pageWidth));
+    const sign = this.nextSign();
+    const signed = dx * sign;
+    const signedVelocity = velocityPxPerMs * sign;
+    const threshold = stride * DRAG_COMMIT_RATIO;
+    const flickDistance = stride * DRAG_FLICK_MIN_RATIO;
+
+    let turn: 1 | -1 | 0 = 0;
+    if (
+      signed > 0 &&
+      (signed >= threshold || (signedVelocity >= DRAG_FLICK_VELOCITY && signed >= flickDistance))
+    ) {
+      turn = 1;
+    } else if (
+      signed < 0 &&
+      (-signed >= threshold || (-signedVelocity >= DRAG_FLICK_VELOCITY && -signed >= flickDistance))
+    ) {
+      turn = -1;
+    }
+    if (turn !== 0 && !this.canTurn(turn)) turn = 0;
+
+    if (turn === 0) {
+      if (this.settings.disableAnimation) {
+        this.trackEl.style.transition = 'none';
+        this.trackEl.style.transform = `translate3d(${this.dragBaseOffset}px, 0, 0)`;
+        this.restoreTrackTransition();
+      } else {
+        this.trackEl.style.transition = '';
+        this.trackEl.style.transform = `translate3d(${this.dragBaseOffset}px, 0, 0)`;
+      }
+      return;
+    }
+
+    const target = Math.round(this.dragBaseOffset + turn * sign * stride) || 0;
+    if (this.settings.disableAnimation) {
+      this.commitDragTurn(turn, onTurned);
+      return;
+    }
+
+    this.trackEl.style.transition = '';
+    this.trackEl.style.transform = `translate3d(${target}px, 0, 0)`;
+    this.dragSettleTimer = window.setTimeout(() => {
+      this.dragSettleTimer = null;
+      this.commitDragTurn(turn, onTurned);
+    }, DRAG_SETTLE_MS);
+  }
+
+  private commitDragTurn(turn: 1 | -1, onTurned?: () => void): void {
+    const moved = turn === 1 ? this.nextPage() : this.prevPage();
+    this.applyTrackTransform(false);
+    if (moved) onTurned?.();
+  }
+
+  private cancelDragSettle(): void {
+    if (this.dragSettleTimer !== null) {
+      window.clearTimeout(this.dragSettleTimer);
+      this.dragSettleTimer = null;
+    }
+  }
+
+  private restoreTrackTransition(): void {
+    if (this.settings.disableAnimation) return;
+    if (this.transitionResetRaf !== null) return;
+    this.transitionResetRaf = window.requestAnimationFrame(() => {
+      this.transitionResetRaf = null;
+      this.trackEl.style.transition = '';
+    });
+  }
+
   setBook(book: Book, settings: ReaderSettings, initialAnchor?: Anchor, insets?: ReaderInsets): void {
     this.cancelIdleWork();
+    this.cancelExactPagination();
+    this.cancelDragSettle();
+    this.dragging = false;
     this.layoutGeneration++;
     this.book = book;
     this.settings = { ...settings };
@@ -406,9 +834,38 @@ export class Paginator {
   /**
    * Kick off idle progressive mounting for the rest of the current chapter
    * and adjacent virtualized chapters (-1 and +1). Called right after `ready`.
+   *
+   * Why (product, S3): the mount appends blocks to the live track, and a chapter that
+   * becomes complete there is written into the page map. Doing that while the exact pass
+   * is still counting means the reader can be told one page number and then another. So
+   * the map is made final first — the pass is frame-chunked and normally finishes in
+   * well under a second — and only then does the mount run; every progress tick after
+   * that re-publishes a page that cannot move. The wait is bounded (see
+   * `BACKGROUND_DEFER_MAX_MS`) so a slow pass can never leave a chapter half mounted.
    */
   scheduleBackgroundWork(): void {
     this.cancelIdleWork();
+    if (!this.book) return;
+    this.backgroundWanted = true;
+    if (this.isPageMapExact()) {
+      this.runBackgroundWork();
+      return;
+    }
+    if (this.backgroundFallbackTimer === null) {
+      this.backgroundFallbackTimer = window.setTimeout(() => {
+        this.backgroundFallbackTimer = null;
+        if (this.backgroundWanted) this.runBackgroundWork();
+      }, BACKGROUND_DEFER_MAX_MS);
+    }
+  }
+
+  private runBackgroundWork(): void {
+    this.cancelIdleWork();
+    this.backgroundWanted = false;
+    if (this.backgroundFallbackTimer !== null) {
+      window.clearTimeout(this.backgroundFallbackTimer);
+      this.backgroundFallbackTimer = null;
+    }
     if (!this.book) return;
     const gen = this.layoutGeneration;
 
@@ -486,6 +943,9 @@ export class Paginator {
 
   updateSettings(partial: Partial<ReaderSettings>, insets?: ReaderInsets): void {
     this.cancelIdleWork();
+    this.cancelExactPagination();
+    this.cancelDragSettle();
+    this.dragging = false;
     this.layoutGeneration++;
 
     const anchorBefore = this.book ? this.captureCurrentAnchor() : null;
@@ -537,6 +997,7 @@ export class Paginator {
     if (!this.book) return true;
 
     this.cancelIdleWork();
+    this.cancelExactPagination();
     this.layoutGeneration++;
     this.rememberRestoredAnchor(anchorBefore);
 
@@ -568,6 +1029,7 @@ export class Paginator {
 
     if (!changed) return false;
 
+    this.cancelExactPagination();
     // The real face changed in place, so every count measured against the fallback
     // face is stale while keeping the same cache key. Drop them and keep only what
     // was just re-measured with the loaded font.
@@ -609,6 +1071,7 @@ export class Paginator {
 
     let changed = false;
     if (firstForSignature) {
+      this.cancelExactPagination();
       // Counts cached before this pass were measured against an unsettled layout under
       // the same cache key; they are not evidence. Keep only what we re-measure below.
       for (const key of Array.from(this.pageCache.keys())) {
@@ -635,6 +1098,9 @@ export class Paginator {
       this.invalidatePageMap();
       this.layoutVirtualizedChapterOffsets();
     }
+    // Count the rest of the book offscreen so the page number (and the total) are a
+    // property of the book and the layout, not of which chapters happen to be mounted.
+    this.startExactPagination();
     return changed;
   }
 
@@ -1242,8 +1708,7 @@ export class Paginator {
       }
     }
 
-    const sliceHtml = chapter.blocks.slice(0, count).map(renderBlockHtml).join('');
-    el.innerHTML = `<header class="chapter-header"><h1 class="chapter-title">${escapeHtml(chapter.title)}</h1><div class="chapter-ornament" aria-hidden="true">✦</div></header>${sliceHtml}`;
+    el.innerHTML = this.chapterInnerHtml(chapter, count);
     this.trackEl.appendChild(el);
 
     const blockEls: HTMLElement[] = [];
@@ -1645,6 +2110,11 @@ export class Paginator {
   }
 
   private cancelIdleWork(): void {
+    this.backgroundWanted = false;
+    if (this.backgroundFallbackTimer !== null) {
+      window.clearTimeout(this.backgroundFallbackTimer);
+      this.backgroundFallbackTimer = null;
+    }
     if (!this.idleHandle) return;
     if (this.idleHandle.kind === 'idle') {
       const win = window as unknown as { cancelIdleCallback?: (id: number) => void };

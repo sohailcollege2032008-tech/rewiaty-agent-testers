@@ -38,13 +38,19 @@ appId: com.rewiaty.app
     visible: "sample-ar.md"
     timeout: 15000
 - tapOn: "sample-ar.md"
-# On a slow emulator DocumentsUI sometimes reads the tap as a long-press and enters
-# selection mode ("1 selected" + "Select"); confirm the selection instead of hanging.
+# On a slow emulator DocumentsUI sometimes reads the tap as a long-press and enters selection mode
+# ("1 selected" + "Select"; runs 45622404149 and main's ca036eb); confirm the selection instead of hanging.
 - runFlow:
     when:
-      visible: "Select"
+      visible: "1 selected"
     commands:
       - tapOn: "Select"
+# Wait for the reader itself, not just the absence of an overlay: while the picker is up the overlay is
+# absent too, so a "notVisible overlay" check alone let a stray tap land on the file list.
+- extendedWaitUntil:
+    visible:
+      id: "reader-book-vessel"
+    timeout: 20000
 - extendedWaitUntil:
     notVisible:
       id: "reader-loading-overlay"
