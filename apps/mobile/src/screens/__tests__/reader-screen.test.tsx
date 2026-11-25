@@ -229,7 +229,7 @@ describe('ReaderScreen', () => {
     });
 
     const proof = utils.getByTestId('reader-image-proof');
-    expect(proof.props.accessibilityLabel).toBe('صورة 240×160');
+    expect(proof.props.children).toBe('صورة 240×160');
   });
 
   it('automatically uses burnt-paper when system colorScheme is dark and no manual theme is set', async () => {

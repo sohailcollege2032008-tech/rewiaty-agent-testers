@@ -951,13 +951,15 @@ export function ReaderScreen() {
             the decoded image's box; this tiny invisible view exposes it to the accessibility tree
             (Maestro `assertVisible id: reader-image-proof`) without changing the reading surface. */}
         {imageProof ? (
-          <View
-            testID="reader-image-proof"
-            accessible
-            accessibilityLabel={`صورة ${imageProof.width}×${imageProof.height}`}
-            pointerEvents="none"
-            style={styles.imageProof}
-          />
+          // A real Text node: text views are what the on-device accessibility tree always exposes
+          // (`reader-page-counter` proves that), whereas a 1px, 1%-opacity blank View was skipped
+          // entirely (CI run 45672094646). Its colour is transparent, so a reader sees nothing;
+          // the container takes no touches.
+          <View pointerEvents="none" style={styles.imageProof}>
+            <Text testID="reader-image-proof" style={styles.imageProofLabel}>
+              {`صورة ${imageProof.width}×${imageProof.height}`}
+            </Text>
+          </View>
         ) : null}
 
         {/* Quiet Running Footer */}
@@ -1147,16 +1149,17 @@ export function ReaderScreen() {
 }
 
 const styles = StyleSheet.create({
-  // A hairline strip along the bottom edge: non-zero bounds keep it visible to Maestro's
-  // accessibility check, `pointerEvents: 'none'` keeps the page-turn zone usable, and 1% opacity
-  // makes it invisible to a reader.
+  // A transparent, contentless strip along the bottom edge. The text inside is what proves a figure
+  // painted; the container only takes it out of hit-testing so the scrubber underneath still works.
   imageProof: {
     position: 'absolute',
     start: 0,
-    end: 0,
     bottom: 0,
-    height: 1,
-    opacity: 0.01,
+  },
+  imageProofLabel: {
+    color: 'transparent',
+    fontSize: 8,
+    lineHeight: 12,
   },
   hudHint: {
     position: 'absolute',
