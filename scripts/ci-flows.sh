@@ -65,7 +65,10 @@ RUN_URL="https://github.com/$TESTERS_REPO/actions/runs/$RUN_ID"
 echo "==> Run started: $RUN_URL"
 
 WATCH_RC=0
-gh run watch "$RUN_ID" -R "$TESTERS_REPO" --exit-status || WATCH_RC=$?
+# Why (tech): `gh run watch` returned early once (run 45513367448) and the summary said MISSING for every flow.
+# Poll the run's own status until it is completed, then read its conclusion.
+until [ "$(gh run view "$RUN_ID" -R "$TESTERS_REPO" --json status -q .status 2>/dev/null)" = "completed" ]; do sleep 30; done
+[ "$(gh run view "$RUN_ID" -R "$TESTERS_REPO" --json conclusion -q .conclusion)" = "success" ] || WATCH_RC=1
 
 EVIDENCE_DIR="$ROOT_DIR/.factory/evidence/$SHA12"
 rm -rf "$EVIDENCE_DIR"
