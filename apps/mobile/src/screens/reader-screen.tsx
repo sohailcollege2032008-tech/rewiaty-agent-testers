@@ -30,7 +30,7 @@ import {
   removeBookmarkById,
   toggleBookmarkAtPosition,
 } from '@/storage/bookmarks';
-import { readAssetText, readBookBundle, saveBookReaderState } from '@/storage/bundle';
+import { readAssetText, readBookBundle, saveBookReaderState, getBookDir, getBooksRootDir } from '@/storage/bundle';
 import { getKv, setKv, touchBookOpened } from '@/storage/database';
 import { ensureOfflineFontsDir } from '@/storage/font-assets';
 import {
@@ -72,7 +72,7 @@ const POSITION_SAVE_DEBOUNCE_MS = 500;
 const SETTINGS_CLOSE_TAP_COOLDOWN_MS = 300;
 /** The reader document is local-only: no remote origins may be navigated to. */
 const READER_ORIGIN_WHITELIST: string[] = ['file://*', 'about:blank'];
-/** Used when the offline fonts folder is unavailable; needs no whitelist entry. */
+/** Used while the book folder is being resolved; needs no whitelist entry. */
 const READER_FALLBACK_BASE_URL = 'about:blank';
 // Why (product): native/engine errors are English and technical (CI run 45597933250 showed
 // "Call to function 'FileSystemFile.text' has been rejected…" to the reader). Readers only see Arabic.
@@ -143,7 +143,12 @@ export function ReaderScreen() {
   const readingTrackerRef = useRef<ReadingSessionTracker | null>(null);
 
   const [readerHtml, setReaderHtml] = useState<string | null>(null);
-  const [fontBaseUrl, setFontBaseUrl] = useState<string | null>(null);
+  // Relative `assets/….png` paths in the Markdown resolve against the book folder, so the WebView
+  // document is based there — not at the fonts folder it used to borrow as a base.
+  const [bookBaseUrl, setBookBaseUrl] = useState<string | null>(null);
+  // iOS read access stops at the books root: every book folder and the shared `_fonts` dir live
+  // under it, and nothing else in the app sandbox is reachable from the WebView.
+  const [readAccessUrl, setReadAccessUrl] = useState<string | null>(null);
   const [book, setBook] = useState<Book | null>(null);
   const [settings, setSettings] = useState<ReaderSettings>(DEFAULT_SETTINGS);
   const [bookmarkItems, setBookmarkItems] = useState<BookmarkItem[]>([]);
@@ -153,7 +158,7 @@ export function ReaderScreen() {
   const [webLoaded, setWebLoaded] = useState(false);
   const [engineReady, setEngineReady] = useState(false);
 
-  const readerBaseUrl = fontBaseUrl ?? READER_FALLBACK_BASE_URL;
+  const readerBaseUrl = bookBaseUrl ?? READER_FALLBACK_BASE_URL;
   const readerBaseUrlRef = useRef(readerBaseUrl);
   readerBaseUrlRef.current = readerBaseUrl;
 
@@ -187,6 +192,9 @@ export function ReaderScreen() {
     bookProgress: 0,
     estimated: true,
   });
+  const [imageProof, setImageProof] = useState<{ count: number; width: number; height: number } | null>(
+    null,
+  );
 
   const themeTokens = useMemo(() => getAppThemeTokens(settings.theme), [settings.theme]);
 
@@ -276,6 +284,9 @@ export function ReaderScreen() {
     setEngineReady(false);
     setLoadError(null);
     setBook(null);
+    setBookBaseUrl(null);
+    setReadAccessUrl(null);
+    setImageProof(null);
 
     if (!bookId) {
       setLoadError('معرّف الكتاب غير صالح.');
@@ -298,6 +309,13 @@ export function ReaderScreen() {
           loadReadingStats().catch(() => null),
         ]);
         if (cancelled) return;
+
+        // Base the reader document at this book's folder so `assets/…` figures resolve, and let
+        // iOS read only the books root (the book folders plus the shared `_fonts` directory).
+        const bookDirUri = getBookDir(bookId).uri;
+        setBookBaseUrl(bookDirUri.endsWith('/') ? bookDirUri : `${bookDirUri}/`);
+        const booksRootUri = getBooksRootDir().uri;
+        setReadAccessUrl(booksRootUri.endsWith('/') ? booksRootUri : `${booksRootUri}/`);
 
         await touchBookOpened(bookId, Math.max(Date.now(), bundle.state.updatedAt + 1));
         if (cancelled) return;
@@ -344,7 +362,6 @@ export function ReaderScreen() {
 
         setSettings(resolvedSettings);
         setBookmarkItems(initialBookmarks);
-        setFontBaseUrl(resolvedFontsUrl);
         setReaderHtml(html);
         setBook(bundle.book);
         setTocEntries(
@@ -569,6 +586,9 @@ export function ReaderScreen() {
           }
           break;
         }
+        case 'image-rendered':
+          setImageProof({ count: parsed.count, width: parsed.width, height: parsed.height });
+          break;
         case 'error':
           setLoadError(readerErrorMessage(parsed.message));
           break;
@@ -899,9 +919,10 @@ export function ReaderScreen() {
                 // file access is on. iOS reads them through allowingReadAccessToURL instead.
                 { allowFileAccess: true }
               : {})}
-            // Why (tech): on iOS the reader only ever needs to read the fonts folder —
-            // never the whole cache directory — so read access stops there.
-            allowingReadAccessToURL={fontBaseUrl?.startsWith('file://') ? fontBaseUrl : undefined}
+            // Why (tech): on iOS the reader needs this book's folder (for `assets/…` figures) and
+            // the bundled fonts, both of which live under the books root. Read access stops there
+            // — never the whole document directory, never the cache.
+            allowingReadAccessToURL={readAccessUrl?.startsWith('file://') ? readAccessUrl : undefined}
             onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
             source={{
               html: readerHtml,
@@ -923,6 +944,19 @@ export function ReaderScreen() {
             bounces={false}
             onLoadEnd={() => setWebLoaded(true)}
             onMessage={handleWebViewMessage}
+          />
+        ) : null}
+
+        {/* Why (tech): an import journey must prove the figure actually painted. The engine posts
+            the decoded image's box; this tiny invisible view exposes it to the accessibility tree
+            (Maestro `assertVisible id: reader-image-proof`) without changing the reading surface. */}
+        {imageProof ? (
+          <View
+            testID="reader-image-proof"
+            accessible
+            accessibilityLabel={`صورة ${imageProof.width}×${imageProof.height}`}
+            pointerEvents="none"
+            style={styles.imageProof}
           />
         ) : null}
 
@@ -1113,6 +1147,17 @@ export function ReaderScreen() {
 }
 
 const styles = StyleSheet.create({
+  // A hairline strip along the bottom edge: non-zero bounds keep it visible to Maestro's
+  // accessibility check, `pointerEvents: 'none'` keeps the page-turn zone usable, and 1% opacity
+  // makes it invisible to a reader.
+  imageProof: {
+    position: 'absolute',
+    start: 0,
+    end: 0,
+    bottom: 0,
+    height: 1,
+    opacity: 0.01,
+  },
   hudHint: {
     position: 'absolute',
     alignSelf: 'center',

@@ -35,6 +35,7 @@ export class ReaderEngine {
   private book: Book | null = null;
   private pointerStart: { x: number; y: number; time: number } | null = null;
   private resizeTimer: number | null = null;
+  private imageSettleTimer: number | null = null;
   private fontStyleEl: HTMLStyleElement | null = null;
   private appliedFontBaseUrl = '';
   /** Bumped on every `load`, so a settle pass for an old book can't report over a new one. */
@@ -151,11 +152,37 @@ export class ReaderEngine {
     });
     observer.observe(this.rootEl);
 
+    // `load` does not bubble but capture catches it for every image inserted later. A figure
+    // landing after the first measurement changes the chapter height, so remeasure and re-report.
+    this.trackEl.addEventListener('load', this.handleImageLoad, true);
+
     document.fonts?.addEventListener?.('loadingdone', () => {
       if (this.paginator.handleFontLoad()) {
         this.emitPositionAndToc();
       }
       this.logFontStatus();
+    });
+  }
+
+  private readonly handleImageLoad = (event: Event): void => {
+    if (!(event.target instanceof HTMLImageElement)) return;
+    if (this.imageSettleTimer !== null) window.clearTimeout(this.imageSettleTimer);
+    this.imageSettleTimer = window.setTimeout(() => {
+      this.imageSettleTimer = null;
+      if (this.paginator.settleLayout()) this.emitPositionAndToc();
+      this.emitImageProof();
+    }, 60);
+  };
+
+  /** Tell the host an image really painted, with dimensions, so an import can be proven. */
+  private emitImageProof(): void {
+    const report = this.paginator.measureImages();
+    if (report.rendered <= 0) return;
+    postToHost({
+      type: 'image-rendered',
+      count: report.rendered,
+      width: report.width,
+      height: report.height,
     });
   }
 
@@ -336,6 +363,7 @@ export class ReaderEngine {
       if (token !== this.settleToken) return;
       this.paginator.settleLayout();
       this.emitPositionAndToc();
+      this.emitImageProof();
     };
 
     const attempt = () => {

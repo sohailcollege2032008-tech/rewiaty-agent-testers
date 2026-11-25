@@ -189,6 +189,13 @@ export type WebToRNMessage =
       chapterId: string;
     }
   | {
+      /** Proof that at least one figure from the book actually painted. */
+      type: 'image-rendered';
+      count: number;
+      width: number;
+      height: number;
+    }
+  | {
       type: 'error';
       message: string;
     };

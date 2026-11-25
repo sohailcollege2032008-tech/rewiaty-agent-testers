@@ -339,6 +339,34 @@ export class Paginator {
     return this.rendered.get(this.currentChapterIdx)?.isComplete ?? false;
   }
 
+  /** Images currently mounted in the track (the book's `assets/…` figures). */
+  getImages(): HTMLImageElement[] {
+    return Array.from(this.trackEl.querySelectorAll<HTMLImageElement>('.block-image img'));
+  }
+
+  /**
+   * Report how many mounted images actually painted, plus the box of the first one that has
+   * non-zero dimensions. A path that resolved but decoded to nothing reports `width: 0`, which is
+   * what makes the import journey fail instead of showing an invisible image.
+   */
+  measureImages(): { rendered: number; width: number; height: number } {
+    let rendered = 0;
+    let width = 0;
+    let height = 0;
+    for (const img of this.getImages()) {
+      if (!img.complete || img.naturalWidth <= 0) continue;
+      rendered += 1;
+      if (width === 0) {
+        const rect = img.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          width = Math.round(rect.width);
+          height = Math.round(rect.height);
+        }
+      }
+    }
+    return { rendered, width, height };
+  }
+
   setBook(book: Book, settings: ReaderSettings, initialAnchor?: Anchor, insets?: ReaderInsets): void {
     this.cancelIdleWork();
     this.layoutGeneration++;
@@ -1111,6 +1139,9 @@ export class Paginator {
     const bookLang = this.book?.meta.lang?.trim() || (this.dir === 'rtl' ? 'ar' : 'en');
     document.documentElement.setAttribute('dir', this.dir);
     document.documentElement.setAttribute('lang', bookLang);
+    // Themes other than the light ones tone images down so a white illustration does not glare on
+    // a dark page; the attribute lets the stylesheet target them without guessing from colours.
+    document.documentElement.setAttribute('data-theme', this.settings.theme);
     this.rootEl.setAttribute('dir', this.dir);
     this.rootEl.classList.toggle('spread-mode', spread);
 
