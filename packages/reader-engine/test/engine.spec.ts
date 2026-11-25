@@ -735,4 +735,37 @@ test.describe('Rewiaty Reader Engine', () => {
     await sendBridge(page, { type: 'load', book: frBook, settings: { disableAnimation: true } });
     await expect.poll(async () => page.evaluate(() => document.documentElement.getAttribute('lang'))).toBe('fr');
   });
+
+  test('(k) R5 A5 & A9: defaults to Noto Naskh Arabic and oled-crimson uses #000000 bg, #E6DED3 text, lighter headings', async ({
+    page,
+  }) => {
+    await mountEngine(page);
+    const arBook = parseBook(sampleArText, 'sample-ar.md');
+
+    await sendBridge(page, {
+      type: 'load',
+      book: arBook,
+      settings: { theme: 'oled-crimson', disableAnimation: true },
+    });
+
+    await expect.poll(async () => (await getLatestPosition(page))?.chapterId).toBe('ch01');
+
+    const styles = await page.evaluate(() => {
+      const root = getComputedStyle(document.documentElement);
+      const titleEl = document.querySelector<HTMLElement>('.chapter-title');
+      return {
+        fontFamily: root.getPropertyValue('--font-family').trim(),
+        bg: root.getPropertyValue('--bg-color').trim(),
+        text: root.getPropertyValue('--text-color').trim(),
+        heading: root.getPropertyValue('--heading-color').trim(),
+        titleColor: titleEl ? getComputedStyle(titleEl).color : '',
+      };
+    });
+
+    expect(styles.fontFamily).toContain('Noto Naskh Arabic');
+    expect(styles.bg).toBe('#000000');
+    expect(styles.text).toBe('#E6DED3');
+    expect(styles.heading).toBe('#FAF5EE');
+    expect(styles.titleColor).toBe('rgb(250, 245, 238)');
+  });
 });

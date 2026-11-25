@@ -72,7 +72,7 @@ function loadBookIntoReader(book: Book): void {
   } else {
     currentSettings = {
       ...currentSettings,
-      fontFamily: 'Amiri',
+      fontFamily: DEFAULT_SETTINGS.fontFamily,
       lineHeight: 1.95,
     };
   }

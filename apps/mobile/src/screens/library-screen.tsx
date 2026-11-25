@@ -16,14 +16,18 @@ import Svg, { Path } from 'react-native-svg';
 
 import { BookCard } from '@/components/book-card';
 import { BookCover } from '@/components/book-cover';
+import { ImportGuideSheet } from '@/components/import-guide-sheet';
 import { deleteBookBundle, ensureSampleBookSeeded } from '@/storage/bundle';
-import { listBooks } from '@/storage/database';
+import { getKv, listBooks, setKv } from '@/storage/database';
 import { pickAndImportBook } from '@/storage/importer';
 import { RADIUS, SPACING, TYPOGRAPHY, useResponsiveLayout } from '@/theme/layout';
 import { getAppThemeTokens, resolveSystemTheme } from '@/theme/reader-theme';
 import type { BookLibraryRecord } from '@/types/reader';
 import { progressToPercent } from '@/utils/progress';
 import { showToast } from '@/utils/toast';
+
+export const IMPORT_GUIDE_COUNT_KV_KEY = 'library_import_guide_count_v1';
+export const IMPORT_GUIDE_MAX_SHOWS = 3;
 
 type GridItem = BookLibraryRecord | { readonly __spacer: true; readonly id: string };
 
@@ -42,6 +46,9 @@ export function LibraryScreen() {
   const [books, setBooks] = useState<BookLibraryRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
+  const importLockRef = useRef(false);
+  const [importGuideVisible, setImportGuideVisible] = useState(false);
+  const [importGuideShowHelp, setImportGuideShowHelp] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const seededOnceRef = useRef(false);
 
@@ -67,7 +74,7 @@ export function LibraryScreen() {
     }, [refreshBooks]),
   );
 
-  const handleImport = async () => {
+  const runFilePickerImport = async () => {
     if (importing) return;
     setImporting(true);
     try {
@@ -86,6 +93,33 @@ export function LibraryScreen() {
     } finally {
       setImporting(false);
     }
+  };
+
+  const handleImport = async () => {
+    // Synchronous lock: two quick taps must not open the guide twice or the picker twice.
+    if (importing || importLockRef.current) return;
+    importLockRef.current = true;
+    try {
+      await openImportFlow();
+    } finally {
+      importLockRef.current = false;
+    }
+  };
+
+  const openImportFlow = async () => {
+    const shownCount = await getKv<number>(IMPORT_GUIDE_COUNT_KV_KEY, 0).catch(() => IMPORT_GUIDE_MAX_SHOWS);
+    if (shownCount < IMPORT_GUIDE_MAX_SHOWS) {
+      await setKv(IMPORT_GUIDE_COUNT_KV_KEY, shownCount + 1).catch(() => undefined);
+      setImportGuideShowHelp(false);
+      setImportGuideVisible(true);
+      return;
+    }
+    await runFilePickerImport();
+  };
+
+  const handleOpenHowToGetBooks = () => {
+    setImportGuideShowHelp(true);
+    setImportGuideVisible(true);
   };
 
   const handleOpenBook = (book: BookLibraryRecord) => {
@@ -318,7 +352,7 @@ export function LibraryScreen() {
                   pressed && styles.pressed,
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel="كمّل القراية"
+                accessibilityLabel={heroPct === 0 ? 'ابدأ القراية' : 'كمّل القراية'}
               >
                 <Text
                   style={[
@@ -326,7 +360,7 @@ export function LibraryScreen() {
                     { color: palette.ctaText, fontFamily: TYPOGRAPHY.uiFont },
                   ]}
                 >
-                  كمّل القراية
+                  {heroPct === 0 ? 'ابدأ القراية' : 'كمّل القراية'}
                 </Text>
                 <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
                   <Path
@@ -603,11 +637,60 @@ export function LibraryScreen() {
                     استيراد كتابك الأول
                   </Text>
                 </Pressable>
+                <Pressable
+                  testID="library-how-to-get-books-link"
+                  onPress={handleOpenHowToGetBooks}
+                  hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+                  style={({ pressed }) => [styles.howToLinkBtn, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel="إزاي أجيب روايات؟"
+                >
+                  <Text
+                    style={[
+                      styles.howToLinkText,
+                      { color: palette.accent, fontFamily: TYPOGRAPHY.uiFont },
+                    ]}
+                  >
+                    إزاي أجيب روايات؟
+                  </Text>
+                </Pressable>
               </View>
+            ) : undefined
+          }
+          ListFooterComponent={
+            books.length > 0 ? (
+              <Pressable
+                testID="library-how-to-get-books-link"
+                onPress={handleOpenHowToGetBooks}
+                hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+                style={({ pressed }) => [styles.howToLinkBtn, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel="إزاي أجيب روايات؟"
+              >
+                <Text
+                  style={[
+                    styles.howToLinkText,
+                    { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
+                  ]}
+                >
+                  إزاي أجيب روايات؟
+                </Text>
+              </Pressable>
             ) : undefined
           }
         />
       )}
+
+      <ImportGuideSheet
+        visible={importGuideVisible}
+        initialShowHelp={importGuideShowHelp}
+        theme={themeId}
+        onPickFile={() => {
+          setImportGuideVisible(false);
+          void runFilePickerImport();
+        }}
+        onClose={() => setImportGuideVisible(false)}
+      />
     </View>
   );
 }
@@ -846,6 +929,18 @@ const styles = StyleSheet.create({
   emptyCtaText: {
     fontSize: 13.5,
     fontWeight: '600',
+  },
+  howToLinkBtn: {
+    alignSelf: 'center',
+    minHeight: 36,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    marginTop: 6,
+  },
+  howToLinkText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
   pressed: {
     opacity: 0.78,

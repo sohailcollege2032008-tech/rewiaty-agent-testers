@@ -8,6 +8,23 @@ import {
   THEME_OPTIONS,
 } from '@/theme/reader-theme';
 
+function relativeLuminance(hex: string): number {
+  const clean = hex.replace('#', '');
+  const r = parseInt(clean.slice(0, 2), 16) / 255;
+  const g = parseInt(clean.slice(2, 4), 16) / 255;
+  const b = parseInt(clean.slice(4, 6), 16) / 255;
+  const toLinear = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+  return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+}
+
+function contrastRatio(hexA: string, hexB: string): number {
+  const l1 = relativeLuminance(hexA);
+  const l2 = relativeLuminance(hexB);
+  const lighter = Math.max(l1, l2);
+  const darker = Math.min(l1, l2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
 describe('reader-theme registry, migration & responsive layout', () => {
   it('provides all 4 Warraq themes from the data-driven registry', () => {
     expect(THEME_OPTIONS.map((t) => t.id)).toEqual([
@@ -40,10 +57,16 @@ describe('reader-theme registry, migration & responsive layout', () => {
 
     const oledCrimson = getAppThemeTokens('oled-crimson');
     expect(oledCrimson.bg).toBe('#000000');
-    expect(oledCrimson.text).toBe('#B9B2A7');
+    expect(oledCrimson.text).toBe('#E6DED3');
+    expect(oledCrimson.heading).toBe('#FAF5EE');
     expect(oledCrimson.accent).toBe('#D46A5A');
     expect(oledCrimson.ctaBg).toBe('#9B3A2C');
     expect(oledCrimson.isDark).toBe(true);
+    expect(contrastRatio(oledCrimson.text, oledCrimson.bg)).toBeGreaterThanOrEqual(12);
+    expect(relativeLuminance(oledCrimson.heading!)).toBeGreaterThan(
+      relativeLuminance(oledCrimson.text),
+    );
+    expect(contrastRatio(oledCrimson.heading!, oledCrimson.bg)).toBeGreaterThanOrEqual(12);
   });
 
   it('migrates legacy theme IDs and falls back based on colorScheme', () => {

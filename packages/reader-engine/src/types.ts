@@ -34,6 +34,7 @@ export type ReaderSettings = {
 export type ThemeTokens = {
   bg: string;
   text: string;
+  heading?: string;
   muted: string;
   quoteBg: string;
   quoteBorder: string;
@@ -75,9 +76,10 @@ export const THEMES: Record<ThemeId, ThemeTokens> = {
   },
   'oled-crimson': {
     bg: '#000000',
-    text: '#B9B2A7',
-    muted: '#878077',
-    quoteBg: 'rgba(185, 178, 167, 0.045)',
+    text: '#E6DED3',
+    heading: '#FAF5EE',
+    muted: '#A39B90',
+    quoteBg: 'rgba(230, 222, 211, 0.055)',
     quoteBorder: '#B84D3D',
     accent: '#D46A5A',
     popoverBg: '#171414',
@@ -86,7 +88,7 @@ export const THEMES: Record<ThemeId, ThemeTokens> = {
 };
 
 export const DEFAULT_SETTINGS: ReaderSettings = {
-  fontFamily: 'Amiri',
+  fontFamily: 'Noto Naskh Arabic',
   fontSize: 20,
   lineHeight: 1.95,
   wordSpacing: 0,
