@@ -214,6 +214,18 @@ export class Paginator {
   private currentChapterIdx = 0;
   private currentChapterPage = 0;
 
+  /**
+   * The anchor the reader restored to in the last reflow (settings change, rotation,
+   * font load, initial deep link).
+   *
+   * A reflow restore is page-granular: we page-map the anchor's column and show it.
+   * That page often starts with the tail of the *previous* block, so re-deriving the
+   * anchor from geometry would report an earlier block and silently walk the reading
+   * position backwards on every font change (font-slider drift). While this is set,
+   * it is the authoritative position; any real navigation drops it.
+   */
+  private restoredAnchor: Anchor | null = null;
+
   // Virtualized DOM map: only [currentIdx - 1, currentIdx, currentIdx + 1]
   private rendered = new Map<number, RenderedChapter>();
   // Page count cache keyed by `${chapter.id}:${chapter.hash}:${layoutKey}`
@@ -272,6 +284,7 @@ export class Paginator {
     this.book = book;
     this.settings = { ...settings };
     this.clearRenderedDom();
+    this.clearRestoredAnchor();
 
     this.resolveEffectiveDirection();
     this.applyStylesAndMeasureViewport();
@@ -317,6 +330,9 @@ export class Paginator {
           charOffset: targetOffset,
         }),
       );
+      // A deep link must report the very anchor it was opened at, not the block that
+      // happens to sit on top of the page its column landed on.
+      this.rememberRestoredAnchor({ blockId: targetBlockId, charOffset: targetOffset });
     }
 
     this.applyTrackTransform(false);
@@ -408,6 +424,9 @@ export class Paginator {
     this.layoutGeneration++;
 
     const anchorBefore = this.book ? this.captureCurrentAnchor() : null;
+    // The anchor is authoritative across the reflow: report it back verbatim instead of
+    // re-deriving a (lossy) top-of-page block from the new layout.
+    this.rememberRestoredAnchor(anchorBefore);
     this.settings = { ...this.settings, ...partial };
     this.resolveEffectiveDirection();
 
@@ -451,6 +470,7 @@ export class Paginator {
 
     this.cancelIdleWork();
     this.layoutGeneration++;
+    this.rememberRestoredAnchor(anchorBefore);
 
     for (const entry of this.rendered.values()) {
       this.remeasureChapter(entry);
@@ -480,6 +500,7 @@ export class Paginator {
 
     if (!changed) return false;
 
+    this.rememberRestoredAnchor(anchorBefore);
     this.layoutVirtualizedChapterOffsets();
     this.currentChapterPage = this.alignToSpread(this.resolveAnchorPageInCurrentChapter(anchorBefore));
     this.applyTrackTransform(false);
@@ -510,6 +531,7 @@ export class Paginator {
 
     if (this.currentChapterPage + step < curr.layoutPageCount) {
       this.currentChapterPage = this.alignToSpread(this.currentChapterPage + step);
+      this.clearRestoredAnchor();
       this.applyTrackTransform(!this.settings.disableAnimation);
       return true;
     }
@@ -517,6 +539,7 @@ export class Paginator {
     if (this.currentChapterIdx + 1 < this.book.chapters.length) {
       this.currentChapterIdx += 1;
       this.currentChapterPage = 0;
+      this.clearRestoredAnchor();
       this.syncActiveAndEvict(0);
       this.applyTrackTransform(false);
       this.scheduleBackgroundWork();
@@ -532,12 +555,14 @@ export class Paginator {
 
     if (this.currentChapterPage > 0) {
       this.currentChapterPage = this.alignToSpread(Math.max(0, this.currentChapterPage - step));
+      this.clearRestoredAnchor();
       this.applyTrackTransform(!this.settings.disableAnimation);
       return true;
     }
 
     if (this.currentChapterIdx > 0) {
       this.currentChapterIdx -= 1;
+      this.clearRestoredAnchor();
       const targetChapter = this.book.chapters[this.currentChapterIdx]!;
       // Going backwards to the end of the previous chapter requires all its blocks mounted
       this.syncActiveAndEvict(targetChapter.blocks.length);
@@ -596,6 +621,7 @@ export class Paginator {
       }
 
       this.currentChapterPage = this.alignToSpread(this.resolveAnchorPageInCurrentChapter(target.anchor));
+      this.clearRestoredAnchor();
       this.applyTrackTransform(false);
       this.scheduleBackgroundWork();
       return true;
@@ -621,6 +647,7 @@ export class Paginator {
 
       const maxPage = curr ? curr.layoutPageCount - 1 : 0;
       this.currentChapterPage = this.alignToSpread(Math.min(maxPage, requestedZeroBased));
+      this.clearRestoredAnchor();
       this.applyTrackTransform(false);
       this.scheduleBackgroundWork();
       return true;
@@ -658,6 +685,7 @@ export class Paginator {
 
       const maxPage = curr ? curr.layoutPageCount - 1 : 0;
       this.currentChapterPage = this.alignToSpread(Math.min(maxPage, pageInChapter));
+      this.clearRestoredAnchor();
       this.applyTrackTransform(false);
       this.scheduleBackgroundWork();
       return true;
@@ -722,7 +750,36 @@ export class Paginator {
     });
   }
 
+  /** Remember the anchor a reflow restored to (authoritative until the next navigation). */
+  private rememberRestoredAnchor(anchor: Anchor | null): void {
+    this.restoredAnchor = anchor
+      ? { blockId: anchor.blockId, charOffset: anchor.charOffset }
+      : null;
+  }
+
+  /** Forget the restored anchor: the position is geometry-derived again. */
+  private clearRestoredAnchor(): void {
+    this.restoredAnchor = null;
+  }
+
+  /**
+   * true when the remembered anchor still points at a mounted block of the active
+   * chapter — otherwise it is stale and geometry has to answer.
+   */
+  private isRestoredAnchorUsable(): boolean {
+    if (!this.restoredAnchor) return false;
+    const curr = this.rendered.get(this.currentChapterIdx);
+    return Boolean(curr?.blockById.has(this.restoredAnchor.blockId));
+  }
+
   captureCurrentAnchor(): Anchor {
+    if (this.isRestoredAnchorUsable()) {
+      return { blockId: this.restoredAnchor!.blockId, charOffset: this.restoredAnchor!.charOffset };
+    }
+    if (this.restoredAnchor) {
+      this.clearRestoredAnchor();
+    }
+
     const curr = this.rendered.get(this.currentChapterIdx);
     if (!curr || curr.blockEls.length === 0) {
       const fallbackId = curr?.chapter.blocks[0]?.id ?? curr?.chapter.id ?? 'ch01_p0001';

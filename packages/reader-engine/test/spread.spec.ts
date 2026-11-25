@@ -739,4 +739,41 @@ test.describe('Rewiaty two-page spread (R2)', () => {
     expect(singleTiny.layoutPages).toBe(1);
     expect(singleToc.chapters.find((c) => c.id === tiny.id)!.pageCount).toBe(1);
   });
+
+  test('(s12) a reflow in spread mode restores the exact anchor and never drifts it', async ({ page }) => {
+    await page.setViewportSize(LANDSCAPE);
+    await mountEngine(page);
+    const book = buildArabicBook(120, 3);
+
+    await sendBridge(page, { type: 'load', book, settings: { disableAnimation: true, fontSize: 20 } });
+    await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(1);
+
+    for (let i = 0; i < 4; i++) {
+      await sendBridge(page, { type: 'next' });
+    }
+    await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(9);
+
+    const atFirst = (await getLatestPosition(page))!;
+    expect(atFirst.spread).toBe(true);
+    let anchor = atFirst.anchor;
+    expect(await isBlockVisible(page, anchor.blockId)).toBe(true);
+
+    // A spread reflow rounds the restored page down to an even column, so the anchor can
+    // land on the second page of the spread. It must still be reported verbatim, and stay
+    // byte-for-byte identical across a chain of changes (no font-slider drift).
+    for (const partial of [{ fontSize: 28 }, { fontFamily: 'Noto Naskh Arabic', fontSize: 22 }, { fontSize: 20 }]) {
+      await changeSettings(page, partial);
+      const pos = (await getLatestPosition(page))!;
+      expect(pos.spread).toBe(true);
+      expect(pos.anchor.blockId, `blockId drifted after ${JSON.stringify(partial)}`).toBe(anchor.blockId);
+      expect(pos.anchor.charOffset, `charOffset drifted after ${JSON.stringify(partial)}`).toBe(anchor.charOffset);
+      expect(await isBlockVisible(page, anchor.blockId), `anchor ${anchor.blockId} lost`).toBe(true);
+      anchor = pos.anchor;
+    }
+
+    // Turning a spread still moves: the restored anchor must not pin the reader.
+    const before = (await getLatestPosition(page))!.page;
+    await sendBridge(page, { type: 'next' });
+    await expect.poll(async () => (await getLatestPosition(page))?.page).toBeGreaterThan(before);
+  });
 });
