@@ -335,6 +335,12 @@ if want_flow long-book-open && [ -f app/samples/gen-long.mjs ]; then
   run_flow "long-book-open" || true
 fi
 
+# 10. highlight-add (clean state -> long-press text -> pick color -> force stop -> verify persisted)
+if want_flow highlight-add; then
+  adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
+  run_flow "highlight-add" || true
+fi
+
 # Append full logcat at the end as well
 adb logcat -d >> results/logcat.txt 2>/dev/null || true
 
