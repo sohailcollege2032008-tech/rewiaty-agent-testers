@@ -166,6 +166,7 @@ export function PageScrubber({ page, pageCount, dir, theme, onSeekPage }: PageSc
       <GestureDetector gesture={gesture}>
         <View
           testID="reader-scrubber-track"
+          hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
           style={styles.touchArea}
           onLayout={handleLayout}
           accessibilityRole="adjustable"

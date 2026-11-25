@@ -119,4 +119,16 @@ describe('reader-theme registry, migration & responsive layout', () => {
     }
     expect(getAppThemeTokens('toString', 'dark').id).toBe('burnt-paper');
   });
+
+  it('uses fully opaque sheetBg tokens for every theme (no text bleed-through)', () => {
+    for (const opt of THEME_OPTIONS) {
+      const tokens = getAppThemeTokens(opt.id);
+      const match = /^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*([0-9.]+)\s*\)$/i.exec(tokens.sheetBg);
+      if (match) {
+        expect(Number(match[1])).toBe(1);
+      } else {
+        expect(tokens.sheetBg).toMatch(/^#[0-9a-f]{6}$/i);
+      }
+    }
+  });
 });

@@ -12,7 +12,7 @@ export const oledCrimsonTheme: AppThemeTokens = {
   surface: '#0E0C0C',
   surfaceElevated: '#171414',
   hudBg: 'rgba(0, 0, 0, 0.96)',
-  sheetBg: 'rgba(14, 12, 12, 0.98)',
+  sheetBg: 'rgba(14, 12, 12, 1)',
   border: '#262120',
   accentSoft: 'rgba(212, 106, 90, 0.15)',
   ctaBg: '#9B3A2C',

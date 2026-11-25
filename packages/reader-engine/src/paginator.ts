@@ -6,7 +6,14 @@ import {
   measureChToPx,
   spineTokensFor,
 } from './spread.js';
-import { THEMES, type ReaderSettings, type TocEntry } from './types.js';
+import { THEMES, type ReaderInsets, type ReaderSettings, type TocEntry } from './types.js';
+
+function normalizeInsets(insets?: ReaderInsets | null): ReaderInsets {
+  const top = typeof insets?.top === 'number' && Number.isFinite(insets.top) ? Math.max(0, Math.round(insets.top)) : 0;
+  const bottom =
+    typeof insets?.bottom === 'number' && Number.isFinite(insets.bottom) ? Math.max(0, Math.round(insets.bottom)) : 0;
+  return { top, bottom };
+}
 
 const INITIAL_WORD_BUDGET = 2500;
 const BATCH_WORD_BUDGET = 2000;
@@ -21,6 +28,8 @@ export type ViewportMetrics = {
   pageWidth: number;
   marginH: number;
   marginV: number;
+  paddingTop: number;
+  paddingBottom: number;
   spread: boolean;
 };
 
@@ -224,6 +233,7 @@ export class Paginator {
 
   private book: Book | null = null;
   private settings: ReaderSettings;
+  private insets: ReaderInsets = { top: 0, bottom: 0 };
   private dir: 'rtl' | 'ltr' = 'rtl';
   private metrics: ViewportMetrics = {
     width: 390,
@@ -231,6 +241,8 @@ export class Paginator {
     pageWidth: 390,
     marginH: 24,
     marginV: 24,
+    paddingTop: 24,
+    paddingBottom: 24,
     spread: false,
   };
 
@@ -306,11 +318,12 @@ export class Paginator {
     return this.rendered.get(this.currentChapterIdx)?.isComplete ?? false;
   }
 
-  setBook(book: Book, settings: ReaderSettings, initialAnchor?: Anchor): void {
+  setBook(book: Book, settings: ReaderSettings, initialAnchor?: Anchor, insets?: ReaderInsets): void {
     this.cancelIdleWork();
     this.layoutGeneration++;
     this.book = book;
     this.settings = { ...settings };
+    this.insets = normalizeInsets(insets);
     this.clearRenderedDom();
     this.clearRestoredAnchor();
     this.invalidatePageMap();
@@ -449,7 +462,7 @@ export class Paginator {
     scheduleNext(step);
   }
 
-  updateSettings(partial: Partial<ReaderSettings>): void {
+  updateSettings(partial: Partial<ReaderSettings>, insets?: ReaderInsets): void {
     this.cancelIdleWork();
     this.layoutGeneration++;
 
@@ -458,6 +471,9 @@ export class Paginator {
     // re-deriving a (lossy) top-of-page block from the new layout.
     this.rememberRestoredAnchor(anchorBefore);
     this.settings = { ...this.settings, ...partial };
+    if (insets !== undefined) {
+      this.insets = normalizeInsets(insets);
+    }
     this.resolveEffectiveDirection();
 
     for (const entry of this.rendered.values()) {
@@ -1014,7 +1030,20 @@ export class Paginator {
     const marginH = spread
       ? Math.round(SPREAD_GUTTER_PX / 2)
       : Math.max(8, Math.min(Math.floor(stageW / 4), Math.round(this.settings.marginHorizontal)));
-    const marginV = Math.max(16, Math.min(Math.floor(stageH / 4), Math.round(this.settings.marginVertical)));
+    const rawMarginV = Math.max(16, Math.min(Math.floor(stageH / 4), Math.round(this.settings.marginVertical)));
+    const minUsableHeight = Math.min(160, Math.floor(stageH * 0.5));
+    const maxChrome = Math.max(0, stageH - minUsableHeight);
+    const totalInsets = this.insets.top + this.insets.bottom;
+    const insetScale = totalInsets > maxChrome && totalInsets > 0 ? maxChrome / totalInsets : 1;
+    const effectiveInsetTop = Math.floor(this.insets.top * insetScale);
+    const effectiveInsetBottom = Math.floor(this.insets.bottom * insetScale);
+    const maxMarginV = Math.max(
+      0,
+      Math.floor((stageH - effectiveInsetTop - effectiveInsetBottom - minUsableHeight) / 2),
+    );
+    const marginV = Math.min(rawMarginV, maxMarginV);
+    const paddingTop = effectiveInsetTop + marginV;
+    const paddingBottom = effectiveInsetBottom + marginV;
 
     this.metrics = {
       width: spread ? pageWidth * 2 : stageW,
@@ -1022,6 +1051,8 @@ export class Paginator {
       pageWidth,
       marginH,
       marginV,
+      paddingTop,
+      paddingBottom,
       spread,
     };
 
@@ -1073,6 +1104,8 @@ export class Paginator {
     rootStyle.setProperty('--col-gap', `${colGap}px`);
     rootStyle.setProperty('--margin-h', `${marginH}px`);
     rootStyle.setProperty('--margin-v', `${marginV}px`);
+    rootStyle.setProperty('--padding-top', `${paddingTop}px`);
+    rootStyle.setProperty('--padding-bottom', `${paddingBottom}px`);
     rootStyle.setProperty(
       '--page-transition',
       this.settings.disableAnimation ? 'none' : 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
@@ -1380,6 +1413,9 @@ export class Paginator {
       this.metrics.marginH,
       this.metrics.marginV,
       this.metrics.spread ? 'spread' : 'single',
+      // HUD insets (#13) shrink the page box, so they change page counts too.
+      this.metrics.paddingTop,
+      this.metrics.paddingBottom,
       this.dir,
       s.fontFamily,
       s.fontSize,

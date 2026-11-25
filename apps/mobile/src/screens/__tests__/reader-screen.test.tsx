@@ -420,6 +420,20 @@ describe('ReaderScreen', () => {
     expect(mockKv.get('reader_hud_hint_seen_v1')).toBe(true);
   });
 
+  it('retires the first-open hint on any tap or page change (QA P3-5)', async () => {
+    mockKv.clear();
+    const screen = await renderLoadedReader();
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({ type: 'position', chapterId: 'ch01', page: 1, pageCount: 6, anchor: { blockId: 'ch01_p0001', charOffset: 0 }, bookProgress: 0 });
+    });
+    await waitFor(() => expect(screen.getByTestId('reader-hud-hint')).toBeTruthy());
+    await act(async () => {
+      emitWebMessage({ type: 'position', chapterId: 'ch01', page: 2, pageCount: 6, anchor: { blockId: 'ch01_p0004', charOffset: 0 }, bookProgress: 0.05 });
+    });
+    expect(screen.queryByTestId('reader-hud-hint')).toBeNull();
+  });
+
   it('does not show the hint again once it was seen', async () => {
     // One render per test: two renders in one test overlapped act() and broke the following tests.
     mockKv.clear();
@@ -451,5 +465,173 @@ describe('ReaderScreen', () => {
     });
     expect(screen.queryByTestId('reader-hud-hint')).toBeNull();
     expect(screen.getByTestId('reader-webview')).toBeTruthy();
+  });
+
+  it('sends permanent chrome insets on load and updates them when HUD bar layout changes', async () => {
+    const { getByTestId } = await renderLoadedReader();
+
+    const loadPayload = JSON.parse(postedToWebView[0]!);
+    expect(loadPayload.insets).toEqual({
+      top: expect.any(Number),
+      bottom: expect.any(Number),
+    });
+    expect(loadPayload.insets.top).toBeGreaterThan(0);
+    expect(loadPayload.insets.bottom).toBeGreaterThan(0);
+
+    await act(async () => {
+      fireEvent(getByTestId('reader-hud-header'), 'layout', {
+        nativeEvent: { layout: { width: 390, height: 80, x: 0, y: 0 } },
+      });
+      fireEvent(getByTestId('reader-hud-footer'), 'layout', {
+        nativeEvent: { layout: { width: 390, height: 140, x: 0, y: 704 } },
+      });
+      fireEvent(getByTestId('reader-running-footer'), 'layout', {
+        nativeEvent: { layout: { width: 390, height: 32, x: 0, y: 812 } },
+      });
+    });
+
+    const lastMsg = JSON.parse(postedToWebView.at(-1)!);
+    expect(lastMsg).toEqual({
+      type: 'settings',
+      partial: {},
+      insets: { top: 72, bottom: 108 },
+    });
+  });
+
+  it('toggles bookmark without calling back when pressing the ribbon while HUD is visible', async () => {
+    mockKv.clear();
+    mockKv.set('reader_hud_hint_seen_v1', true);
+    const { getByTestId } = await renderLoadedReader();
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+
+    expect(getByTestId('reader-hud-header').props.pointerEvents).toBe('auto');
+
+    const ribbon = getByTestId('reader-bookmark-ribbon');
+    const flatRibbonStyle = ReactNative.StyleSheet.flatten(ribbon.props.style) as Record<
+      string,
+      unknown
+    >;
+    expect(Number(flatRibbonStyle.top)).toBeGreaterThan(0);
+    expect(Number(flatRibbonStyle.zIndex)).toBeGreaterThan(20);
+
+    await fireEvent.press(ribbon);
+
+    expect(mockBack).not.toHaveBeenCalled();
+    expect(getByTestId('reader-bookmark-ribbon').props.accessibilityState).toEqual({
+      selected: true,
+    });
+    expect(saveBookReaderState).toHaveBeenCalledWith(
+      'book_123',
+      expect.objectContaining({ bookmarks: [2] }),
+    );
+  });
+
+  it('restores HUD visibility on settings close and suppresses taps for 300ms', async () => {
+    mockKv.clear();
+    mockKv.set('reader_hud_hint_seen_v1', true);
+    const { getByTestId, queryByTestId } = await renderLoadedReader();
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+    expect(getByTestId('reader-hud-header').props.pointerEvents).toBe('auto');
+
+    await fireEvent.press(getByTestId('reader-settings-button'));
+    expect(getByTestId('reader-hud-header').props.pointerEvents).toBe('none');
+    expect(getByTestId('reader-settings-sheet-host')).toBeTruthy();
+
+    await fireEvent.press(getByTestId('settings-close-button'));
+    expect(queryByTestId('reader-settings-sheet-host')).toBeNull();
+    expect(getByTestId('reader-hud-header').props.pointerEvents).toBe('auto');
+    expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
+      type: 'suppress-taps',
+      durationMs: 300,
+    });
+
+    // A tap delivered immediately inside the 300ms window does not hide the restored HUD.
+    await act(async () => {
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+    expect(getByTestId('reader-hud-header').props.pointerEvents).toBe('auto');
+
+    // After >300ms, tapping center toggles HUD normally.
+    const realNow = Date.now;
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(realNow() + 350);
+    await act(async () => {
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+    nowSpy.mockRestore();
+    expect(getByTestId('reader-hud-header').props.pointerEvents).toBe('none');
+  });
+
+  it('gives reader HUD and settings controls >= 48dp touch targets and prevents label wrapping at fontScale 2', async () => {
+    Dimensions.set({
+      window: { width: 390, height: 844, scale: 2, fontScale: 2 },
+      screen: { width: 390, height: 844, scale: 2, fontScale: 2 },
+    });
+
+    const { getByTestId, getByText } = await renderLoadedReader();
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+
+    const measureTouchBox = (node: { props: Record<string, unknown> }) => {
+      const flat =
+        ReactNative.StyleSheet.flatten(
+          node.props.style as ReactNative.StyleProp<ReactNative.ViewStyle>,
+        ) ?? {};
+      const slop = node.props.hitSlop as
+        | number
+        | { top?: number; bottom?: number; left?: number; right?: number }
+        | undefined;
+      const top = typeof slop === 'number' ? slop : (slop?.top ?? 0);
+      const bottom = typeof slop === 'number' ? slop : (slop?.bottom ?? 0);
+      const left = typeof slop === 'number' ? slop : (slop?.left ?? 0);
+      const right = typeof slop === 'number' ? slop : (slop?.right ?? 0);
+      const w = Number(flat.minWidth ?? flat.width ?? 48);
+      const h = Number(flat.minHeight ?? flat.height ?? 32);
+      return { width: w + left + right, height: h + top + bottom };
+    };
+
+    for (const id of [
+      'reader-back-button',
+      'reader-toc-button',
+      'reader-settings-button',
+      'reader-bookmark-ribbon',
+      'reader-scrubber-track',
+    ]) {
+      const box = measureTouchBox(getByTestId(id));
+      expect(box.width).toBeGreaterThanOrEqual(48);
+      expect(box.height).toBeGreaterThanOrEqual(48);
+    }
+
+    await fireEvent.press(getByTestId('reader-settings-button'));
+
+    for (const id of [
+      'settings-tab-font',
+      'settings-tab-layout',
+      'settings-tab-theme',
+      'settings-reset-button',
+      'settings-close-button',
+      'settings-font-size-dec',
+      'settings-font-size-inc',
+      'settings-weight-500',
+    ]) {
+      const box = measureTouchBox(getByTestId(id));
+      expect(box.height).toBeGreaterThanOrEqual(48);
+      expect(box.width).toBeGreaterThanOrEqual(48);
+    }
+
+    // Weight label "متوسط" never breaks mid-word at fontScale 2.
+    const weightLabel = getByText('متوسط');
+    expect(weightLabel.props.numberOfLines).toBe(1);
+    expect(weightLabel.props.adjustsFontSizeToFit).toBe(true);
   });
 });

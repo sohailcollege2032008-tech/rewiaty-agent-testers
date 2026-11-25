@@ -103,17 +103,24 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   spread: 'auto',
 };
 
+export type ReaderInsets = {
+  top: number;
+  bottom: number;
+};
+
 export type RNToWebMessage =
   | {
       type: 'load';
       book: Book;
       anchor?: Anchor;
       settings?: Partial<ReaderSettings>;
+      insets?: ReaderInsets;
       fontBaseUrl?: string;
     }
   | {
       type: 'settings';
       partial: Partial<ReaderSettings>;
+      insets?: ReaderInsets;
     }
   | {
       type: 'fonts';
@@ -130,6 +137,10 @@ export type RNToWebMessage =
     }
   | {
       type: 'prev';
+    }
+  | {
+      type: 'suppress-taps';
+      durationMs: number;
     };
 
 export type TocEntry = {

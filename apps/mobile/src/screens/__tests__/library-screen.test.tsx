@@ -1,3 +1,4 @@
+import * as ReactNative from 'react-native';
 import { Alert, Dimensions } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
@@ -160,5 +161,50 @@ describe('LibraryScreen', () => {
       expect(list.props.numColumns).toBe(4);
       expect(getByTestId('library-theme-pill-burnt-paper')).toBeTruthy();
     });
+  });
+
+  it('gives primary library buttons >= 48dp effective touch targets', async () => {
+    const { getByTestId } = await render(<LibraryScreen />);
+
+    await waitFor(() => {
+      expect(getByTestId('import-book-button')).toBeTruthy();
+    });
+
+    const measureTouchBox = (node: { props: Record<string, unknown> }) => {
+      const flat =
+        ReactNative.StyleSheet.flatten(
+          node.props.style as ReactNative.StyleProp<ReactNative.ViewStyle>,
+        ) ?? {};
+      const slop = node.props.hitSlop as
+        | number
+        | { top?: number; bottom?: number; left?: number; right?: number }
+        | undefined;
+      const top = typeof slop === 'number' ? slop : (slop?.top ?? 0);
+      const bottom = typeof slop === 'number' ? slop : (slop?.bottom ?? 0);
+      const left = typeof slop === 'number' ? slop : (slop?.left ?? 0);
+      const right = typeof slop === 'number' ? slop : (slop?.right ?? 0);
+      const w = Number(flat.minWidth ?? flat.width ?? 100);
+      const h = Number(flat.minHeight ?? flat.height ?? 0);
+      return { width: w + left + right, height: h + top + bottom };
+    };
+
+    for (const id of ['library-theme-toggle', 'import-book-button', 'continue-reading-button']) {
+      const box = measureTouchBox(getByTestId(id));
+      expect(box.height).toBeGreaterThanOrEqual(48);
+      expect(box.width).toBeGreaterThanOrEqual(48);
+    }
+  });
+
+  it('configures expo-localization for forced RTL in app.json and I18nManager in _layout', () => {
+    const appJson = require('../../../app.json') as {
+      expo: { plugins: Array<string | [string, Record<string, unknown>]> };
+    };
+    const locPlugin = appJson.expo.plugins.find(
+      (p) => Array.isArray(p) && p[0] === 'expo-localization',
+    ) as [string, Record<string, unknown>] | undefined;
+    expect(locPlugin).toBeDefined();
+    expect(locPlugin?.[1]).toEqual(
+      expect.objectContaining({ supportsRTL: true, forcesRTL: true }),
+    );
   });
 });

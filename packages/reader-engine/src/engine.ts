@@ -31,6 +31,7 @@ export class ReaderEngine {
   private appliedFontBaseUrl = '';
   /** Bumped on every `load`, so a settle pass for an old book can't report over a new one. */
   private settleToken = 0;
+  private suppressTapUntil = 0;
 
   constructor() {
     this.rootEl = document.getElementById('reader-root')!;
@@ -195,7 +196,7 @@ export class ReaderEngine {
           ...(msg.settings ?? {}),
         };
         this.closeFootnote();
-        this.paginator.setBook(msg.book, merged, msg.anchor);
+        this.paginator.setBook(msg.book, merged, msg.anchor, msg.insets);
         postToHost({ type: 'ready' });
         this.paginator.scheduleBackgroundWork();
         this.emitAfterSettle();
@@ -210,7 +211,7 @@ export class ReaderEngine {
       }
       case 'settings': {
         const partial = msg.partial ?? {};
-        this.paginator.updateSettings(partial);
+        this.paginator.updateSettings(partial, msg.insets);
         this.emitPositionAndToc();
         if (partial.fontFamily !== undefined) {
           void document.fonts?.ready?.then(() => this.logFontStatus());
@@ -232,6 +233,14 @@ export class ReaderEngine {
         this.goPrev();
         break;
       }
+      case 'suppress-taps': {
+        const duration =
+          typeof msg.durationMs === 'number' && Number.isFinite(msg.durationMs)
+            ? Math.max(0, msg.durationMs)
+            : 0;
+        this.suppressTapUntil = Date.now() + duration;
+        break;
+      }
     }
   }
 
@@ -248,6 +257,9 @@ export class ReaderEngine {
   }
 
   private handleTap(clientX: number): void {
+    if (Date.now() < this.suppressTapUntil) {
+      return;
+    }
     const rect = this.rootEl.getBoundingClientRect();
     const width = rect.width || window.innerWidth || 1;
     const ratio = (clientX - rect.left) / width;

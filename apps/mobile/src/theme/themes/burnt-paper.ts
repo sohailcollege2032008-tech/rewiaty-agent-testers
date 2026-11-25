@@ -12,7 +12,7 @@ export const burntPaperTheme: AppThemeTokens = {
   surface: '#221B17',
   surfaceElevated: '#2B231D',
   hudBg: 'rgba(24, 19, 16, 0.95)',
-  sheetBg: 'rgba(31, 24, 20, 0.97)',
+  sheetBg: 'rgba(31, 24, 20, 1)',
   border: '#372C25',
   accentSoft: 'rgba(223, 120, 99, 0.15)',
   ctaBg: '#A34131',

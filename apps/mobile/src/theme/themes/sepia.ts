@@ -12,7 +12,7 @@ export const sepiaTheme: AppThemeTokens = {
   surface: '#EAE0C6',
   surfaceElevated: '#F8F2E2',
   hudBg: 'rgba(243, 235, 214, 0.95)',
-  sheetBg: 'rgba(245, 238, 220, 0.96)',
+  sheetBg: 'rgba(245, 238, 220, 1)',
   border: '#D8C9AA',
   accentSoft: 'rgba(140, 58, 43, 0.12)',
   ctaBg: '#8C3A2B',
