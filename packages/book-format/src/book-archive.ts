@@ -7,10 +7,9 @@
  * under `assets/…`; the app writes those next to `book.md`. Every image path we emit is relative
  * and goes through `isSafeImageSrc`, so nothing in an archive can point outside the book folder.
  */
-import { strFromU8 } from 'fflate';
-
 import { htmlToMarkdown, htmlToPlainText, parseHtml, type HtmlElement } from './html-to-markdown.js';
 import { isSafeImageSrc } from './sanitize.js';
+import { decodeTextBytes } from './text-decode.js';
 import {
   ARCHIVE_EMPTY_MESSAGE,
   ArchiveError,
@@ -184,7 +183,7 @@ function collectImageAssets(entries: Map<string, Uint8Array>): AssetCollector {
     } catch {
       /* keep the raw value */
     }
-    src = src.replace(/^\.\//, '').replace(/^\/+/, '');
+    src = src.replace(/^\.\//, '').replace(/^\/+/, '').normalize('NFC');
     if (byEntry.has(src)) return byEntry.get(src) ?? null;
     if (byEntry.has(src.toLowerCase())) return byEntry.get(src.toLowerCase()) ?? null;
     const base = src.split('/').pop() ?? src;
@@ -209,8 +208,8 @@ function readZipBook(entries: Map<string, Uint8Array>, fileName: string): Import
   }
 
   const single = textEntries.length === 1 ? textEntries[0] : undefined;
-  if (single && /\.md(?:own)?$/i.test(single) && hasFrontmatter(strFromU8(entries.get(single)!))) {
-    const raw = strFromU8(entries.get(single)!);
+  if (single && /\.md(?:own)?$/i.test(single) && hasFrontmatter(decodeTextBytes(entries.get(single)!))) {
+    const raw = decodeTextBytes(entries.get(single)!);
     const markdown = rewriteImageSources(raw.replace(/\r\n?/g, '\n'), images.resolve);
     return {
       markdown,
@@ -225,7 +224,7 @@ function readZipBook(entries: Map<string, Uint8Array>, fileName: string): Import
   for (const name of textEntries) {
     const bytes = entries.get(name);
     if (!bytes) continue;
-    const raw = strFromU8(bytes).replace(/\r\n?/g, '\n');
+    const raw = decodeTextBytes(bytes).replace(/\r\n?/g, '\n');
     const chapterTitle = chapterTitleFromFileName(name);
     let body: string;
     if (/\.txt$/i.test(name)) {
@@ -252,18 +251,20 @@ function readZipBook(entries: Map<string, Uint8Array>, fileName: string): Import
 }
 
 function findEntry(entries: Map<string, Uint8Array>, path: string): Uint8Array | null {
-  if (entries.has(path)) return entries.get(path) ?? null;
-  const lower = path.toLowerCase();
+  const normalized = path.normalize('NFC');
+  if (entries.has(normalized)) return entries.get(normalized) ?? null;
+  const lower = normalized.toLowerCase();
   for (const [name, bytes] of entries) {
-    if (name.toLowerCase() === lower) return bytes;
+    if (name.normalize('NFC').toLowerCase() === lower) return bytes;
   }
   return null;
 }
 
 function findEntryBySuffix(entries: Map<string, Uint8Array>, suffix: string): Uint8Array | null {
-  const lower = suffix.toLowerCase();
+  const lower = suffix.normalize('NFC').toLowerCase();
   for (const [name, bytes] of entries) {
-    if (name.toLowerCase() === lower || name.toLowerCase().endsWith(`/${lower}`)) return bytes;
+    const normalized = name.normalize('NFC').toLowerCase();
+    if (normalized === lower || normalized.endsWith(`/${lower}`)) return bytes;
   }
   return null;
 }
@@ -285,7 +286,7 @@ function resolveArchiveHref(baseDir: string, href: string): string {
     }
     out.push(part);
   }
-  return out.join('/');
+  return out.join('/').normalize('NFC');
 }
 
 function dirName(path: string): string {
@@ -332,7 +333,7 @@ function assertNotDrm(entries: Map<string, Uint8Array>): void {
   }
   const encryption = findEntryBySuffix(entries, 'META-INF/encryption.xml');
   if (!encryption) return;
-  const xml = strFromU8(encryption);
+  const xml = decodeTextBytes(encryption);
   const references = [...xml.matchAll(/<CipherReference[^>]*URI\s*=\s*["']([^"']+)["']/gi)].map(
     (match) => match[1] ?? '',
   );
@@ -348,14 +349,14 @@ function readEpubBook(entries: Map<string, Uint8Array>, fileName: string): Impor
 
   const containerBytes = findEntryBySuffix(entries, 'META-INF/container.xml');
   if (!containerBytes) throw new ArchiveError(EPUB_INVALID_MESSAGE);
-  const container = parseHtml(strFromU8(containerBytes));
+  const container = parseHtml(decodeTextBytes(containerBytes));
   const rootfile = collectElements(container.root, 'rootfile')[0];
   const opfPath = rootfile?.attrs['full-path']?.trim();
   if (!opfPath) throw new ArchiveError(EPUB_INVALID_MESSAGE);
   const opfBytes = findEntry(entries, opfPath) ?? findEntry(entries, opfPath.replace(/^\.\//, ''));
   if (!opfBytes) throw new ArchiveError(EPUB_INVALID_MESSAGE);
 
-  const opf = parseHtml(strFromU8(opfBytes));
+  const opf = parseHtml(decodeTextBytes(opfBytes));
   const metadata = collectElements(opf.root, 'metadata')[0];
   const opfDir = dirName(opfPath);
 
@@ -399,7 +400,7 @@ function readEpubBook(entries: Map<string, Uint8Array>, fileName: string): Impor
     if (!bytes) continue;
 
     const chapterDir = dirName(entryPath);
-    const rawXhtml = strFromU8(bytes);
+    const rawXhtml = decodeTextBytes(bytes);
     const rawTitle = /<\s*title[^>]*>([\s\S]*?)<\s*\/\s*title\s*>/i.exec(rawXhtml)?.[1];
     const converted = htmlToMarkdown(rawXhtml, {
       headingOffset: 0,

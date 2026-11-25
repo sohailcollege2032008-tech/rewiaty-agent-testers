@@ -26,7 +26,20 @@ const VOID_TAGS = new Set([
   'wbr',
 ]);
 
-const SKIPPED_TAGS = new Set(['head', 'script', 'style', 'noscript', 'template', 'svg', 'iframe']);
+const SKIPPED_TAGS = new Set([
+  'head',
+  'script',
+  'style',
+  'noscript',
+  'template',
+  'svg',
+  'iframe',
+  'object',
+  'embed',
+  'video',
+  'audio',
+  'canvas',
+]);
 
 const BLOCK_TAGS = new Set([
   'address',
@@ -112,7 +125,7 @@ function parseAttributes(raw: string): Record<string, string> {
 }
 
 const TOKEN_RE =
-  /<!--[\s\S]*?-->|<!\[CDATA\[([\s\S]*?)\]\]>|<!DOCTYPE[^>]*>|<\?[\s\S]*?\?>|<\/\s*([A-Za-z][\w:.-]*)\s*>|<([A-Za-z][\w:.-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g;
+  /<!--[\s\S]*?-->|<!\[CDATA\[([\s\S]*?)\]\]>|<!DOCTYPE[^>[]*(?:\[[\s\S]*?\][^>]*)?>|<\?[\s\S]*?\?>|<\/\s*([A-Za-z][\w:.-]*)\s*>|<([A-Za-z][\w:.-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g;
 
 /** Parse an HTML/XHTML document (or fragment) into a small node tree. */
 export function parseHtml(input: string): ParsedHtml {
@@ -169,7 +182,9 @@ export function parseHtml(input: string): ParsedHtml {
 
     if (SKIPPED_TAGS.has(tag)) {
       // Drop the element and its content: find the matching close tag without parsing inside.
-      if (!selfClosing) {
+      // Void elements (`embed`) never have a closing tag, so searching for one would swallow the
+      // rest of the document.
+      if (!selfClosing && !VOID_TAGS.has(tag)) {
         const closeRe = new RegExp(`</\\s*${tag}\\s*>`, 'gi');
         closeRe.lastIndex = cursor;
         const close = closeRe.exec(input);
@@ -236,6 +251,32 @@ function wrapEmphasis(marker: string, inner: string): string {
 function headingTitleLevel(tag: string): number {
   const level = Number.parseInt(tag.slice(1), 10);
   return Number.isFinite(level) ? level : 2;
+}
+
+/**
+ * Many Arabic EPUBs mark a chapter title as `<p class="title">` / `<p class="chapter-title">`
+ * rather than `<h1>`. Recognising the common class vocabulary keeps the chapter heading (and the
+ * TOC entry) instead of collapsing the title into the first body paragraph.
+ */
+function paragraphHeadingLevel(node: HtmlElement): number | null {
+  const role = node.attrs.role?.toLowerCase() ?? '';
+  if (role === 'heading' || role === 'doc-heading') {
+    const ariaLevel = Number.parseInt(node.attrs['aria-level'] ?? '', 10);
+    return Number.isFinite(ariaLevel) && ariaLevel >= 1 && ariaLevel <= 6 ? ariaLevel : 2;
+  }
+  const tokens = (node.attrs.class ?? '')
+    .split(/\s+/)
+    .map((token) => token.toLowerCase().replace(/[_\s]+/g, '-'))
+    .filter(Boolean);
+  for (const token of tokens) {
+    if (/^h[1-6]$/.test(token)) return Number.parseInt(token.slice(1), 10);
+    if (/^heading[1-6]$/.test(token)) return Number.parseInt(token.slice(7), 10);
+    if (/^(?:head|heading)$/.test(token)) return 2;
+    if (/^(?:book|part|chapter)-?title$/.test(token)) return 1;
+    if (/^(?:section|sub)-?title$/.test(token)) return 2;
+    if (token === 'title') return 1;
+  }
+  return null;
 }
 
 /** Indent every non-empty line with `prefix` (blockquote / list continuation). */
@@ -348,6 +389,14 @@ export function htmlToMarkdown(
     if (noteId) return '';
 
     if (tag === 'p') {
+      const paraHeading = paragraphHeadingLevel(node);
+      if (paraHeading !== null) {
+        const level = Math.min(6, Math.max(1, paraHeading + headingOffset));
+        const title = collapseWhitespace(renderChildren(node).replace(/[*_`]/g, '')).trim();
+        if (!title) return '';
+        if (!documentTitle) documentTitle = title;
+        return `\n\n${'#'.repeat(level)} ${title}\n\n`;
+      }
       const inner = renderChildren(node).trim();
       return inner ? `\n\n${inner}\n\n` : '';
     }
