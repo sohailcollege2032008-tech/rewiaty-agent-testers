@@ -92,17 +92,15 @@ run_flow() {
   # WebView text selector fails; keep one dump per flow next to the screenshots.
   maestro hierarchy > "results/logs/hierarchy-${flow_id}.xml" 2>/dev/null || true
 
-  # Why (tech): --debug-output writes <dir>/.maestro/tests/<ts>/<flow>/takeScreenshot/*.png, three
-  # levels deep, so the old "$debug_dir"/**/*.png glob (no globstar) never matched and every run
-  # uploaded zero screenshots. commands.json is Maestro's own per-command journal, the fastest way
-  # to see which step failed and what it saw.
-  shopt -s nullglob globstar
-  for png in *.png "$debug_dir"/**/*.png; do
-    [ -f "$png" ] && cp -f "$png" "$shot_dir/" 2>/dev/null || true
-  done
-  shopt -u nullglob globstar
-  cp -f "$debug_dir"/.maestro/tests/*/*/commands.json "results/logs/${flow_id}-commands.json" 2>/dev/null || true
-  cp -f "$debug_dir"/.maestro/tests/*/*/logs/maestro.log "results/logs/${flow_id}-maestro-debug.log" 2>/dev/null || true
+  # Why (tech): globstar's ** does NOT descend into dot-directories, and --debug-output hides
+  # everything under "<dir>/.maestro/tests/<ts>/<flow>/", so the glob version still collected zero
+  # screenshots (run 45626039118). find sees hidden paths. commands.json is Maestro's own per-command
+  # journal: the fastest way to see which step failed and what it saw.
+  find . -maxdepth 1 -name '*.png' -exec cp -f {} "$shot_dir/" \; 2>/dev/null || true
+  find "$debug_dir" -name '*.png' -exec cp -f {} "$shot_dir/" \; 2>/dev/null || true
+  DEBUG_FLOW_DIR="$(find "$debug_dir" -type d -path '*/.maestro/tests/*/*' -name "$flow_id" 2>/dev/null | head -n 1)"
+  cp -f "$DEBUG_FLOW_DIR/commands.json" "results/logs/${flow_id}-commands.json" 2>/dev/null || true
+  cp -f "$DEBUG_FLOW_DIR/logs/maestro.log" "results/logs/${flow_id}-maestro-debug.log" 2>/dev/null || true
   if [ -d "$HOME/.maestro/tests" ]; then
     find "$HOME/.maestro/tests" -name '*.png' -exec cp -n {} "$shot_dir/" \; 2>/dev/null || true
     rm -rf "$HOME/.maestro/tests"/* 2>/dev/null || true
@@ -233,14 +231,15 @@ if want_flow keep-awake; then
     echo "screen_off_timeout=$(adb shell settings get system screen_off_timeout 2>/dev/null | tr -d '\r')"
     echo "stay_on_while_plugged_in=$(adb shell settings get global stay_on_while_plugged_in 2>/dev/null | tr -d '\r')"
     # Why (tech): API 34 prints "  mWakefulness=Asleep" with leading spaces, so the raw line never
-    # equals "mWakefulness=Awake"; extract the token instead of comparing the whole line.
-    adb shell dumpsys power | grep -oE "mWakefulness=[A-Za-z]+" | head -n 1 | sed 's/^/wakefulness: /'
+    # equals "mWakefulness=Awake"; extract the VALUE only (run 45626039118 kept the key in the value,
+    # so "mWakefulness=Awake" != "Awake" turned a real PASS into a FAIL).
+    adb shell dumpsys power | grep -oE "mWakefulness=[A-Za-z]+" | head -n 1 | sed 's/^mWakefulness=/wakefulness: /'
     adb shell dumpsys power | grep -E "Display Power: state=" | head -n 1
     echo "== maestro verdict =="
     cat results/logs/keep-awake-maestro.log 2>/dev/null || true
   } | tee results/logs/keep-awake-power.txt
 
-  KEEP_AWAKE_POWER="$(grep -m1 'wakefulness:' results/logs/keep-awake-power.txt | sed 's/.*wakefulness: //' | tr -d '\r' || true)"
+  KEEP_AWAKE_POWER="$(grep -m1 '^wakefulness: ' results/logs/keep-awake-power.txt | sed 's/^wakefulness: //' | tr -d '\r' || true)"
   KEEP_AWAKE_SECONDS="$(python3 - <<'PY'
 import re
 try:
@@ -275,11 +274,11 @@ PY
   sleep 40
   {
     echo "== control: library screen, no reader, 40s after launch (timeout 30s) =="
-    adb shell dumpsys power | grep -oE "mWakefulness=[A-Za-z]+" | head -n 1 | sed 's/^/wakefulness: /'
+    adb shell dumpsys power | grep -oE "mWakefulness=[A-Za-z]+" | head -n 1 | sed 's/^mWakefulness=/wakefulness: /'
   } | tee -a results/logs/keep-awake-power.txt
   adb shell pkill -INT screenrecord >/dev/null 2>&1 || true
   kill "$CONTROL_REC_PID" >/dev/null 2>&1 || true
-  CONTROL_POWER="$(grep -A3 '== control:' results/logs/keep-awake-power.txt | grep -m1 'wakefulness:' | sed 's/.*wakefulness: //' | tr -d '\r' || true)"
+  CONTROL_POWER="$(grep -A3 '== control:' results/logs/keep-awake-power.txt | grep -m1 '^wakefulness: ' | sed 's/^wakefulness: //' | tr -d '\r' || true)"
   if [ "$CONTROL_POWER" = "Asleep" ]; then
     echo "==> keep-awake control PASSED: the library screen slept at the same 30s timeout" | tee -a results/logs/keep-awake-power.txt
   elif [ -n "$CONTROL_POWER" ]; then
@@ -296,6 +295,37 @@ fi
 # 9. long-book-open (clean state -> import the generated 200k-word novel -> cold open timed at 2s)
 if want_flow long-book-open && [ -f app/samples/gen-long.mjs ]; then
   adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
+  # Why (tech): the F2 claim is about OPENING a 200k-word book, not about DocumentsUI. In run
+  # 45626039118 the picker tap became a long press (>500ms of injected-event skew on a loaded
+  # emulator), the picker switched to selection mode and never returned the file, so the journey
+  # timed out without the app ever seeing the book. Hand the file over the same content:// VIEW
+  # intent the open-with-telegram journey already uses, wait until the reader has really rendered,
+  # then force-stop so the timed open below starts from disk.
+  : > results/logs/long-book-open-prep.txt
+  adb shell "content call --uri content://media --method scan_volume --arg external_primary" >> results/logs/long-book-open-prep.txt 2>&1 || true
+  sleep 3
+  LONG_MEDIA_ID=""
+  for coll in downloads file; do
+    QOUT="$(adb shell "content query --uri content://media/external/${coll} --projection _id:_display_name --where \"_display_name='long-ar.md'\"" 2>&1)"
+    echo "[$coll] $QOUT" >> results/logs/long-book-open-prep.txt
+    LONG_MEDIA_ID="$(printf '%s' "$QOUT" | sed -n 's/.*_id=\([0-9]*\).*/\1/p' | head -n 1 | tr -d '\r')"
+    if [ -n "$LONG_MEDIA_ID" ]; then LONG_INTENT_URI="content://media/external/${coll}/${LONG_MEDIA_ID}"; break; fi
+  done
+  if [ -n "${LONG_INTENT_URI:-}" ]; then
+    echo "Triggering ACTION_VIEW with URI: $LONG_INTENT_URI" | tee -a results/logs/long-book-open-prep.txt
+    adb shell am start -W -a android.intent.action.VIEW -t text/markdown -d "$LONG_INTENT_URI" --grant-read-uri-permission "$APP_ID" \
+      >> results/logs/long-book-open-prep.txt 2>&1 || true
+    LONG_OPENED_AT="$(date +%s)"
+    for _ in $(seq 1 15); do
+      sleep 3
+      if maestro hierarchy 2>/dev/null | grep -q 'reader-page-counter'; then break; fi
+    done
+    echo "reader rendered after $(( $(date +%s) - LONG_OPENED_AT ))s" | tee -a results/logs/long-book-open-prep.txt
+  else
+    echo "ERROR: long-ar.md not indexed in MediaStore; the F2 journey cannot start" | tee -a results/logs/long-book-open-prep.txt
+  fi
+  adb shell am force-stop "$APP_ID" >/dev/null 2>&1 || true
+  sleep 2
   run_flow "long-book-open" || true
 fi
 
