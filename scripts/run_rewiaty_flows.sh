@@ -211,7 +211,7 @@ fi
 #    Why 30s and not 15s: an Expo cold start after `pm clear` needs 15-20s before the reader opens,
 #    and a 15s timeout slept the screen mid-launch (run 45614321052) — that tested the emulator,
 #    not the reader. The last input is the tap that opens the book, so 45 > 30 still proves it.
-if want_flow keep-awake; then
+if want_flow keep-awake && [ -f app/apps/mobile/.maestro/keep-awake.yaml ]; then
   ORIG_SCREEN_OFF="$(adb shell settings get system screen_off_timeout 2>/dev/null | tr -d '\r')"
   case "$ORIG_SCREEN_OFF" in ''|null) ORIG_SCREEN_OFF=2147483647 ;; esac
   echo "==> keep-awake: screen_off_timeout=30000 (was $ORIG_SCREEN_OFF), stay_on_while_plugged_in=0"
