@@ -50,9 +50,8 @@ const READER_ORIGIN_WHITELIST: string[] = ['file://*', 'about:blank'];
 /** Used when the offline fonts folder is unavailable; needs no whitelist entry. */
 const READER_FALLBACK_BASE_URL = 'about:blank';
 
-type EngineSettingsPayload = Partial<ReaderSettings> & {
-  spread?: 'auto' | 'none';
-};
+// `spread` comes from the engine's ReaderSettings ('auto' | 'single').
+type EngineSettingsPayload = Partial<ReaderSettings>;
 
 function isReaderDocumentUrl(url: string, baseUrl: string): boolean {
   if (!url) return false;
@@ -231,7 +230,8 @@ export function ReaderScreen() {
     const loadSettings: EngineSettingsPayload = {
       ...initialSettingsRef.current,
       maxReadingWidth: effectiveMaxWidth,
-      ...(layout.isTabletLandscape ? { spread: 'auto' as const } : {}),
+      // Explicit on first load too: the engine defaults to 'auto', which would spread a wide phone landscape.
+      spread: layout.isTabletLandscape ? 'auto' : 'single',
     };
     postToEngine({
       type: 'load',
@@ -266,7 +266,8 @@ export function ReaderScreen() {
     };
     const partial: EngineSettingsPayload = {
       maxReadingWidth: effectiveMaxWidth,
-      spread: layout.isTabletLandscape ? 'auto' : 'none',
+      // Why (product): the open-book spread is a tablet feature; a phone turned sideways keeps one page.
+      spread: layout.isTabletLandscape ? 'auto' : 'single',
     };
     postToEngine({ type: 'settings', partial });
   }, [effectiveMaxWidth, layout.isTabletLandscape, postToEngine]);

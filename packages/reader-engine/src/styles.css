@@ -25,6 +25,16 @@
   --margin-v: 24px;
   --max-width: 68ch;
   --page-transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Two-page open-book spread — Warraq tablet tokens (overwritten per theme by the paginator) */
+  --book-width: 390px;
+  --spread-gutter: 108px;
+  --spread-measure-ch: 54;
+  --spine-crease: rgba(54, 42, 28, 0.24);
+  --spine-inner: rgba(54, 42, 28, 0.11);
+  --spine-mid: rgba(54, 42, 28, 0.045);
+  --spine-sheen: rgba(255, 253, 248, 0.52);
+  --page-edge: rgba(110, 96, 78, 0.3);
 }
 
 *,
@@ -65,6 +75,76 @@ body {
   width: min(100%, var(--max-width));
   height: 100%;
   overflow: hidden;
+}
+
+/* Two-page open book: the stage becomes the whole book, each page half of it */
+.reader-root.spread-mode .reader-stage {
+  box-shadow:
+    0 0 0 1px var(--page-edge),
+    0 18px 48px rgba(0, 0, 0, 0.16);
+}
+
+.spread-gutter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: var(--spread-gutter);
+  pointer-events: none;
+  z-index: 5;
+  display: none;
+}
+
+.reader-root.spread-mode .spread-gutter {
+  display: block;
+}
+
+.spread-gutter-shadow {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to left,
+    transparent 0%,
+    var(--spine-sheen) 18%,
+    var(--spine-mid) 36%,
+    var(--spine-inner) 48%,
+    var(--spine-crease) 50%,
+    var(--spine-inner) 52%,
+    var(--spine-mid) 64%,
+    var(--spine-sheen) 82%,
+    transparent 100%
+  );
+}
+
+.spread-headband {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 24px;
+  height: 5px;
+  background: var(--accent-color);
+  opacity: 0.5;
+}
+
+.spread-headband.top {
+  top: 0;
+  border-radius: 0 0 3px 3px;
+}
+
+.spread-headband.bottom {
+  bottom: 0;
+  border-radius: 3px 3px 0 0;
+}
+
+/* Blank verso added when a chapter would otherwise end on a recto (spread mode) */
+.chapter-pad {
+  break-before: column;
+  width: 100%;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  visibility: hidden;
 }
 
 .reader-track {
