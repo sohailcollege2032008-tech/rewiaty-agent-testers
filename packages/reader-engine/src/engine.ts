@@ -10,13 +10,16 @@ import {
   type SelectionWordAnchor,
 } from './highlights.js';
 import { Paginator } from './paginator.js';
-import { DEFAULT_SETTINGS, type ReaderSettings, type RNToWebMessage, type TapZone } from './types.js';
+import { DEFAULT_SETTINGS, type ReaderSettings, type RNToWebMessage } from './types.js';
 
-const TAP_MAX_MOVEMENT_PX = 14;
-const SWIPE_MIN_DISTANCE_PX = 40;
 const LONG_PRESS_MS = 350;
-const LEFT_ZONE_RATIO = 0.3;
-const RIGHT_ZONE_RATIO = 0.7;
+/**
+ * Movement (px) after which a touch is a drag, not a tap. A tap on the page centre
+ * toggles the bars; a drag turns the page with the finger.
+ */
+const DRAG_START_PX = 10;
+/** Window (ms) used to read the release velocity out of the last pointer samples. */
+const VELOCITY_WINDOW_MS = 120;
 /**
  * Upper bound on waiting for `document.fonts.ready` before the first position is
  * reported. A face that never resolves must not leave the reader without page numbers.
@@ -30,6 +33,12 @@ const SETTLE_MAX_WAIT_MS = 400;
 const SETTLE_FONT_GRACE_MS = 400;
 /** How often the settle pass re-checks `document.fonts.status` while faces fetch. */
 const SETTLE_POLL_MS = 50;
+/**
+ * Ceiling on withholding the first page number while the exact pagination pass counts a
+ * very long book. Normal books finish in well under a second; this only stops a 300-chapter
+ * book from leaving the footer empty.
+ */
+const EXACT_POSITION_MAX_WAIT_MS = 4000;
 
 export class ReaderEngine {
   private readonly rootEl: HTMLElement;
@@ -47,12 +56,25 @@ export class ReaderEngine {
   private isSelecting = false;
   private selectionAnchor: SelectionWordAnchor | null = null;
   private hadSelectionOnDown = false;
+  private gesture: {
+    pointerId: number;
+    startX: number;
+    startY: number;
+    lastX: number;
+    dragging: boolean;
+  } | null = null;
+  private dragSamples: Array<{ x: number; t: number }> = [];
   private resizeTimer: number | null = null;
   private fontStyleEl: HTMLStyleElement | null = null;
   private appliedFontBaseUrl = '';
   /** Bumped on every `load`, so a settle pass for an old book can't report over a new one. */
   private settleToken = 0;
   private suppressTapUntil = 0;
+  /**
+   * The first position of a book is withheld until the paginator knows the exact page
+   * map, so the reader never sees a page number (or a total) that is about to move.
+   */
+  private awaitingExactPosition = false;
 
   constructor() {
     this.rootEl = document.getElementById('reader-root')!;
@@ -66,6 +88,7 @@ export class ReaderEngine {
     this.paginator = new Paginator(this.rootEl, this.stageEl, this.trackEl, DEFAULT_SETTINGS, {
       onBackgroundProgress: () => this.emitPositionAndToc(),
       onChapterLayoutComplete: (chapterId) => postToHost({ type: 'layout-complete', chapterId }),
+      onExactPagination: () => this.emitPositionAndToc(),
     });
 
     this.bindEvents();
@@ -79,12 +102,25 @@ export class ReaderEngine {
 
     this.rootEl.addEventListener('pointerdown', (e) => {
       if (!this.footnoteBackdrop.hidden) return;
-      if (e.button !== 0 && e.pointerType === 'mouse') return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
       this.cancelLongPress();
       this.hadSelectionOnDown = hasNonCollapsedSelection();
       this.isSelecting = false;
       this.selectionAnchor = null;
       this.pointerStart = { x: e.clientX, y: e.clientY, time: Date.now() };
+      this.gesture = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        lastX: e.clientX,
+        dragging: false,
+      };
+      this.dragSamples = [{ x: e.clientX, t: performance.now() }];
+      try {
+        this.rootEl.setPointerCapture(e.pointerId);
+      } catch {
+        // Synthetic pointer events (tests) have no capturable pointer id.
+      }
 
       const target = e.target as HTMLElement | null;
       const onSelectableText = Boolean(
@@ -96,8 +132,12 @@ export class ReaderEngine {
         this.longPressTimer = window.setTimeout(() => {
           this.longPressTimer = null;
           if (!this.pointerStart) return;
-          // Isolate selection from swipe/tap: page turns cannot happen once long-press activates.
+          // Why (product, F17): a hold is a selection, never a page turn. Dropping the
+          // gesture here means the drag pipeline cannot claim the same finger, even if
+          // the reader keeps moving it to extend the selection.
           this.pointerStart = null;
+          this.gesture = null;
+          this.paginator.cancelDrag();
           this.rootEl.classList.add('is-selecting');
           const anchor = selectWordAtPoint(startX, startY);
           if (anchor) {
@@ -111,6 +151,8 @@ export class ReaderEngine {
     });
 
     this.rootEl.addEventListener('pointermove', (e) => {
+      // Why (product, F17): an active selection owns the finger. Extending it must never
+      // slide the page, which is the one thing that separates a hold from a drag.
       if (this.isSelecting) {
         e.preventDefault();
         if (this.selectionAnchor) {
@@ -119,15 +161,35 @@ export class ReaderEngine {
         return;
       }
 
-      if (!this.pointerStart) return;
-      const dist = Math.hypot(e.clientX - this.pointerStart.x, e.clientY - this.pointerStart.y);
-      if (dist > TAP_MAX_MOVEMENT_PX) {
-        this.cancelLongPress();
-        if (hasNonCollapsedSelection()) {
-          // A native selection or handle drag is active; never turn the page.
-          this.pointerStart = null;
+      const gesture = this.gesture;
+      if (!gesture) return;
+
+      gesture.lastX = e.clientX;
+      this.dragSamples.push({ x: e.clientX, t: performance.now() });
+      if (this.dragSamples.length > 12) this.dragSamples.shift();
+
+      if (!gesture.dragging) {
+        const dx = e.clientX - gesture.startX;
+        const dy = e.clientY - gesture.startY;
+        if (Math.abs(dx) < DRAG_START_PX) return;
+        // A mostly-vertical gesture is not a page turn; ignore it entirely.
+        if (Math.abs(dy) > Math.abs(dx)) {
+          this.gesture = null;
+          return;
         }
+        // Text selected before this touch keeps the gesture: the finger extends the
+        // selection instead of starting a drag.
+        if (this.hadSelectionOnDown || hasNonCollapsedSelection()) {
+          this.cancelLongPress();
+          this.gesture = null;
+          return;
+        }
+        this.cancelLongPress();
+        gesture.dragging = true;
+        this.paginator.beginDrag();
       }
+
+      this.paginator.dragBy(e.clientX - gesture.startX);
     });
 
     this.rootEl.addEventListener(
@@ -155,28 +217,35 @@ export class ReaderEngine {
         return;
       }
 
-      if (!this.pointerStart) return;
-      const start = this.pointerStart;
+      const gesture = this.gesture;
+      this.gesture = null;
       this.pointerStart = null;
+      if (!gesture) return;
 
       // Ignore taps on footnote links
       const target = e.target as HTMLElement | null;
       const fnLink = target?.closest<HTMLElement>('[data-fn]');
-      if (fnLink) {
+      if (fnLink && !gesture.dragging) {
         e.preventDefault();
         const fnId = fnLink.getAttribute('data-fn');
         if (fnId) this.openFootnote(fnId);
         return;
       }
 
-      const dx = e.clientX - start.x;
-      const dy = e.clientY - start.y;
-      const absX = Math.abs(dx);
-      const absY = Math.abs(dy);
+      if (gesture.dragging) {
+        this.dragSamples.push({ x: e.clientX, t: performance.now() });
+        this.paginator.endDrag(e.clientX - gesture.startX, this.releaseVelocity(), () =>
+          this.emitPosition(),
+        );
+        return;
+      }
+
+      const absX = Math.abs(e.clientX - gesture.startX);
+      const absY = Math.abs(e.clientY - gesture.startY);
 
       if (this.hadSelectionOnDown || hasNonCollapsedSelection()) {
         // Dismiss active selection cleanly without turning the page or toggling HUD.
-        if (absX <= TAP_MAX_MOVEMENT_PX && absY <= TAP_MAX_MOVEMENT_PX) {
+        if (absX <= DRAG_START_PX && absY <= DRAG_START_PX) {
           this.clearSelection();
           postToHost({ type: 'selection', selection: null });
         } else {
@@ -188,27 +257,26 @@ export class ReaderEngine {
         return;
       }
 
-      if (absX >= SWIPE_MIN_DISTANCE_PX && absX > absY * 1.2) {
-        this.handleSwipe(dx);
-        return;
-      }
-
-      if (absX <= TAP_MAX_MOVEMENT_PX && absY <= TAP_MAX_MOVEMENT_PX) {
+      if (absX <= DRAG_START_PX && absY <= DRAG_START_PX) {
         const hitHl = this.paginator.hitTestHighlight(e.clientX, e.clientY);
         if (hitHl) {
           postToHost({ type: 'highlight-tap', highlightId: hitHl.highlight.id, rect: hitHl.rect });
           return;
         }
-        this.handleTap(e.clientX);
+        this.handleTap();
       }
     });
 
     this.rootEl.addEventListener('pointercancel', () => {
       this.cancelLongPress();
       this.pointerStart = null;
+      this.gesture = null;
+      this.paginator.cancelDrag();
       this.finishSelectionGesture();
     });
 
+    // Why (product, F17): Android can end a touch without a matching pointerup when the
+    // selection magnifier takes the pointer, which would leave `isSelecting` stuck on.
     window.addEventListener('touchend', () => {
       this.cancelLongPress();
       this.finishSelectionGesture();
@@ -217,6 +285,8 @@ export class ReaderEngine {
     window.addEventListener('touchcancel', () => {
       this.cancelLongPress();
       this.pointerStart = null;
+      this.gesture = null;
+      this.paginator.cancelDrag();
       this.finishSelectionGesture();
     });
 
@@ -262,6 +332,7 @@ export class ReaderEngine {
         this.resizeTimer = null;
         if (this.paginator.handleViewportResize()) {
           this.emitPositionAndToc();
+          this.paginator.startExactPagination();
         }
       }, 30);
     });
@@ -321,6 +392,9 @@ export class ReaderEngine {
         };
         this.clearSelection();
         this.closeFootnote();
+        this.gesture = null;
+        this.paginator.cancelDrag();
+        this.awaitingExactPosition = true;
         this.paginator.setBook(msg.book, merged, msg.anchor, msg.insets, msg.highlights);
         postToHost({ type: 'ready' });
         this.paginator.scheduleBackgroundWork();
@@ -331,6 +405,7 @@ export class ReaderEngine {
         this.applyFontFaces(msg.fontBaseUrl);
         if (this.paginator.handleFontLoad()) {
           this.emitPositionAndToc();
+          this.paginator.startExactPagination();
         }
         break;
       }
@@ -338,6 +413,9 @@ export class ReaderEngine {
         const partial = msg.partial ?? {};
         this.paginator.updateSettings(partial, msg.insets);
         this.emitPositionAndToc();
+        // Re-count the book for the new typography so the page numbers converge on the
+        // real ones (the first report above is allowed to be an estimate).
+        this.paginator.startExactPagination();
         if (partial.fontFamily !== undefined) {
           void document.fonts?.ready?.then(() => this.logFontStatus());
         }
@@ -419,58 +497,65 @@ export class ReaderEngine {
     }
   }
 
-  private handleTap(clientX: number): void {
+  private handleTap(): void {
     if (Date.now() < this.suppressTapUntil) {
       return;
     }
-    const rect = this.rootEl.getBoundingClientRect();
-    const width = rect.width || window.innerWidth || 1;
-    const ratio = (clientX - rect.left) / width;
-    const dir = this.paginator.getDirection();
-
-    let zone: TapZone;
-    if (ratio < LEFT_ZONE_RATIO) {
-      zone = dir === 'rtl' ? 'next' : 'prev';
-    } else if (ratio > RIGHT_ZONE_RATIO) {
-      zone = dir === 'rtl' ? 'prev' : 'next';
-    } else {
-      zone = 'center';
-    }
-
-    postToHost({ type: 'tap', zone });
-    if (zone === 'next') {
-      this.goNext();
-    } else if (zone === 'prev') {
-      this.goPrev();
-    }
+    // Why (product, R5/A4): edges no longer turn pages. Every tap is a centre tap that
+    // shows or hides the bars; page turns are made with the finger.
+    postToHost({ type: 'tap', zone: 'center' });
   }
 
-  private handleSwipe(dx: number): void {
-    const dir = this.paginator.getDirection();
-    // LTR: swipe left (dx < 0) => next; RTL: swipe right (dx > 0) => next
-    const isNext = dir === 'rtl' ? dx > 0 : dx < 0;
-    if (isNext) {
-      this.goNext();
-    } else {
-      this.goPrev();
+  /** Horizontal velocity (px/ms) of the last `VELOCITY_WINDOW_MS` of the gesture. */
+  private releaseVelocity(): number {
+    const samples = this.dragSamples;
+    const last = samples[samples.length - 1];
+    if (!last || samples.length < 2) return 0;
+    let first = samples[0]!;
+    for (let i = samples.length - 1; i >= 0; i--) {
+      const sample = samples[i]!;
+      if (last.t - sample.t > VELOCITY_WINDOW_MS) {
+        first = samples[i + 1] ?? sample;
+        break;
+      }
+      first = sample;
     }
+    const dt = last.t - first.t;
+    if (dt <= 0) return 0;
+    return (last.x - first.x) / dt;
   }
 
   private emitPosition(): void {
     const pos = this.paginator.getPositionSnapshot();
     if (!pos) return;
+    // A number is on screen now; stop withholding the rest of the session's reports.
+    this.awaitingExactPosition = false;
     postToHost({
       type: 'position',
       ...pos,
     });
   }
 
-  private emitPositionAndToc(): void {
-    this.emitPosition();
+  private emitToc(): void {
     const chapters = this.paginator.getTocEntries();
     if (chapters.length > 0) {
       postToHost({ type: 'toc', chapters });
     }
+  }
+
+  private emitPositionAndToc(): void {
+    // The first page number of a book waits for the exact page map (see `emitAfterSettle`),
+    // so the reader never watches "صفحة 9 من 43" turn into "من 78".
+    if (this.awaitingExactPosition) {
+      if (this.paginator.isPageMapExact()) {
+        this.awaitingExactPosition = false;
+      } else {
+        this.emitToc();
+        return;
+      }
+    }
+    this.emitPosition();
+    this.emitToc();
   }
 
   /**
@@ -491,6 +576,13 @@ export class ReaderEngine {
       if (token !== this.settleToken) return;
       this.paginator.settleLayout();
       this.emitPositionAndToc();
+      if (this.awaitingExactPosition) {
+        window.setTimeout(() => {
+          if (token !== this.settleToken || !this.awaitingExactPosition) return;
+          this.awaitingExactPosition = false;
+          this.emitPositionAndToc();
+        }, EXACT_POSITION_MAX_WAIT_MS);
+      }
     };
 
     const attempt = () => {
