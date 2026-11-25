@@ -57,13 +57,27 @@ export async function initSearchSchema(db: DatabaseAdapter): Promise<void> {
 /**
  * Replace all FTS5 index entries for a book with its current text blocks.
  */
+const INDEX_YIELD_EVERY_BLOCKS = 300;
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 export async function indexBookForSearch(book: Book, db?: DatabaseAdapter): Promise<void> {
   const conn = db ?? (await getDatabase());
   await conn.runAsync('DELETE FROM book_search_fts WHERE book_id = ?', book.id);
 
   const rows: Array<[string, string, string, string, string, string]> = [];
+  let blocksSinceYield = 0;
   for (const chapter of book.chapters) {
     for (const block of chapter.blocks) {
+      // Why: stripping + normalizing a 200k-word book is one long synchronous loop on the JS
+      // thread; yielding every few hundred blocks keeps taps and the search box responsive
+      // while legacy books are backfilled (Codex #18 P2).
+      if (++blocksSinceYield >= INDEX_YIELD_EVERY_BLOCKS) {
+        blocksSinceYield = 0;
+        await yieldToEventLoop();
+      }
       if (block.kind === 'break' || block.kind === 'image') continue;
       const rawText = stripHtmlToPlainText(block.html);
       if (!rawText) continue;
