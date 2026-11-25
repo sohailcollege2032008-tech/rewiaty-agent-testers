@@ -30,6 +30,20 @@ appId: com.rewiaty.app
     visible: "sample-ar.md"
     timeout: 15000
 - tapOn: "sample-ar.md"
+# Why (tech): on API 34 DocumentsUI sometimes turns that tap into a selection ("1 selected" + "Select",
+# run 45622404149: the picker stayed on screen and every later step ran inside it). Confirming an explicit
+# selection keeps the flow on the same import path; nothing below is weakened.
+- runFlow:
+    when:
+      visible: "1 selected"
+    commands:
+      - tapOn: "Select"
+# Wait for the reader itself, not just the absence of an overlay: while the picker is up the overlay is
+# absent too, so an "notVisible overlay" check alone let a stray tap land on the file list.
+- extendedWaitUntil:
+    visible:
+      id: "reader-book-vessel"
+    timeout: 20000
 - extendedWaitUntil:
     notVisible:
       id: "reader-loading-overlay"
