@@ -320,3 +320,56 @@ test('a mounted figure that cannot be decoded is reported as count 0, not left s
     fs.rmSync(broken, { force: true });
   }
 });
+
+/** Two chapters, so the figure is reached by a TOC jump exactly like the on-device journey. */
+function twoChapterBook(fileName: string): Book {
+  return parseBook(
+    [
+      '---',
+      'title: "كِتَابٌ فِيهِ صُورَةٌ"',
+      'lang: ar',
+      'dir: rtl',
+      '---',
+      '',
+      '# الْفَصْلُ الْأَوَّلُ',
+      '',
+      'فَقْرَةٌ بِلَا صُورَةٍ فِي الْفَصْلِ الْأَوَّلِ.',
+      '',
+      '# الْفَصْلُ الثَّانِي',
+      '',
+      'فَقْرَةٌ قَبْلَ الصُّورَةِ.',
+      '',
+      `![شكل تجريبي](assets/${fileName})`,
+      '',
+      'فَقْرَةٌ بَعْدَ الصُّورَةِ.',
+    ].join('\n'),
+    'two-chapters.md',
+  );
+}
+
+test('a TOC jump to a chapter whose figure never fires `load` still reports its box', async ({
+  page,
+}) => {
+  // The on-device journey: the reader opens chapter one (no figure), then the TOC jumps to
+  // chapter two. Nothing about that jump fires `load` when the figure is already decoded, and no
+  // settle pass runs either — this is the exact path that left CI run 45694868016 silent while the
+  // figure was painted.
+  await page.addInitScript(() => {
+    document.addEventListener('load', (event) => event.stopPropagation(), true);
+  });
+
+  await mountEngine(page);
+  const book = twoChapterBook(LANDSCAPE.name);
+  await openBook(page, book);
+
+  const secondChapter = book.chapters[1];
+  expect(secondChapter).toBeTruthy();
+  await page.evaluate((chapterId) => {
+    window.postMessage(JSON.stringify({ type: 'goto', chapterId }), '*');
+  }, secondChapter!.id);
+
+  const proof = await waitForImageProof(page);
+  expect(proof.count).toBe(1);
+  expect(proof.width).toBeGreaterThan(0);
+  expect(proof.height).toBeGreaterThan(0);
+});

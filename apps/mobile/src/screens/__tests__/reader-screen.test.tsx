@@ -248,6 +248,19 @@ describe('ReaderScreen', () => {
     expect(utils.queryByTestId('reader-image-proof')).toBeNull();
   });
 
+  it('does not call a figure with no box a proof', async () => {
+    const utils = await renderLoadedReader();
+
+    // The proof means "a reader can see this figure", not "a file resolved": a decoded image that
+    // laid out to nothing must not satisfy the import assertion.
+    await act(async () => {
+      emitWebMessage({ type: 'image-rendered', count: 1, width: 0, height: 0 });
+    });
+
+    expect(utils.queryByTestId('reader-image-proof')).toBeNull();
+    expect(utils.getByTestId('reader-image-error')).toBeTruthy();
+  });
+
   it('automatically uses burnt-paper when system colorScheme is dark and no manual theme is set', async () => {
     colorSchemeSpy.mockReturnValue('dark');
     await renderLoadedReader();

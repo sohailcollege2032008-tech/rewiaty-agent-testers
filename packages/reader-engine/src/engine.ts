@@ -38,6 +38,12 @@ const EXACT_POSITION_MAX_WAIT_MS = 4000;
 const IMAGE_PROOF_POLL_MS = 120;
 const IMAGE_PROOF_MAX_TRIES = 25;
 /**
+ * Slow tail of the same loop, for a cold emulator where a `file://` figure can take seconds to
+ * decode. Kept slower than the fast window so a book without figures costs almost nothing.
+ */
+const IMAGE_PROOF_SLOW_MS = 500;
+const IMAGE_PROOF_SLOW_TRIES = 20;
+/**
  * Extra looks granted when the mounted pages hold no figure at all. A `goto` can report before the
  * target chapter is attached, and one more frame is all that separates "no figure here" from
  * "the figure is about to appear".
@@ -316,7 +322,11 @@ export class ReaderEngine {
     this.imageProofEmptyChecks = 0;
 
     const report = this.paginator.measureImages();
-    if (report.rendered > 0) {
+    this.logImageProofProbe(mounted, report.rendered);
+
+    // A decoded figure with a real box is the proof. A decoded figure with no box is not: the
+    // reader cannot see it, so it keeps counting as "not painted" until the window ends.
+    if (report.rendered > 0 && report.width > 0 && report.height > 0) {
       this.imageProofTries = 0;
       this.postImageProof(report.rendered, report.width, report.height);
       return;
@@ -324,7 +334,9 @@ export class ReaderEngine {
 
     // Every mounted figure has finished loading and none of them produced pixels: that is a
     // broken image, reported as count 0 rather than staying silent.
-    const decided = mounted.every((img) => img.complete && (img.getAttribute('src') ?? '') !== '');
+    const decided =
+      report.rendered === 0 &&
+      mounted.every((img) => img.complete && (img.getAttribute('src') ?? '') !== '');
     if (decided) {
       this.imageProofTries = 0;
       this.postImageProof(0, 0, 0);
@@ -332,12 +344,33 @@ export class ReaderEngine {
     }
 
     this.imageProofTries += 1;
-    if (this.imageProofTries > IMAGE_PROOF_MAX_TRIES) {
+    if (this.imageProofTries > IMAGE_PROOF_MAX_TRIES + IMAGE_PROOF_SLOW_TRIES) {
+      // A figure is mounted and none ever produced a box. Say so instead of going quiet: the host
+      // turns this into a visible error, so "mounted but painted nothing" is never mistaken for
+      // "nothing to report" (the negative control depends on that difference).
       this.imageProofTries = 0;
       this.postImageProof(0, 0, 0);
       return;
     }
-    this.imageProofTimer = window.setTimeout(() => this.stepImageProof(), IMAGE_PROOF_POLL_MS);
+    const delay =
+      this.imageProofTries > IMAGE_PROOF_MAX_TRIES ? IMAGE_PROOF_SLOW_MS : IMAGE_PROOF_POLL_MS;
+    this.imageProofTimer = window.setTimeout(() => this.stepImageProof(), delay);
+  }
+
+  /**
+   * One line per measurement, so the page's own account of what it saw reaches the device log
+   * (`onConsoleMessage` in the app forwards `[reader]` lines). Without it a silent proof can only
+   * be guessed at from the outside.
+   */
+  private logImageProofProbe(mounted: HTMLImageElement[], rendered: number): void {
+    const boxes = mounted.map((img) => {
+      const rect = img.getBoundingClientRect();
+      const state = img.complete ? 'c' : 'p';
+      return `${state}/nw${img.naturalWidth}/${Math.round(rect.width)}x${Math.round(rect.height)}`;
+    });
+    console.log(
+      `[reader] image-proof step=${this.imageProofTries} mounted=${mounted.length} rendered=${rendered} ${boxes.join(' ')}`,
+    );
   }
 
   /** Tell the host what a figure did: `count` 0 means a figure was mounted but painted nothing. */

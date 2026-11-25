@@ -946,6 +946,14 @@ export function ReaderScreen() {
             bounces={false}
             onLoadEnd={() => setWebLoaded(true)}
             onMessage={handleWebViewMessage}
+            // Why (tech): a release WebView does not forward its console to logcat, so a page-side
+            // failure (a figure that never measured, a message that never posted) is invisible from
+            // the outside. The engine logs `[reader] …` probes; carrying just those through to the
+            // RN console puts them in the device log without drowning it in page noise.
+            onConsoleMessage={(event) => {
+              const message = event.nativeEvent.message;
+              if (message.includes('[reader]')) console.log(message);
+            }}
           />
         ) : null}
 
@@ -961,7 +969,7 @@ export function ReaderScreen() {
           // entirely (CI run 45672094646). Its colour is transparent, so a reader sees nothing;
           // the container takes no touches.
           <View pointerEvents="none" style={styles.imageProof}>
-            {imageProof.count > 0 ? (
+            {imageProof.count > 0 && imageProof.width > 0 && imageProof.height > 0 ? (
               <Text testID="reader-image-proof" style={styles.imageProofLabel}>
                 {`صورة ${imageProof.width}×${imageProof.height}`}
               </Text>

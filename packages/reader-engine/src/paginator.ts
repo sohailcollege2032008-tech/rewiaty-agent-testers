@@ -397,9 +397,15 @@ export class Paginator {
     return this.rendered.get(this.currentChapterIdx)?.isComplete ?? false;
   }
 
-  /** Images currently mounted in the track (the book's `assets/…` figures). */
+  /**
+   * Images currently mounted in the track (the book's `assets/…` figures).
+   *
+   * Deliberately not scoped to `figure.block-image`: the proof must measure whatever the converter
+   * produced. A wrapper class that differs from the one the importer writes would otherwise hide a
+   * painted figure from the assertion that exists to catch it.
+   */
   getImages(): HTMLImageElement[] {
-    return Array.from(this.trackEl.querySelectorAll<HTMLImageElement>('.block-image img'));
+    return Array.from(this.trackEl.querySelectorAll<HTMLImageElement>('img'));
   }
 
   /**
