@@ -76,6 +76,8 @@ export class ReaderEngine {
   private imageProofEmptyChecks = 0;
   /** Last box reported for the current book, so the pump cannot spam the host. */
   private imageProofSignature = '';
+  /** One-line account of the last measurement, quoted in the page when there is nothing painted. */
+  private imageProofDetail = '';
   private fontStyleEl: HTMLStyleElement | null = null;
   private appliedFontBaseUrl = '';
   /** Bumped on every `load`, so a settle pass for an old book can't report over a new one. */
@@ -325,7 +327,8 @@ export class ReaderEngine {
     this.imageProofEmptyChecks = 0;
 
     const report = this.paginator.measureImages();
-    this.writeImageProbe(mounted, report.rendered);
+    this.imageProofDetail = this.describeImages(mounted, report.rendered);
+    this.writeImageProbe();
 
     // A decoded figure with a real box is the proof. A decoded figure with no box is not: the
     // reader cannot see it, so it keeps counting as "not painted" until the window ends.
@@ -369,18 +372,20 @@ export class ReaderEngine {
    * figure's own alt text is, in `hierarchy-import-epub.xml`), so this line is readable both by
    * Maestro and from an evidence dump.
    */
-  private writeImageProbe(mounted: HTMLImageElement[], rendered: number): void {
+  private writeImageProbe(): void {
     // Once an outcome has been reported, more counters would only talk over it.
     if (this.imageProofSignature !== '') return;
+    this.pageMarker('reader-image-probe', `reader-image-probe step=${this.imageProofTries} ${this.imageProofDetail}`);
+  }
+
+  /** What was mounted and what it measured, in words a dumped hierarchy can be read from. */
+  private describeImages(mounted: HTMLImageElement[], rendered: number): string {
     const first = mounted[0];
     const rect = first ? first.getBoundingClientRect() : null;
     const detail = first
       ? `complete=${first.complete ? 1 : 0} nw=${first.naturalWidth} box=${Math.round(rect!.width)}x${Math.round(rect!.height)}`
       : 'none';
-    this.pageMarker(
-      'reader-image-probe',
-      `reader-image-probe step=${this.imageProofTries} mounted=${mounted.length} rendered=${rendered} ${detail}`,
-    );
+    return `mounted=${mounted.length} rendered=${rendered} ${detail}`;
   }
 
   /** TEMP: a bottom-strip text node, transparent so the reader sees nothing. */
@@ -414,7 +419,11 @@ export class ReaderEngine {
     document.getElementById('reader-image-probe')?.remove();
     this.pageMarker(
       painted ? 'reader-image-proof' : 'reader-image-error',
-      painted ? `reader-image-proof ${width}x${height}` : 'reader-image-error',
+      painted
+        ? `reader-image-proof ${width}x${height}`
+        : // Say *why* nothing is painted. `mounted=1 rendered=0 nw=0` is a figure the reader
+          // cannot see; an empty error line would leave that to be guessed at.
+          `reader-image-error ${this.imageProofDetail}`,
     );
   }
 

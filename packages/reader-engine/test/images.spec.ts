@@ -331,7 +331,9 @@ test('a mounted figure that cannot be decoded is reported as count 0, not left s
     const marker = await page.evaluate(
       () => document.getElementById('reader-image-error')?.textContent ?? null,
     );
-    expect(marker).toBe('reader-image-error');
+    // The error line carries the measurement, so a dumped device hierarchy proves the figure was
+    // mounted and simply painted nothing.
+    expect(marker).toMatch(/^reader-image-error mounted=1 rendered=0 complete=1 nw=0 box=\d+x\d+$/);
     expect(await page.evaluate(() => document.getElementById('reader-image-proof'))).toBeNull();
   } finally {
     fs.rmSync(broken, { force: true });
