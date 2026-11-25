@@ -1,0 +1,161 @@
+appId: com.rewiaty.app
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 20000
+- waitForAnimationToEnd
+# Hide HUD bars if they are visible on first launch so body text is uncovered
+- runFlow:
+    when:
+      visible:
+        id: "reader-toc-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+      - waitForAnimationToEnd
+# Long-press on an asymmetric right-side point (65%,38% inside the 30%..70% center zone)
+# so physical position vs RTL-mirrored position (35%,38%) are clearly distinct.
+- longPressOn:
+    point: "65%,38%"
+- extendedWaitUntil:
+    visible:
+      id: "highlight-toolbar"
+    timeout: 8000
+- takeScreenshot: "01-highlight-toolbar"
+# Pick the gold highlight color
+- tapOn:
+    id: "highlight-color-gold"
+- extendedWaitUntil:
+    notVisible:
+      id: "highlight-toolbar"
+    timeout: 5000
+- takeScreenshot: "02-highlight-applied"
+# Prove the highlight did NOT land on the mirrored coordinate (35%,38%):
+# tapping the mirrored spot must toggle HUD or stay without highlight-delete-button.
+- tapOn:
+    point: "35%,38%"
+- waitForAnimationToEnd
+- assertNotVisible:
+    id: "highlight-delete-button"
+- runFlow:
+    when:
+      visible:
+        id: "reader-toc-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+      - waitForAnimationToEnd
+# Prove the highlight DID land on the selected text itself (65%,38%):
+# tapping the exact selected word triggers highlight-tap and opens edit toolbar with delete button.
+- tapOn:
+    point: "65%,38%"
+- extendedWaitUntil:
+    visible:
+      id: "highlight-delete-button"
+    timeout: 5000
+- takeScreenshot: "03-highlight-at-selected-spot"
+# Verify the highlight appears in the Quotes tab before closing
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-toc-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-toc-button"
+    timeout: 5000
+- tapOn:
+    id: "reader-toc-button"
+- extendedWaitUntil:
+    visible:
+      id: "toc-tab-highlights"
+    timeout: 5000
+- tapOn:
+    id: "toc-tab-highlights"
+- extendedWaitUntil:
+    visible:
+      id: "highlights-export-button"
+    timeout: 5000
+- assertNotVisible:
+    id: "highlights-empty"
+- takeScreenshot: "04-highlights-tab-before-restart"
+- tapOn:
+    id: "toc-close-button"
+- waitForAnimationToEnd
+# Force-stop and relaunch without clearing state to prove highlight persistence
+- stopApp
+- launchApp:
+    clearState: false
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 20000
+- waitForAnimationToEnd
+# Verify after restart that mirrored coordinate (35%,38%) still has no highlight
+# and the actual selected spot (65%,38%) still hits the persisted highlight.
+- runFlow:
+    when:
+      visible:
+        id: "reader-toc-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+      - waitForAnimationToEnd
+- tapOn:
+    point: "35%,38%"
+- waitForAnimationToEnd
+- assertNotVisible:
+    id: "highlight-delete-button"
+- runFlow:
+    when:
+      visible:
+        id: "reader-toc-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+      - waitForAnimationToEnd
+- tapOn:
+    point: "65%,38%"
+- extendedWaitUntil:
+    visible:
+      id: "highlight-delete-button"
+    timeout: 5000
+- takeScreenshot: "05-highlight-after-reopen"
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-toc-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-toc-button"
+    timeout: 5000
+- tapOn:
+    id: "reader-toc-button"
+- extendedWaitUntil:
+    visible:
+      id: "toc-tab-highlights"
+    timeout: 5000
+- tapOn:
+    id: "toc-tab-highlights"
+- extendedWaitUntil:
+    visible:
+      id: "highlights-export-button"
+    timeout: 5000
+- assertNotVisible:
+    id: "highlights-empty"
+- takeScreenshot: "06-highlights-persisted"

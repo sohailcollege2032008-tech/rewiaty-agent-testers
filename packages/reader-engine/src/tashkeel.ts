@@ -148,6 +148,20 @@ function hasStoredOriginals(root: Element): boolean {
 }
 
 /**
+ * The element's text **as the book file has it**, whatever mode is currently displayed.
+ * Concatenating the stored originals is the same string `root.textContent` would give in
+ * `full` mode, so callers that persist or quote text (selection, bookmarks, highlights)
+ * always address the book, never the shortened on-screen copy.
+ */
+export function originalTextOf(root: Element): string {
+  let text = '';
+  forEachTextNode(root, (_node, original) => {
+    text += original;
+  });
+  return text;
+}
+
+/**
  * Convert a displayed-text offset (relative to `root.textContent`, exactly how the
  * engine's `findTextPosition` walks it) into an original-text offset.
  */

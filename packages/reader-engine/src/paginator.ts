@@ -6,7 +6,16 @@ import {
   measureChToPx,
   spineTokensFor,
 } from './spread.js';
-import { THEMES, type ReaderInsets, type ReaderSettings, type TocEntry } from './types.js';
+import { hitTestHighlightAtPoint, renderEngineHighlights } from './highlights.js';
+import {
+  HIGHLIGHT_COLORS,
+  THEMES,
+  type EngineHighlight,
+  type ReaderInsets,
+  type ReaderSettings,
+  type SelectionRect,
+  type TocEntry,
+} from './types.js';
 import { applyTashkeelToElement, toDisplayOffset, toOriginalOffset } from './tashkeel.js';
 
 function normalizeInsets(insets?: ReaderInsets | null): ReaderInsets {
@@ -332,6 +341,7 @@ export class Paginator {
   private idleHandle: { kind: 'idle' | 'timeout'; id: number } | null = null;
   private transitionResetRaf: number | null = null;
   private layoutGeneration = 0;
+  private highlights: EngineHighlight[] = [];
 
   // --- exact pagination pass (offscreen, frame-chunked) ---
   /** Chapters still to measure, in priority order (see `startExactPagination`). */
@@ -768,7 +778,13 @@ export class Paginator {
     });
   }
 
-  setBook(book: Book, settings: ReaderSettings, initialAnchor?: Anchor, insets?: ReaderInsets): void {
+  setBook(
+    book: Book,
+    settings: ReaderSettings,
+    initialAnchor?: Anchor,
+    insets?: ReaderInsets,
+    highlights?: EngineHighlight[],
+  ): void {
     this.cancelIdleWork();
     this.cancelExactPagination();
     this.cancelDragSettle();
@@ -777,6 +793,7 @@ export class Paginator {
     this.book = book;
     this.settings = { ...settings };
     this.insets = normalizeInsets(insets);
+    this.highlights = Array.isArray(highlights) ? [...highlights] : [];
     this.clearRenderedDom();
     this.clearRestoredAnchor();
     this.invalidatePageMap();
@@ -833,6 +850,63 @@ export class Paginator {
     }
 
     this.applyTrackTransform(false);
+    this.renderHighlights();
+  }
+
+  setHighlights(highlights: EngineHighlight[]): void {
+    this.highlights = Array.isArray(highlights) ? [...highlights] : [];
+    this.renderHighlights();
+  }
+
+  /**
+   * Highlights arrive in **original-text** coordinates — that is what the host persists and
+   * what survives a mode change — while the DOM holds the displayed text and everything the
+   * highlight renderer/hit-tester touches (`buildBlockRange`, `Range`) works on displayed
+   * offsets. Translate once per render, per mounted block.
+   *
+   * A highlight on a block that is not mounted yet is passed through unconverted; the
+   * renderer skips unmounted blocks, and the block is converted on a later pass once it is
+   * mounted.
+   */
+  private displayHighlights(): EngineHighlight[] {
+    const mode = this.settings.tashkeel;
+    if (mode === 'full' || this.highlights.length === 0) return this.highlights;
+
+    const blockById = new Map<string, HTMLElement>();
+    for (const entry of this.rendered.values()) {
+      for (const [blockId, el] of entry.blockById) blockById.set(blockId, el);
+    }
+
+    const converted: EngineHighlight[] = [];
+    for (const hl of this.highlights) {
+      const blockEl = blockById.get(hl.blockId);
+      if (!blockEl) {
+        converted.push(hl);
+        continue;
+      }
+      const start = toDisplayOffset(blockEl, hl.charOffset, mode);
+      const end = toDisplayOffset(blockEl, hl.charOffset + hl.length, mode);
+      converted.push({ ...hl, charOffset: start, length: Math.max(0, end - start) });
+    }
+    return converted;
+  }
+
+  /** Convert a displayed-text offset inside `blockEl` back to the file's coordinates. */
+  toOriginalOffsetInBlock(blockEl: HTMLElement, displayOffset: number): number {
+    return toOriginalOffset(blockEl, displayOffset, this.settings.tashkeel);
+  }
+
+  renderHighlights(forceOverlay = false): { mode: 'css-highlight' | 'overlay'; renderedCount: number } {
+    return renderEngineHighlights(this.rendered.values(), this.displayHighlights(), { forceOverlay });
+  }
+
+  hitTestHighlight(
+    clientX: number,
+    clientY: number,
+  ): { highlight: EngineHighlight; rect: SelectionRect } | null {
+    const active = this.rendered.get(this.currentChapterIdx);
+    if (!active) return null;
+    return hitTestHighlightAtPoint([active], this.displayHighlights(), clientX, clientY);
   }
 
   /**
@@ -906,6 +980,7 @@ export class Paginator {
       if (active && !active.isComplete) {
         this.appendNextBatch(active, BATCH_WORD_BUDGET);
         this.layoutVirtualizedChapterOffsets();
+        this.renderHighlights();
         this.callbacks.onBackgroundProgress?.();
         if (active.isComplete) {
           this.callbacks.onChapterLayoutComplete?.(active.chapter.id);
@@ -926,6 +1001,7 @@ export class Paginator {
             this.pageCache.set(this.cacheKey(adj.chapter), adj.pageCount);
           }
           this.layoutVirtualizedChapterOffsets();
+          this.renderHighlights();
           if (!adj.isComplete || this.hasUnmountedAdjacentChapters()) {
             scheduleNext(step);
           }
@@ -934,6 +1010,7 @@ export class Paginator {
         if (!adj.isComplete) {
           this.appendNextBatch(adj, BATCH_WORD_BUDGET);
           this.layoutVirtualizedChapterOffsets();
+          this.renderHighlights();
           if (!adj.isComplete || this.hasUnmountedAdjacentChapters()) {
             scheduleNext(step);
           }
@@ -992,6 +1069,7 @@ export class Paginator {
     }
 
     this.applyTrackTransform(false);
+    this.renderHighlights();
     this.scheduleBackgroundWork();
   }
 
@@ -1020,6 +1098,7 @@ export class Paginator {
       this.currentChapterPage = this.alignToSpread(this.resolveAnchorPageInCurrentChapter(anchorBefore));
     }
     this.applyTrackTransform(false);
+    this.renderHighlights();
     this.scheduleBackgroundWork();
     return true;
   }
@@ -1058,6 +1137,7 @@ export class Paginator {
     this.layoutVirtualizedChapterOffsets();
     this.currentChapterPage = this.alignToSpread(this.resolveAnchorPageInCurrentChapter(anchorBefore));
     this.applyTrackTransform(false);
+    this.renderHighlights();
     return true;
   }
 
@@ -1107,6 +1187,7 @@ export class Paginator {
     if (changed || firstForSignature) {
       this.invalidatePageMap();
       this.layoutVirtualizedChapterOffsets();
+      this.renderHighlights();
     }
     // Count the rest of the book offscreen so the page number (and the total) are a
     // property of the book and the layout, not of which chapters happen to be mounted.
@@ -1131,6 +1212,7 @@ export class Paginator {
     }
     if (mounted) {
       this.layoutVirtualizedChapterOffsets();
+      this.renderHighlights();
       if (curr.isComplete) {
         this.callbacks.onChapterLayoutComplete?.(curr.chapter.id);
       }
@@ -1149,6 +1231,7 @@ export class Paginator {
       this.clearRestoredAnchor();
       this.syncActiveAndEvict(0);
       this.applyTrackTransform(false);
+      this.renderHighlights();
       this.scheduleBackgroundWork();
       return true;
     }
@@ -1176,6 +1259,7 @@ export class Paginator {
       const curr = this.rendered.get(this.currentChapterIdx);
       this.currentChapterPage = curr ? this.lastSpreadStart(curr.layoutPageCount) : 0;
       this.applyTrackTransform(false);
+      this.renderHighlights();
       this.scheduleBackgroundWork();
       return true;
     }
@@ -1230,6 +1314,7 @@ export class Paginator {
       this.currentChapterPage = this.alignToSpread(this.resolveAnchorPageInCurrentChapter(target.anchor));
       this.clearRestoredAnchor();
       this.applyTrackTransform(false);
+      this.renderHighlights();
       this.scheduleBackgroundWork();
       return true;
     }
@@ -1256,6 +1341,7 @@ export class Paginator {
       this.currentChapterPage = this.alignToSpread(Math.min(maxPage, requestedZeroBased));
       this.clearRestoredAnchor();
       this.applyTrackTransform(false);
+      this.renderHighlights();
       this.scheduleBackgroundWork();
       return true;
     }
@@ -1294,6 +1380,7 @@ export class Paginator {
       this.currentChapterPage = this.alignToSpread(Math.min(maxPage, pageInChapter));
       this.clearRestoredAnchor();
       this.applyTrackTransform(false);
+      this.renderHighlights();
       this.scheduleBackgroundWork();
       return true;
     }
@@ -1632,6 +1719,11 @@ export class Paginator {
     rootStyle.setProperty('--accent-color', theme.accent);
     rootStyle.setProperty('--popover-bg', theme.popoverBg);
     rootStyle.setProperty('--popover-border', theme.popoverBorder);
+
+    const isDarkTheme = this.settings.theme === 'burnt-paper' || this.settings.theme === 'oled-crimson';
+    for (const meta of HIGHLIGHT_COLORS) {
+      rootStyle.setProperty(`--hl-${meta.id}`, isDarkTheme ? meta.fillDark : meta.fillLight);
+    }
 
     // Design tokens (Warraq tablet / open-book spread) exposed as CSS variables.
     rootStyle.setProperty('--spread-gutter', `${SPREAD_GUTTER_PX}px`);
