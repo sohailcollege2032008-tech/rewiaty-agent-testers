@@ -3,15 +3,18 @@ appId: com.rewiaty.app
 # F10: footnote popover. The bundled novel keeps footnote [^1] in chapter 4; the
 # reference renders as a bare "1" link inside the reader WebView. Turning pages
 # until that link is on screen keeps the journey independent of page metrics.
+# Timeouts are generous on purpose: one hierarchy fetch of this WebView takes ~2-4s
+# on the CPU-only CI emulator, so a 5s wait could expire while the popover was in
+# fact already open (run 45614321052).
 - launchApp
 - extendedWaitUntil:
     visible: "حَجَرُ الْمَاءِ"
-    timeout: 20000
+    timeout: 40000
 - tapOn: "حَجَرُ الْمَاءِ"
 - extendedWaitUntil:
     notVisible:
       id: "reader-loading-overlay"
-    timeout: 20000
+    timeout: 40000
 - waitForAnimationToEnd
 - takeScreenshot: "01-book-open"
 # Jump to the chapter that carries the footnote.
@@ -25,20 +28,20 @@ appId: com.rewiaty.app
 - extendedWaitUntil:
     visible:
       id: "reader-toc-button"
-    timeout: 5000
+    timeout: 15000
 - tapOn:
     id: "reader-toc-button"
 - extendedWaitUntil:
     visible:
       id: "toc-item-ch04"
-    timeout: 5000
+    timeout: 15000
 - tapOn:
     id: "toc-item-ch04"
 - waitForAnimationToEnd
 - takeScreenshot: "02-chapter-4-start"
 # RTL: tapping the left edge advances. Stop on the page that shows the [^1] link.
 - repeat:
-    times: 14
+    times: 20
     while:
       notVisible: "^1$"
     commands:
@@ -49,15 +52,23 @@ appId: com.rewiaty.app
 - takeScreenshot: "03-footnote-reference-visible"
 - tapOn: "^1$"
 - extendedWaitUntil:
-    visible: ".*حاشية.*"
-    timeout: 5000
+    visible:
+      id: "footnote-title"
+    timeout: 20000
+- assertVisible:
+    id: "footnote-title"
+    text: ".*حاشية.*"
 - assertVisible: ".*الصَّدَفَةُ الْبَيْضَاءُ.*"
 - takeScreenshot: "04-footnote-popover"
-# The popover closes on a backdrop tap; the page underneath must stay the same.
+# The popover closes on a backdrop tap and the page underneath must stay the same.
+# 50%,35% is inside the backdrop but away from the HUD bars: the HUD buttons are
+# native views painted on top of the WebView, so a corner tap (8%,8%) lands on the
+# font-size button and opens the settings sheet instead of closing the popover.
 - tapOn:
-    point: "8%,8%"
+    point: "50%,35%"
 - extendedWaitUntil:
-    notVisible: ".*حاشية.*"
-    timeout: 5000
+    notVisible:
+      id: "footnote-title"
+    timeout: 20000
 - assertVisible: "^1$"
 - takeScreenshot: "05-back-to-same-page"
