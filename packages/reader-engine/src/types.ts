@@ -149,6 +149,8 @@ export type TocEntry = {
   wordCount: number;
   pageCount: number;
   startPage: number;
+  /** true while `pageCount` is an estimate (that chapter has not been measured yet). */
+  estimated?: boolean;
 };
 
 export type WebToRNMessage =
@@ -166,6 +168,11 @@ export type WebToRNMessage =
       bookProgress: number;
       /** true when the reader is showing a two-page open-book spread. */
       spread: boolean;
+      /**
+       * true while `pageCount` is an estimate for the current layout. The sheet
+       * counter should read "~N" (or drop the total) instead of presenting it as final.
+       */
+      estimated?: boolean;
     }
   | {
       type: 'tap';

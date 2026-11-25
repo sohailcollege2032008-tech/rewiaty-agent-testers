@@ -23,6 +23,8 @@ export type ReaderHudProps = {
   chapterTitle: string;
   page: number;
   pageCount: number;
+  /** The engine has not measured every chapter yet, so `pageCount` is an estimate. */
+  estimated?: boolean;
   chapterCount?: number;
   isBookmarked?: boolean;
   isTablet?: boolean;
@@ -42,6 +44,7 @@ export function ReaderHud({
   chapterTitle,
   page,
   pageCount,
+  estimated = false,
   chapterCount,
   isBookmarked = false,
   isTablet = false,
@@ -286,7 +289,7 @@ export function ReaderHud({
                 { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
               ]}
             >
-              {`صفحة ${page} من ${pageCount}`}
+              {`صفحة ${page} من ${estimated ? '~' : ''}${pageCount}`}
             </Text>
           </View>
 
