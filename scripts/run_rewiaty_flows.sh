@@ -82,16 +82,21 @@ run_flow() {
   # WebView text selector fails; keep one dump per flow next to the screenshots.
   maestro hierarchy > "results/logs/hierarchy-${flow_id}.xml" 2>/dev/null || true
 
-  # Collect screenshots saved in working directory, debug output, or ~/.maestro/tests
-  shopt -s nullglob
-  for png in *.png "$debug_dir"/*.png "$debug_dir"/**/*.png; do
-    [ -f "$png" ] && mv -f "$png" "$shot_dir/" 2>/dev/null || true
+  # Why (tech): --debug-output writes <dir>/.maestro/tests/<ts>/<flow>/takeScreenshot/*.png, three
+  # levels deep, so the old "$debug_dir"/**/*.png glob (no globstar) never matched and every run
+  # uploaded zero screenshots. commands.json is Maestro's own per-command journal, the fastest way
+  # to see which step failed and what it saw.
+  shopt -s nullglob globstar
+  for png in *.png "$debug_dir"/**/*.png; do
+    [ -f "$png" ] && cp -f "$png" "$shot_dir/" 2>/dev/null || true
   done
+  shopt -u nullglob globstar
+  cp -f "$debug_dir"/.maestro/tests/*/*/commands.json "results/logs/${flow_id}-commands.json" 2>/dev/null || true
+  cp -f "$debug_dir"/.maestro/tests/*/*/logs/maestro.log "results/logs/${flow_id}-maestro-debug.log" 2>/dev/null || true
   if [ -d "$HOME/.maestro/tests" ]; then
     find "$HOME/.maestro/tests" -name '*.png' -exec cp -n {} "$shot_dir/" \; 2>/dev/null || true
     rm -rf "$HOME/.maestro/tests"/* 2>/dev/null || true
   fi
-  shopt -u nullglob
 
   if [ "$flow_rc" -eq 0 ]; then
     printf '%s\tPASS\tmaestro exit=0\n' "$flow_id" >> results/status.tsv
@@ -193,32 +198,39 @@ if want_flow rotate-position; then
   adb shell settings put system accelerometer_rotation 1 >/dev/null 2>&1 || true
 fi
 
-# 8. keep-awake: the screen timeout must be shorter than the flow's 25s idle, and the device must
+# 8. keep-awake: the screen timeout must be shorter than the flow's 45s idle, and the device must
 #    not be kept awake by the cable ("stay awake while plugged in" is what would fake a PASS).
+#    Why 30s and not 15s: an Expo cold start after `pm clear` needs 15-20s before the reader opens,
+#    and a 15s timeout slept the screen mid-launch (run 45614321052) — that tested the emulator,
+#    not the reader. The last input is the tap that opens the book, so 45 > 30 still proves it.
 if want_flow keep-awake; then
   ORIG_SCREEN_OFF="$(adb shell settings get system screen_off_timeout 2>/dev/null | tr -d '\r')"
   case "$ORIG_SCREEN_OFF" in ''|null) ORIG_SCREEN_OFF=2147483647 ;; esac
-  echo "==> keep-awake: screen_off_timeout=15000 (was $ORIG_SCREEN_OFF), stay_on_while_plugged_in=0"
-  adb shell settings put system screen_off_timeout 15000
+  echo "==> keep-awake: screen_off_timeout=30000 (was $ORIG_SCREEN_OFF), stay_on_while_plugged_in=0"
+  adb shell settings put system screen_off_timeout 30000
   adb shell settings put global stay_on_while_plugged_in 0
   adb shell svc power stayon false >/dev/null 2>&1 || true
   adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
-  # Warm the app up to the library before Maestro starts, so the 15s timer does not expire during
-  # a cold start (that would test the emulator, not the reader's keep-awake). The wake keyevent
-  # resets the timer if the warm-up itself slept the screen.
+  # Warm the app up to the library before Maestro starts, so the 30s timer does not expire during
+  # a cold start. The wake keyevent resets the timer if the warm-up itself slept the screen.
   adb shell monkey -p "$APP_ID" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
   sleep 10
   adb shell input keyevent 224 >/dev/null 2>&1 || true
   adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
   run_flow "keep-awake" || true
   {
-    echo "== after the 25s reader idle (no input since the idle started) =="
+    echo "== after the 45s reader idle (no input since the book was opened) =="
     echo "screen_off_timeout=$(adb shell settings get system screen_off_timeout 2>/dev/null | tr -d '\r')"
     echo "stay_on_while_plugged_in=$(adb shell settings get global stay_on_while_plugged_in 2>/dev/null | tr -d '\r')"
-    adb shell dumpsys power | grep -E "mWakefulness=|Display Power: state=" || true
+    # Why (tech): API 34 prints "  mWakefulness=Asleep" with leading spaces, so the raw line never
+    # equals "mWakefulness=Awake"; extract the token instead of comparing the whole line.
+    adb shell dumpsys power | grep -oE "mWakefulness=[A-Za-z]+" | head -n 1 | sed 's/^/wakefulness: /'
+    adb shell dumpsys power | grep -E "Display Power: state=" | head -n 1
+    echo "== maestro verdict =="
+    cat results/logs/keep-awake-maestro.log 2>/dev/null || true
   } | tee results/logs/keep-awake-power.txt
 
-  KEEP_AWAKE_POWER="$(grep -m1 'mWakefulness=' results/logs/keep-awake-power.txt | tr -d '\r' || true)"
+  KEEP_AWAKE_POWER="$(grep -m1 'wakefulness:' results/logs/keep-awake-power.txt | sed 's/.*wakefulness: //' | tr -d '\r' || true)"
   KEEP_AWAKE_SECONDS="$(python3 - <<'PY'
 import re
 try:
@@ -229,39 +241,39 @@ except Exception:
     print('0')
 PY
 )"
-  if [ "$KEEP_AWAKE_POWER" != "mWakefulness=Awake" ]; then
-    echo "ERROR: keep-awake: device was not Awake after the reader idle ($KEEP_AWAKE_POWER)" | tee -a results/logs/keep-awake-power.txt
-    sed -i 's/^keep-awake\tPASS\t.*/keep-awake\tFAIL\tdevice slept during the 25s reader idle/' results/status.tsv
+  if [ "$KEEP_AWAKE_POWER" != "Awake" ]; then
+    echo "ERROR: keep-awake: device was not Awake after the reader idle (wakefulness=${KEEP_AWAKE_POWER:-unknown})" | tee -a results/logs/keep-awake-power.txt
+    sed -i 's/^keep-awake\tPASS\t.*/keep-awake\tFAIL\tdevice slept during the 45s reader idle/' results/status.tsv
     OVERALL_RC=1
   fi
-  if ! awk -v s="$KEEP_AWAKE_SECONDS" 'BEGIN { exit !(s >= 25) }'; then
-    echo "ERROR: keep-awake: flow only took ${KEEP_AWAKE_SECONDS}s, so the 25s idle did not run" | tee -a results/logs/keep-awake-power.txt
-    sed -i 's/^keep-awake\tPASS\t.*/keep-awake\tFAIL\t25s idle did not elapse/' results/status.tsv
+  if ! awk -v s="$KEEP_AWAKE_SECONDS" 'BEGIN { exit !(s >= 45) }'; then
+    echo "ERROR: keep-awake: flow only took ${KEEP_AWAKE_SECONDS}s, so the 45s idle did not run" | tee -a results/logs/keep-awake-power.txt
+    sed -i 's/^keep-awake\tPASS\t.*/keep-awake\tFAIL\t45s idle did not elapse/' results/status.tsv
     OVERALL_RC=1
   fi
 
   # Negative control in the same conditions: the library screen (no reader) must sleep inside the
-  # same 15s window, otherwise the emulator never sleeps and the positive result proves nothing.
+  # same 30s window, otherwise the emulator never sleeps and the positive result proves nothing.
   echo "==> keep-awake control: library only, no reader, same screenrecord load"
   adb shell input keyevent 224 >/dev/null 2>&1 || true
   adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
   adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
   adb shell am start -n com.rewiaty.app/.MainActivity >/dev/null 2>&1 || true
   adb shell rm -f /sdcard/rec_keep_awake_control.mp4 >/dev/null 2>&1 || true
-  adb shell screenrecord --bit-rate 2000000 --time-limit 30 /sdcard/rec_keep_awake_control.mp4 >/dev/null 2>&1 &
+  adb shell screenrecord --bit-rate 2000000 --time-limit 45 /sdcard/rec_keep_awake_control.mp4 >/dev/null 2>&1 &
   CONTROL_REC_PID=$!
-  sleep 22
+  sleep 40
   {
-    echo "== control: library screen, no reader, 22s after launch =="
-    adb shell dumpsys power | grep -E "mWakefulness=|Display Power: state=" || true
+    echo "== control: library screen, no reader, 40s after launch (timeout 30s) =="
+    adb shell dumpsys power | grep -oE "mWakefulness=[A-Za-z]+" | head -n 1 | sed 's/^/wakefulness: /'
   } | tee -a results/logs/keep-awake-power.txt
   adb shell pkill -INT screenrecord >/dev/null 2>&1 || true
   kill "$CONTROL_REC_PID" >/dev/null 2>&1 || true
-  CONTROL_POWER="$(grep -A3 '== control:' results/logs/keep-awake-power.txt | grep -m1 'mWakefulness=' | tr -d '\r' || true)"
-  if [ "$CONTROL_POWER" = "mWakefulness=Asleep" ]; then
-    echo "==> keep-awake control PASSED: the library screen slept at the same 15s timeout" | tee -a results/logs/keep-awake-power.txt
+  CONTROL_POWER="$(grep -A3 '== control:' results/logs/keep-awake-power.txt | grep -m1 'wakefulness:' | sed 's/.*wakefulness: //' | tr -d '\r' || true)"
+  if [ "$CONTROL_POWER" = "Asleep" ]; then
+    echo "==> keep-awake control PASSED: the library screen slept at the same 30s timeout" | tee -a results/logs/keep-awake-power.txt
   elif [ -n "$CONTROL_POWER" ]; then
-    echo "ERROR: keep-awake control did not sleep ($CONTROL_POWER); the keep-awake result cannot be trusted" | tee -a results/logs/keep-awake-power.txt
+    echo "ERROR: keep-awake control did not sleep (wakefulness=$CONTROL_POWER); the keep-awake result cannot be trusted" | tee -a results/logs/keep-awake-power.txt
     sed -i 's/^keep-awake\tPASS\t.*/keep-awake\tFAIL\tcontrol screen did not sleep, result inconclusive/' results/status.tsv
     OVERALL_RC=1
   fi
