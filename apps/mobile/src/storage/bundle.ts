@@ -14,6 +14,19 @@ import {
 } from './database';
 import type { BookLibraryRecord, BookManifest, BookReaderState } from '@/types/reader';
 
+/**
+ * Read a file's text while keeping the native handle alive.
+ * Why (tech): Hermes may collect a `File` that is not referenced after `await readFileText(file)`,
+ * and expo-file-system then rejects with "Cannot use shared object that was already released"
+ * (seen on the open-with flow, CI run 45597933250). Touching the object after the await pins it.
+ */
+async function readFileText(file: File): Promise<string> {
+  const text = await file.text();
+  void file.uri;
+  return text;
+}
+
+
 export const PARSER_VERSION = 1;
 const SAMPLE_SEEDED_KV_KEY = 'sample_seeded_v1';
 
@@ -79,7 +92,7 @@ export async function importBookContent(
   let initialProgress = 0;
   if (stateFile.exists) {
     try {
-      const existingState = JSON.parse(await stateFile.text()) as Partial<BookReaderState>;
+      const existingState = JSON.parse(await readFileText(stateFile)) as Partial<BookReaderState>;
       if (typeof existingState.progress === 'number' && Number.isFinite(existingState.progress)) {
         initialProgress = Math.max(0, Math.min(1, existingState.progress));
       }
@@ -121,12 +134,12 @@ export async function readBookBundle(bookId: string): Promise<{
     throw new Error('تعذّر العثور على ملف الكتاب.');
   }
 
-  const rawText = await bookFile.text();
+  const rawText = await readFileText(bookFile);
   const manifestFile = new File(bookDir, 'manifest.json');
   let manifest: StoredManifest | null = null;
   if (manifestFile.exists) {
     try {
-      manifest = JSON.parse(await manifestFile.text()) as StoredManifest;
+      manifest = JSON.parse(await readFileText(manifestFile)) as StoredManifest;
     } catch {
       manifest = null;
     }
@@ -160,7 +173,7 @@ export async function readBookBundle(bookId: string): Promise<{
 
   if (stateFile.exists) {
     try {
-      const parsedState = JSON.parse(await stateFile.text()) as Partial<BookReaderState>;
+      const parsedState = JSON.parse(await readFileText(stateFile)) as Partial<BookReaderState>;
       state = {
         anchor: parsedState.anchor ?? null,
         progress:
@@ -213,7 +226,7 @@ export async function readAssetText(assetModule: number): Promise<string> {
   if (!uri) {
     throw new Error('تعذّر تحميل الملف المدمج.');
   }
-  return new File(uri).text();
+  return readFileText(new File(uri));
 }
 
 export async function ensureSampleBookSeeded(db?: DatabaseAdapter): Promise<boolean> {

@@ -56,6 +56,17 @@ const SETTINGS_CLOSE_TAP_COOLDOWN_MS = 300;
 const READER_ORIGIN_WHITELIST: string[] = ['file://*', 'about:blank'];
 /** Used when the offline fonts folder is unavailable; needs no whitelist entry. */
 const READER_FALLBACK_BASE_URL = 'about:blank';
+// Why (product): native/engine errors are English and technical (CI run 45597933250 showed
+// "Call to function 'FileSystemFile.text' has been rejected…" to the reader). Readers only see Arabic.
+const ARABIC_RE = /[\u0600-\u06FF]/;
+export const READER_OPEN_FAILED_MESSAGE = 'تعذّر فتح الكتاب. ارجع للمكتبة وجرّب تفتحه تاني.';
+export function readerErrorMessage(err: unknown): string {
+  const message = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+  if (message && ARABIC_RE.test(message)) return message;
+  if (message) console.warn('[reader] open failed:', message);
+  return READER_OPEN_FAILED_MESSAGE;
+}
+
 export const HUD_HINT_KV_KEY = 'reader_hud_hint_seen_v1';
 export const HUD_HINT_TEXT = 'اضغط في نص الصفحة عشان تظهر الإعدادات والفهرس، وعلى الأطراف عشان تقلّب.';
 
@@ -264,7 +275,7 @@ export function ReaderScreen() {
         });
       } catch (err) {
         if (cancelled) return;
-        setLoadError(err instanceof Error ? err.message : 'تعذّر فتح الكتاب.');
+        setLoadError(readerErrorMessage(err));
       }
     })();
 
@@ -443,7 +454,7 @@ export function ReaderScreen() {
           break;
         }
         case 'error':
-          setLoadError(parsed.message);
+          setLoadError(readerErrorMessage(parsed.message));
           break;
       }
     },

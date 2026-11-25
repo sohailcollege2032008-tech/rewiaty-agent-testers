@@ -790,4 +790,10 @@ describe('ReaderScreen', () => {
 
     addListenerSpy.mockRestore();
   });
+  it('never shows a raw English error to the reader', () => {
+    const { readerErrorMessage, READER_OPEN_FAILED_MESSAGE } = jest.requireActual('@/screens/reader-screen');
+    expect(readerErrorMessage(new Error("Call to function 'FileSystemFile.text' has been rejected"))).toBe(READER_OPEN_FAILED_MESSAGE);
+    expect(readerErrorMessage(new Error('تعذّر العثور على ملف الكتاب.'))).toBe('تعذّر العثور على ملف الكتاب.');
+    expect(readerErrorMessage(undefined)).toBe(READER_OPEN_FAILED_MESSAGE);
+  });
 });
