@@ -4,20 +4,27 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-echo "==> 1/4 npm ci"
-npm ci
+ABIS="${1:-${ABIS:-arm64-v8a,x86_64}}"
+SKIP_PREP="${SKIP_PREP:-0}"
 
-echo "==> 2/4 Build reader-engine and sync mobile assets"
-npm run build
-npm --workspace=@rewiaty/mobile run prebuild:assets
+if [ "$SKIP_PREP" != "1" ]; then
+  echo "==> 1/4 npm ci"
+  npm ci
 
-echo "==> 3/4 Expo prebuild (Android)"
-cd "$ROOT_DIR/apps/mobile"
-CI=1 npx expo prebuild -p android --clean --no-install
+  echo "==> 2/4 Build reader-engine and sync mobile assets"
+  npm run build
+  npm --workspace=@rewiaty/mobile run prebuild:assets
 
-echo "==> 4/4 Gradle assembleRelease (arm64-v8a, x86_64)"
+  echo "==> 3/4 Expo prebuild (Android)"
+  cd "$ROOT_DIR/apps/mobile"
+  CI=1 npx expo prebuild -p android --clean --no-install
+else
+  echo "==> Skipping prep steps (SKIP_PREP=1)"
+fi
+
+echo "==> 4/4 Gradle assembleRelease (${ABIS})"
 cd "$ROOT_DIR/apps/mobile/android"
-./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a,x86_64
+./gradlew assembleRelease "-PreactNativeArchitectures=${ABIS}"
 
 APK_PATH="$ROOT_DIR/apps/mobile/android/app/build/outputs/apk/release/app-release.apk"
 if [ ! -f "$APK_PATH" ]; then
@@ -25,5 +32,6 @@ if [ ! -f "$APK_PATH" ]; then
   exit 1
 fi
 
-echo "==> Built APK: $APK_PATH"
+echo "==> Built APK (${ABIS}): $APK_PATH"
+ls -lh "$APK_PATH"
 sha256sum "$APK_PATH"

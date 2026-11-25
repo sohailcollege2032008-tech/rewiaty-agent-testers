@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  BackHandler,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,9 +11,8 @@ import {
 } from 'react-native';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
 
-import { READER_FONT_FAMILIES } from '@/storage/settings-store';
+import { READER_FONT_FAMILIES, type SettingsTabId } from '@/storage/settings-store';
 import { FONT_LABELS_AR, RADIUS, TYPOGRAPHY, useResponsiveLayout } from '@/theme/layout';
 import { getAppThemeTokens, THEME_OPTIONS, type AppThemeTokens } from '@/theme/reader-theme';
 import type { IndentMode, ReaderSettings, TextAlignMode } from '@/types/reader';
@@ -21,11 +21,9 @@ export type ReaderSettingsSheetProps = {
   visible: boolean;
   settings: ReaderSettings;
   onChange: (partial: Partial<ReaderSettings>) => void;
-  onReset?: () => void;
+  onReset?: (tab: SettingsTabId) => void;
   onClose: () => void;
 };
-
-type SettingsTabId = 'font' | 'layout' | 'theme';
 
 const FONT_WEIGHT_OPTIONS: ReadonlyArray<{ value: number; label: string }> = [
   { value: 300, label: 'خفيف' },
@@ -147,14 +145,12 @@ function SettingsContent({
   isSidePanel,
   onChange,
   onReset,
-  onClose,
 }: {
   settings: ReaderSettings;
   palette: AppThemeTokens;
   isSidePanel: boolean;
   onChange: (partial: Partial<ReaderSettings>) => void;
-  onReset?: () => void;
-  onClose: () => void;
+  onReset?: (tab: SettingsTabId) => void;
 }) {
   const insets = useSafeAreaInsets();
   const { fontScale } = useWindowDimensions();
@@ -251,13 +247,15 @@ function SettingsContent({
           {onReset ? (
             <Pressable
               testID="settings-reset-button"
-              onPress={onReset}
+              onPress={() => onReset(activeTab)}
               hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
               style={({ pressed }) => [
                 styles.resetBtn,
                 { backgroundColor: palette.chipBg, borderColor: palette.border },
                 pressed && styles.pressed,
               ]}
+              accessibilityRole="button"
+              accessibilityLabel={`إرجاع إعدادات ${activeTab === 'font' ? 'الخط' : activeTab === 'layout' ? 'الصفحة' : 'المظهر'} للافتراضي`}
             >
               <Text
                 numberOfLines={1}
@@ -272,27 +270,6 @@ function SettingsContent({
               </Text>
             </Pressable>
           ) : null}
-
-          <Pressable
-            testID="settings-close-button"
-            onPress={onClose}
-            hitSlop={10}
-            style={({ pressed }) => [
-              styles.closeBtn,
-              pressed && { backgroundColor: palette.surface },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel="إغلاق الإعدادات"
-          >
-            <Svg width={17} height={17} viewBox="0 0 24 24" fill="none">
-              <Path
-                d="M18 6L6 18M6 6l12 12"
-                stroke={palette.muted}
-                strokeWidth={1.9}
-                strokeLinecap="round"
-              />
-            </Svg>
-          </Pressable>
         </View>
       </View>
 
@@ -781,6 +758,15 @@ export function ReaderSettingsSheet({
   const isSidePanel = layout.settingsMode === 'side-panel';
 
   useEffect(() => {
+    if (!visible) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      onClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [visible, onClose]);
+
+  useEffect(() => {
     if (isSidePanel) return;
     if (visible) {
       sheetRef.current?.snapToIndex(0);
@@ -797,6 +783,7 @@ export function ReaderSettingsSheet({
     return (
       <View style={styles.host} pointerEvents="box-none" testID="reader-settings-sheet-host">
         <Pressable
+          testID="settings-dismiss-backdrop"
           style={styles.sideDismissBackdrop}
           onPress={onClose}
           accessibilityLabel="إغلاق لوحة الإعدادات"
@@ -821,7 +808,6 @@ export function ReaderSettingsSheet({
             isSidePanel
             onChange={onChange}
             onReset={onReset}
-            onClose={onClose}
           />
         </View>
       </View>
@@ -830,6 +816,12 @@ export function ReaderSettingsSheet({
 
   return (
     <View style={styles.host} pointerEvents="box-none" testID="reader-settings-sheet-host">
+      <Pressable
+        testID="settings-dismiss-backdrop"
+        style={styles.sideDismissBackdrop}
+        onPress={onClose}
+        accessibilityLabel="إغلاق الإعدادات"
+      />
       <BottomSheet
         ref={sheetRef}
         index={0}
@@ -856,7 +848,6 @@ export function ReaderSettingsSheet({
           isSidePanel={false}
           onChange={onChange}
           onReset={onReset}
-          onClose={onClose}
         />
       </BottomSheet>
     </View>

@@ -171,7 +171,7 @@ export function TocModal({
               style={[
                 styles.headerTitle,
                 {
-                  color: palette.text,
+                  color: palette.heading ?? palette.text,
                   fontFamily: TYPOGRAPHY.displayFont,
                 },
               ]}

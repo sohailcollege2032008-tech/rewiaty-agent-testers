@@ -78,8 +78,9 @@ appId: com.rewiaty.app
 - assertVisible:
     id: "settings-font-size-value"
     text: "24"
+# S2: close settings sheet by tapping outside (above the sheet)
 - tapOn:
-    id: "settings-close-button"
+    point: "50%,15%"
 - waitForAnimationToEnd
 # Wait >500ms debounce before stopping so anchor + settings persist
 # The HUD may already be open (e.g. after closing the TOC); a blind center tap would hide it.
