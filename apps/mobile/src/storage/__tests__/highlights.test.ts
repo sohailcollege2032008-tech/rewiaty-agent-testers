@@ -128,8 +128,8 @@ describe('highlights: context extraction and fuzzy anchoring', () => {
     const item = makeHighlight();
     const resolved = resolveHighlightRange(edited, item);
     const expectedOffset = prefix.length + originalBlock.lastIndexOf('الْبَحْرُ');
-    expect(resolved.anchor).toEqual({ blockId: 'ch01_p0002', charOffset: expectedOffset });
-    expect(resolved.length).toBe('الْبَحْرُ'.length);
+    expect(resolved?.anchor).toEqual({ blockId: 'ch01_p0002', charOffset: expectedOffset });
+    expect(resolved?.length).toBe('الْبَحْرُ'.length);
   });
 
   it('re-anchors across renumbered blocks and stripped/changed Tashkeel while updating length', () => {
@@ -166,11 +166,11 @@ describe('highlights: context extraction and fuzzy anchoring', () => {
     const resolved = resolveHighlightRange(editedBook, item);
     const targetText = editedBook.chapters[0]!.blocks[2]!.html;
     const expectedSub = 'عند الميناء، وكان البحر هادئا';
-    expect(resolved.anchor).toEqual({
+    expect(resolved?.anchor).toEqual({
       blockId: 'ch01_p0003',
       charOffset: targetText.indexOf(expectedSub),
     });
-    expect(resolved.length).toBe(expectedSub.length);
+    expect(resolved?.length).toBe(expectedSub.length);
   });
 
   it('keeps trailing Tashkeel on the last letter when re-anchoring stripped quote onto vocalized text', () => {
@@ -198,11 +198,11 @@ describe('highlights: context extraction and fuzzy anchoring', () => {
     });
 
     const resolved = resolveHighlightRange(editedWithTashkeel, item);
-    expect(resolved.anchor).toEqual({ blockId: 'ch01_p0001', charOffset: 0 });
+    expect(resolved?.anchor).toEqual({ blockId: 'ch01_p0001', charOffset: 0 });
     expect(
       editedWithTashkeel.chapters[0]!.blocks[0]!.html.slice(
-        resolved.anchor.charOffset,
-        resolved.anchor.charOffset + resolved.length,
+        resolved!.anchor.charOffset,
+        resolved!.anchor.charOffset + resolved!.length,
       ),
     ).toBe('أَشْرَقَتِ الشَّمْسُ');
   });
@@ -240,8 +240,8 @@ describe('highlights: context extraction and fuzzy anchoring', () => {
 
     const resolved = resolveHighlightRange(editedBook, item);
     const plain = editedBook.chapters[0]!.blocks[0]!.html;
-    expect(resolved.anchor.blockId).toBe('ch01_p0005');
-    expect(plain.slice(resolved.anchor.charOffset, resolved.anchor.charOffset + resolved.length)).toBe(
+    expect(resolved?.anchor.blockId).toBe('ch01_p0005');
+    expect(plain.slice(resolved!.anchor.charOffset, resolved!.anchor.charOffset + resolved!.length)).toBe(
       'جلس الصياد العجوز بصمت',
     );
   });
@@ -257,13 +257,31 @@ describe('highlights: context extraction and fuzzy anchoring', () => {
       contextAfter: 'سياق آخر محذوف',
     });
 
-    expect(resolveHighlightRange(book, deleted).anchor).toEqual({
-      blockId: 'ch09_p0001',
-      charOffset: 0,
-    });
+    expect(resolveHighlightRange(book, deleted)).toBeNull();
     const resolved = resolveHighlightsForBook(book, [valid, deleted]);
     expect(resolved).toHaveLength(1);
     expect(resolved[0]?.id).toBe('ok');
+  });
+});
+
+describe('highlights: no match means no paint (Codex #26 P1)', () => {
+  it('does not paint when the same block id now holds unrelated text', () => {
+    const book = makeBook();
+    const replaced: Book = {
+      ...book,
+      chapters: book.chapters.map((chapter) => ({
+        ...chapter,
+        // Every block (including the stored one) now holds unrelated text, so neither the quote
+        // nor its context exists anywhere; the stored offset must not be painted.
+        blocks: chapter.blocks.map((block) => ({
+          ...block,
+          html: 'نَصٌّ جَدِيدٌ تَمَامًا لَا عَلَاقَةَ لَهُ بِالِاقْتِبَاسِ الْقَدِيمِ أَبَدًا وَطَوِيلٌ بِمَا يَكْفِي.',
+        })),
+      })),
+    };
+    const item = makeHighlight();
+    expect(resolveHighlightRange(replaced, item)).toBeNull();
+    expect(resolveHighlightsForBook(replaced, [item])).toEqual([]);
   });
 });
 

@@ -312,7 +312,7 @@ function findFuzzyByContextAndQuote(
 export function resolveHighlightRange(
   book: Book,
   item: HighlightItem,
-): { anchor: Anchor; length: number } {
+): { anchor: Anchor; length: number } | null {
   const stored = item.anchor;
   const found = findBlock(book, stored.blockId);
   const normalizedBefore = normalizeForMatch(item.contextBefore).text.trim();
@@ -350,20 +350,16 @@ export function resolveHighlightRange(
   const fuzzy = findFuzzyByContextAndQuote(book, item);
   if (fuzzy) return fuzzy;
 
-  return {
-    anchor: {
-      blockId: stored.blockId,
-      charOffset: Math.max(0, Math.floor(stored.charOffset)),
-    },
-    length: Math.max(0, Math.floor(item.length)),
-  };
+  // Why: when neither the quote nor its context can be found the text under the stored offset
+  // is something else now; painting there would highlight the wrong words (Codex #26 P1).
+  return null;
 }
 
 export function resolveHighlightsForBook(book: Book, items: HighlightItem[]): EngineHighlight[] {
   const resolved: EngineHighlight[] = [];
   for (const item of items) {
     const range = resolveHighlightRange(book, item);
-    if (!range.anchor.blockId || range.length <= 0) continue;
+    if (!range || !range.anchor.blockId || range.length <= 0) continue;
     const exists = findBlock(book, range.anchor.blockId);
     if (!exists) continue;
     resolved.push({
@@ -577,8 +573,10 @@ export function exportHighlightsToMarkdown(book: Book, items: HighlightItem[]): 
   };
 
   const positioned: PositionedItem[] = items.map((item) => {
-    const resolved = resolveHighlightRange(book, item);
-    const blockMeta = blockOrder.get(resolved.anchor.blockId);
+    // Unmatched highlights keep their stored position for ordering; the quote text itself is
+    // still exported, it just is not painted in the reader.
+    const resolvedAnchor = resolveHighlightRange(book, item)?.anchor ?? item.anchor;
+    const blockMeta = blockOrder.get(resolvedAnchor.blockId);
     const chapterId = blockMeta?.chapterId ?? (item.chapterId || 'other');
     const chapterIndex = chapterOrder.get(chapterId) ?? Number.MAX_SAFE_INTEGER;
     const chapterTitle =
@@ -590,7 +588,7 @@ export function exportHighlightsToMarkdown(book: Book, items: HighlightItem[]): 
       chapterTitle,
       chapterIndex,
       blockIndex: blockMeta?.index ?? Number.MAX_SAFE_INTEGER,
-      charOffset: resolved.anchor.charOffset,
+      charOffset: resolvedAnchor.charOffset,
     };
   });
 

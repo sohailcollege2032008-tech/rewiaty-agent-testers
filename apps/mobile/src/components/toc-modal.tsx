@@ -111,7 +111,7 @@ export function TocModal({
   };
 
   const handleOpenHighlight = (item: HighlightItem) => {
-    const resolved = book ? resolveHighlightRange(book, item).anchor : item.anchor;
+    const resolved = (book && resolveHighlightRange(book, item)?.anchor) || item.anchor;
     const usable = resolved.blockId ? resolved : null;
     onOpenHighlight?.(item, usable);
     onClose();
