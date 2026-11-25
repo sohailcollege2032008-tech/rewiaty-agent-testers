@@ -4,6 +4,10 @@ appId: com.rewiaty.app
 - extendedWaitUntil:
     visible: "حَجَرُ الْمَاءِ"
     timeout: 20000
+- assertVisible:
+    id: "import-book-button"
+    leftOf:
+      id: "library-brand-name"
 - takeScreenshot: "01-library-sample"
 - tapOn: "حَجَرُ الْمَاءِ"
 - extendedWaitUntil:

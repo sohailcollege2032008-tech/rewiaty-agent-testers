@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -33,6 +33,7 @@ export type ReaderHudProps = {
   onOpenToc: () => void;
   onOpenSettings: () => void;
   onSeekPage: (page: number) => void;
+  onBarsLayout?: (heights: { headerHeight: number; footerHeight: number }) => void;
 };
 
 export function ReaderHud({
@@ -51,11 +52,36 @@ export function ReaderHud({
   onOpenToc,
   onOpenSettings,
   onSeekPage,
+  onBarsLayout,
 }: ReaderHudProps) {
   const insets = useSafeAreaInsets();
   const palette = getAppThemeTokens(theme);
   const reducedMotion = useReducedMotion();
   const progress = useSharedValue(visible ? 1 : 0);
+  const measuredBarsRef = useRef<{ headerHeight: number; footerHeight: number }>({
+    headerHeight: 0,
+    footerHeight: 0,
+  });
+
+  const handleHeaderLayout = (event: LayoutChangeEvent) => {
+    const h = Math.round(event.nativeEvent.layout.height);
+    if (h > 0 && h !== measuredBarsRef.current.headerHeight) {
+      measuredBarsRef.current.headerHeight = h;
+      if (measuredBarsRef.current.footerHeight > 0) {
+        onBarsLayout?.({ ...measuredBarsRef.current });
+      }
+    }
+  };
+
+  const handleFooterLayout = (event: LayoutChangeEvent) => {
+    const h = Math.round(event.nativeEvent.layout.height);
+    if (h > 0 && h !== measuredBarsRef.current.footerHeight) {
+      measuredBarsRef.current.footerHeight = h;
+      if (measuredBarsRef.current.headerHeight > 0) {
+        onBarsLayout?.({ ...measuredBarsRef.current });
+      }
+    }
+  };
 
   useEffect(() => {
     progress.set(
@@ -88,6 +114,7 @@ export function ReaderHud({
     <View style={styles.overlay} pointerEvents="box-none">
       <Animated.View
         testID="reader-hud-header"
+        onLayout={handleHeaderLayout}
         pointerEvents={barPointerEvents}
         style={[
           styles.header,
@@ -169,7 +196,7 @@ export function ReaderHud({
           <Pressable
             testID="reader-toc-button"
             onPress={onOpenToc}
-            hitSlop={10}
+            hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
             style={({ pressed }) => [
               styles.iconBtn,
               isTablet && styles.iconBtnTablet,
@@ -196,7 +223,7 @@ export function ReaderHud({
           <Pressable
             testID="reader-settings-button"
             onPress={onOpenSettings}
-            hitSlop={10}
+            hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
             style={({ pressed }) => [
               styles.iconBtn,
               isTablet && styles.iconBtnTablet,
@@ -227,6 +254,7 @@ export function ReaderHud({
 
       <Animated.View
         testID="reader-hud-footer"
+        onLayout={handleFooterLayout}
         pointerEvents={barPointerEvents}
         style={[
           styles.footer,

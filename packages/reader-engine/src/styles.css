@@ -23,6 +23,8 @@
   --col-gap: 48px;
   --margin-h: 24px;
   --margin-v: 24px;
+  --padding-top: 24px;
+  --padding-bottom: 24px;
   --max-width: 68ch;
   --page-transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
 
@@ -160,7 +162,7 @@ body {
   top: 0;
   width: var(--page-width);
   height: var(--page-height);
-  padding: var(--margin-v) var(--margin-h);
+  padding: var(--padding-top) var(--margin-h) var(--padding-bottom) var(--margin-h);
   column-width: var(--col-width);
   column-gap: var(--col-gap);
   column-fill: auto;
@@ -266,7 +268,7 @@ body {
 .block-image img {
   display: block;
   max-width: 100%;
-  max-height: calc(var(--page-height) - (2 * var(--margin-v)) - 24px);
+  max-height: calc(var(--page-height) - var(--padding-top) - var(--padding-bottom) - 24px);
   width: auto;
   height: auto;
   margin: 0 auto;

@@ -9,6 +9,7 @@ import {
   Text,
   useColorScheme,
   View,
+  type LayoutChangeEvent,
 } from 'react-native';
 import type { Anchor, Book } from '@rewiaty/book-format';
 import { useKeepAwake } from 'expo-keep-awake';
@@ -37,6 +38,7 @@ import { getAppThemeTokens, resolveAppTheme, resolveSystemTheme } from '@/theme/
 import { notifyThemeListeners } from '@/theme/use-app-theme';
 import type {
   BookReaderState,
+  ReaderInsets,
   ReaderSettings,
   RNToWebMessage,
   TocEntry,
@@ -45,6 +47,7 @@ import type {
 import { debounce } from '@/utils/debounce';
 
 const POSITION_SAVE_DEBOUNCE_MS = 500;
+const SETTINGS_CLOSE_TAP_COOLDOWN_MS = 300;
 /** The reader document is local-only: no remote origins may be navigated to. */
 const READER_ORIGIN_WHITELIST: string[] = ['file://*', 'about:blank'];
 /** Used when the offline fonts folder is unavailable; needs no whitelist entry. */
@@ -102,6 +105,13 @@ export function ReaderScreen() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const settingsVisibleRef = useRef(false);
   settingsVisibleRef.current = settingsVisible;
+  const hudBeforeSettingsRef = useRef(false);
+  const suppressTapUntilRef = useRef(0);
+  const [measuredHudHeights, setMeasuredHudHeights] = useState<{
+    headerHeight: number;
+    footerHeight: number;
+  } | null>(null);
+  const [measuredRunningFootHeight, setMeasuredRunningFootHeight] = useState<number | null>(null);
   const [tocEntries, setTocEntries] = useState<TocEntry[]>([]);
   const [pageInfo, setPageInfo] = useState<{
     chapterId: string;
@@ -114,6 +124,29 @@ export function ReaderScreen() {
   });
 
   const themeTokens = useMemo(() => getAppThemeTokens(settings.theme), [settings.theme]);
+
+  const webviewMarginTop = layout.isTabletLandscape ? 12 : Math.max(insets.top, 8);
+  const defaultHeaderHeight =
+    Math.max(insets.top, layout.isTablet ? 14 : 12) + 40 + (layout.isTablet ? 14 : 12) + 1;
+  const defaultFooterHeight =
+    (layout.isTablet ? 16 : 14) + 18 + 8 + 32 + 8 + 16 + Math.max(insets.bottom, 18) + 1;
+  const defaultRunningFootHeight =
+    4 + 14 + (layout.isTabletLandscape ? 10 : Math.max(insets.bottom, 10));
+
+  const effectiveHudHeaderHeight = measuredHudHeights?.headerHeight ?? defaultHeaderHeight;
+  const effectiveHudFooterHeight = measuredHudHeights?.footerHeight ?? defaultFooterHeight;
+  const effectiveRunningFootHeight = measuredRunningFootHeight ?? defaultRunningFootHeight;
+
+  const engineInsets = useMemo<ReaderInsets>(
+    () => ({
+      top: Math.max(0, Math.round(effectiveHudHeaderHeight - webviewMarginTop)),
+      bottom: Math.max(0, Math.round(effectiveHudFooterHeight - effectiveRunningFootHeight)),
+    }),
+    [effectiveHudHeaderHeight, webviewMarginTop, effectiveHudFooterHeight, effectiveRunningFootHeight],
+  );
+  const engineInsetsRef = useRef<ReaderInsets>(engineInsets);
+  engineInsetsRef.current = engineInsets;
+  const prevSentInsetsRef = useRef<ReaderInsets | null>(null);
 
   const effectiveMaxWidth = useMemo(() => {
     if (
@@ -238,14 +271,27 @@ export function ReaderScreen() {
       // Explicit on first load too: the engine defaults to 'auto', which would spread a wide phone landscape.
       spread: layout.isTabletLandscape ? 'auto' : 'single',
     };
+    const initialInsets = engineInsetsRef.current;
+    prevSentInsetsRef.current = initialInsets;
     postToEngine({
       type: 'load',
       book,
       anchor: initialAnchorRef.current,
       settings: loadSettings,
+      insets: initialInsets,
       ...(fontBaseUrlRef.current ? { fontBaseUrl: fontBaseUrlRef.current } : {}),
     });
   }, [webLoaded, book, effectiveMaxWidth, layout.isTabletLandscape, postToEngine]);
+
+  useEffect(() => {
+    if (!hasSentLoadRef.current) return;
+    const prev = prevSentInsetsRef.current;
+    if (prev && prev.top === engineInsets.top && prev.bottom === engineInsets.bottom) {
+      return;
+    }
+    prevSentInsetsRef.current = engineInsets;
+    postToEngine({ type: 'settings', partial: {}, insets: engineInsets });
+  }, [engineInsets, postToEngine]);
 
   // Sync tablet responsive spread & line width when dimensions / orientation change
   const prevResponsiveRef = useRef<{ maxWidth: number; isTabletLandscape: boolean } | null>(null);
@@ -292,6 +338,19 @@ export function ReaderScreen() {
     });
   }, [colorScheme, postToEngine]);
 
+  const handleOpenSettings = useCallback(() => {
+    hudBeforeSettingsRef.current = hudVisible;
+    setHudVisible(false);
+    setSettingsVisible(true);
+  }, [hudVisible]);
+
+  const handleCloseSettings = useCallback(() => {
+    setSettingsVisible(false);
+    setHudVisible(hudBeforeSettingsRef.current);
+    suppressTapUntilRef.current = Date.now() + SETTINGS_CLOSE_TAP_COOLDOWN_MS;
+    postToEngine({ type: 'suppress-taps', durationMs: SETTINGS_CLOSE_TAP_COOLDOWN_MS });
+  }, [postToEngine]);
+
   const handleWebViewMessage = useCallback(
     (event: WebViewMessageEvent) => {
       let parsed: WebToRNMessage | null = null;
@@ -324,9 +383,12 @@ export function ReaderScreen() {
           setTocEntries(parsed.chapters);
           break;
         case 'tap':
+          if (Date.now() < suppressTapUntilRef.current) {
+            break;
+          }
           if (parsed.zone === 'center') {
             if (settingsVisibleRef.current) {
-              setSettingsVisible(false);
+              handleCloseSettings();
             } else {
               setShowHudHint(false);
               setHudVisible((prev) => !prev);
@@ -359,7 +421,7 @@ export function ReaderScreen() {
           break;
       }
     },
-    [bookId, debouncedSave],
+    [bookId, debouncedSave, handleCloseSettings],
   );
 
   const handleBack = useCallback(() => {
@@ -392,11 +454,6 @@ export function ReaderScreen() {
     },
     [postToEngine],
   );
-
-  const handleOpenSettings = useCallback(() => {
-    setHudVisible(false);
-    setSettingsVisible(true);
-  }, []);
 
   const handleSettingsChange = useCallback(
     (partial: Partial<ReaderSettings>) => {
@@ -507,6 +564,7 @@ export function ReaderScreen() {
           </Text>
           <Pressable
             onPress={() => router.back()}
+            hitSlop={4}
             style={({ pressed }) => [
               styles.backBtn,
               { backgroundColor: themeTokens.ctaBg },
@@ -630,7 +688,7 @@ export function ReaderScreen() {
               styles.webview,
               {
                 backgroundColor: themeTokens.bg,
-                marginTop: layout.isTabletLandscape ? 12 : Math.max(insets.top, 8),
+                marginTop: webviewMarginTop,
               },
             ]}
             javaScriptEnabled
@@ -646,16 +704,23 @@ export function ReaderScreen() {
         ) : null}
 
         {/* Quiet Running Footer */}
-        {book && engineReady ? (
+        {book ? (
           <View
             testID="reader-running-footer"
             pointerEvents="none"
+            onLayout={(event: LayoutChangeEvent) => {
+              const h = Math.round(event.nativeEvent.layout.height);
+              if (h > 0 && h !== measuredRunningFootHeight) {
+                setMeasuredRunningFootHeight(h);
+              }
+            }}
             style={[
               styles.runningFoot,
               {
                 paddingBottom: layout.isTabletLandscape ? 10 : Math.max(insets.bottom, 10),
                 paddingHorizontal: layout.isTablet ? 36 : 24,
                 backgroundColor: themeTokens.bg,
+                opacity: engineReady ? 1 : 0,
               },
             ]}
           >
@@ -684,7 +749,7 @@ export function ReaderScreen() {
           <Pressable
             testID="reader-bookmark-ribbon"
             onPress={handleToggleBookmark}
-            hitSlop={10}
+            hitSlop={hudVisible ? { top: 0, bottom: 10, left: 10, right: 10 } : 10}
             style={[
               styles.ribbonZone,
               layout.isTabletLandscape
@@ -693,7 +758,12 @@ export function ReaderScreen() {
                   ? styles.ribbonLeft
                   : styles.ribbonRight,
               {
-                top: layout.isTabletLandscape ? 0 : insets.top,
+                top: hudVisible
+                  ? effectiveHudHeaderHeight + 2
+                  : layout.isTabletLandscape
+                    ? 0
+                    : insets.top,
+                zIndex: hudVisible ? 25 : 15,
               },
             ]}
             accessibilityRole="button"
@@ -765,6 +835,7 @@ export function ReaderScreen() {
               onOpenToc={() => setTocVisible(true)}
               onOpenSettings={handleOpenSettings}
               onSeekPage={handleSeekPage}
+              onBarsLayout={setMeasuredHudHeights}
             />
 
             <TocModal
@@ -782,7 +853,7 @@ export function ReaderScreen() {
               settings={settings}
               onChange={handleSettingsChange}
               onReset={handleResetSettings}
-              onClose={() => setSettingsVisible(false)}
+              onClose={handleCloseSettings}
             />
           </>
         ) : null}

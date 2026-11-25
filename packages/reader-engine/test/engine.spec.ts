@@ -520,4 +520,106 @@ test.describe('Rewiaty Reader Engine', () => {
     });
     expect(notoLoaded).toBe(true);
   });
+
+  test('(g) permanent chrome insets keep first and last lines strictly inside the reserved reading box', async ({
+    page,
+  }) => {
+    await mountEngine(page);
+    const book = buildLongArabicBook(80, 2);
+    const insets = { top: 72, bottom: 104 };
+
+    await sendBridge(page, {
+      type: 'load',
+      book,
+      insets,
+      settings: { disableAnimation: true, fontSize: 22, lineHeight: 1.95 },
+    });
+
+    await expect.poll(async () => (await getLatestPosition(page))?.pageCount ?? 0).toBeGreaterThan(2);
+
+    const checkReservedBounds = async (expectedInsets: { top: number; bottom: number }) => {
+      return page.evaluate(() => {
+        const stage = document.getElementById('reader-stage')!.getBoundingClientRect();
+        const curr = document.querySelector<HTMLElement>('.chapter[aria-hidden="false"]')!;
+        const walker = document.createTreeWalker(curr, NodeFilter.SHOW_TEXT);
+        const range = document.createRange();
+        let node = walker.nextNode() as Text | null;
+        let minTop = Infinity;
+        let maxBottom = -Infinity;
+        let lineCount = 0;
+
+        while (node) {
+          if (node.data.trim().length > 0) {
+            range.selectNodeContents(node);
+            const rects = range.getClientRects();
+            for (let i = 0; i < rects.length; i++) {
+              const r = rects[i]!;
+              if (r.width <= 0 || r.height <= 0) continue;
+              if (r.right <= stage.left + 1 || r.left >= stage.right - 1) continue;
+              lineCount++;
+              if (r.top < minTop) minTop = r.top;
+              if (r.bottom > maxBottom) maxBottom = r.bottom;
+            }
+          }
+          node = walker.nextNode() as Text | null;
+        }
+
+        return {
+          stageTop: stage.top,
+          stageBottom: stage.bottom,
+          minTop,
+          maxBottom,
+          lineCount,
+        };
+      });
+    };
+
+    const page1Bounds = await checkReservedBounds(insets);
+    expect(page1Bounds.lineCount).toBeGreaterThan(0);
+    expect(page1Bounds.minTop).toBeGreaterThanOrEqual(page1Bounds.stageTop + insets.top);
+    expect(page1Bounds.maxBottom).toBeLessThanOrEqual(page1Bounds.stageBottom - insets.bottom);
+
+    // Next page (full body text without chapter header) also respects top & bottom insets.
+    await sendBridge(page, { type: 'next' });
+    await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(2);
+
+    const page2Bounds = await checkReservedBounds(insets);
+    expect(page2Bounds.lineCount).toBeGreaterThan(0);
+    expect(page2Bounds.minTop).toBeGreaterThanOrEqual(page2Bounds.stageTop + insets.top);
+    expect(page2Bounds.maxBottom).toBeLessThanOrEqual(page2Bounds.stageBottom - insets.bottom);
+
+    // Updating insets via `settings` also shifts the reserved bounds.
+    const largerInsets = { top: 96, bottom: 128 };
+    const msgCountBefore = (await getMessages(page)).length;
+    await sendBridge(page, { type: 'settings', partial: {}, insets: largerInsets });
+    await expect.poll(async () => (await getMessages(page)).length).toBeGreaterThan(msgCountBefore);
+
+    const updatedBounds = await checkReservedBounds(largerInsets);
+    expect(updatedBounds.lineCount).toBeGreaterThan(0);
+    expect(updatedBounds.minTop).toBeGreaterThanOrEqual(updatedBounds.stageTop + largerInsets.top);
+    expect(updatedBounds.maxBottom).toBeLessThanOrEqual(updatedBounds.stageBottom - largerInsets.bottom);
+  });
+
+  test('(h) suppress-taps blocks page turns during cooldown and resumes afterwards', async ({ page }) => {
+    await mountEngine(page);
+    const rtlBook = parseBook(sampleArText, 'sample-ar.md');
+
+    await sendBridge(page, {
+      type: 'load',
+      book: rtlBook,
+      settings: { disableAnimation: true },
+    });
+    await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(1);
+
+    await sendBridge(page, { type: 'suppress-taps', durationMs: 300 });
+    // Tap left zone (next in RTL) during cooldown -> must NOT turn page.
+    await page.mouse.click(390 * 0.15, 422);
+    await page.waitForTimeout(80);
+    expect((await getLatestPosition(page))?.page).toBe(1);
+
+    // Wait past cooldown -> tap turns page normally.
+    await page.waitForTimeout(260);
+    await page.mouse.click(390 * 0.15, 422);
+    await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(2);
+  });
 });

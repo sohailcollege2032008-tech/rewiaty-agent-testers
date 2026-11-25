@@ -1,5 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
@@ -63,7 +71,12 @@ function StepperControl({
 }) {
   return (
     <View style={styles.ctrlRow}>
-      <Text style={[styles.ctrlLabel, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}>
+      <Text
+        style={[styles.ctrlLabel, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.75}
+      >
         {label}
       </Text>
       <View
@@ -79,7 +92,7 @@ function StepperControl({
           testID={`${testIdPrefix}-dec`}
           onPress={onDecrement}
           disabled={!canDecrement}
-          hitSlop={6}
+          hitSlop={{ top: 9, bottom: 9, left: 6, right: 6 }}
           style={({ pressed }) => [
             styles.stepBtn,
             !canDecrement && styles.stepDisabled,
@@ -93,6 +106,9 @@ function StepperControl({
 
         <Text
           testID={`${testIdPrefix}-value`}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}
           style={[
             styles.stepReadout,
             {
@@ -109,7 +125,7 @@ function StepperControl({
           testID={`${testIdPrefix}-inc`}
           onPress={onIncrement}
           disabled={!canIncrement}
-          hitSlop={6}
+          hitSlop={{ top: 9, bottom: 9, left: 6, right: 6 }}
           style={({ pressed }) => [
             styles.stepBtn,
             !canIncrement && styles.stepDisabled,
@@ -141,6 +157,8 @@ function SettingsContent({
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const { fontScale } = useWindowDimensions();
+  const stackControlRow = fontScale > 1.35;
   const [activeTab, setActiveTab] = useState<SettingsTabId>('font');
   const sectionOffsets = useRef<Record<SettingsTabId, number>>({
     font: 0,
@@ -162,9 +180,32 @@ function SettingsContent({
   const ScrollContainer = isSidePanel ? ScrollView : BottomSheetScrollView;
 
   return (
-    <View style={styles.innerWrap}>
+    <ScrollContainer
+      ref={(node: unknown) => {
+        if (
+          node &&
+          typeof (node as { scrollTo?: (opts: { y?: number; animated?: boolean }) => void })
+            .scrollTo === 'function'
+        ) {
+          scrollRef.current = node as {
+            scrollTo: (opts: { y?: number; animated?: boolean }) => void;
+          };
+        }
+      }}
+      stickyHeaderIndices={[0]}
+      contentContainerStyle={{
+        paddingBottom: (isSidePanel ? 18 : Math.max(insets.bottom, 16)) + 12,
+      }}
+      showsVerticalScrollIndicator
+      persistentScrollbar
+    >
       {/* Header with Warraq section tabs + Reset + Close */}
-      <View style={[styles.sheetHead, { borderBottomColor: palette.border }]}>
+      <View
+        style={[
+          styles.sheetHead,
+          { backgroundColor: palette.sheetBg, borderBottomColor: palette.border },
+        ]}
+      >
         <View style={styles.tabsRow}>
           {(
             [
@@ -179,6 +220,7 @@ function SettingsContent({
                 key={tab.id}
                 testID={`settings-tab-${tab.id}`}
                 onPress={() => jumpToSection(tab.id)}
+                hitSlop={{ top: 6, bottom: 6, left: 10, right: 10 }}
                 style={[
                   styles.sheetTab,
                   active && { borderBottomColor: palette.accent },
@@ -187,6 +229,9 @@ function SettingsContent({
                 accessibilityState={{ selected: active }}
               >
                 <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
                   style={[
                     styles.sheetTabText,
                     {
@@ -207,7 +252,7 @@ function SettingsContent({
             <Pressable
               testID="settings-reset-button"
               onPress={onReset}
-              hitSlop={8}
+              hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
               style={({ pressed }) => [
                 styles.resetBtn,
                 { backgroundColor: palette.chipBg, borderColor: palette.border },
@@ -215,6 +260,9 @@ function SettingsContent({
               ]}
             >
               <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
                 style={[
                   styles.resetBtnText,
                   { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
@@ -228,7 +276,7 @@ function SettingsContent({
           <Pressable
             testID="settings-close-button"
             onPress={onClose}
-            hitSlop={8}
+            hitSlop={10}
             style={({ pressed }) => [
               styles.closeBtn,
               pressed && { backgroundColor: palette.surface },
@@ -248,24 +296,7 @@ function SettingsContent({
         </View>
       </View>
 
-      <ScrollContainer
-        ref={(node: unknown) => {
-          if (
-            node &&
-            typeof (node as { scrollTo?: (opts: { y?: number; animated?: boolean }) => void })
-              .scrollTo === 'function'
-          ) {
-            scrollRef.current = node as {
-              scrollTo: (opts: { y?: number; animated?: boolean }) => void;
-            };
-          }
-        }}
-        contentContainerStyle={[
-          styles.sheetBody,
-          { paddingBottom: (isSidePanel ? 18 : Math.max(insets.bottom, 16)) + 12 },
-        ]}
-        showsVerticalScrollIndicator={false}
-      >
+      <View style={styles.sheetBody}>
         {/* Section 1: Font */}
         {activeTab === 'font' ? (
         <View
@@ -285,6 +316,7 @@ function SettingsContent({
                   key={font}
                   testID={`font-option-${font}`}
                   onPress={() => onChange({ fontFamily: font })}
+                  hitSlop={{ top: 7, bottom: 7, left: 2, right: 2 }}
                   style={({ pressed }) => [
                     styles.fontChip,
                     {
@@ -297,6 +329,9 @@ function SettingsContent({
                   accessibilityState={{ selected: active }}
                 >
                   <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.75}
                     style={[
                       styles.fontChipText,
                       {
@@ -323,13 +358,17 @@ function SettingsContent({
             palette={palette}
           />
 
-          <View style={styles.ctrlRow}>
-            <Text style={[styles.ctrlLabel, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}>
+          <View style={stackControlRow ? styles.ctrlRowStacked : styles.ctrlRow}>
+            <Text
+              style={[styles.ctrlLabel, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}
+              numberOfLines={1}
+            >
               وزن الخط
             </Text>
             <View
               style={[
                 styles.segGroup,
+                stackControlRow && styles.segGroupStacked,
                 { borderColor: palette.border, backgroundColor: palette.surface },
               ]}
             >
@@ -340,6 +379,7 @@ function SettingsContent({
                     key={w.value}
                     testID={`settings-weight-${w.value}`}
                     onPress={() => onChange({ fontWeight: w.value })}
+                    hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
                     style={({ pressed }) => [
                       styles.segBtn,
                       active && { backgroundColor: palette.ctaBg },
@@ -349,6 +389,9 @@ function SettingsContent({
                     accessibilityState={{ selected: active }}
                   >
                     <Text
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.65}
                       style={[
                         styles.segBtnText,
                         {
@@ -424,13 +467,17 @@ function SettingsContent({
             تنسيق الصفحة
           </Text>
 
-          <View style={styles.ctrlRow}>
-            <Text style={[styles.ctrlLabel, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}>
+          <View style={stackControlRow ? styles.ctrlRowStacked : styles.ctrlRow}>
+            <Text
+              style={[styles.ctrlLabel, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}
+              numberOfLines={1}
+            >
               المحاذاة
             </Text>
             <View
               style={[
                 styles.segGroup,
+                stackControlRow && styles.segGroupStacked,
                 { borderColor: palette.border, backgroundColor: palette.surface },
               ]}
             >
@@ -441,6 +488,7 @@ function SettingsContent({
                     key={opt.value}
                     testID={`settings-align-${opt.value}`}
                     onPress={() => onChange({ textAlign: opt.value })}
+                    hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
                     style={({ pressed }) => [
                       styles.segBtn,
                       active && { backgroundColor: palette.ctaBg },
@@ -450,6 +498,9 @@ function SettingsContent({
                     accessibilityState={{ selected: active }}
                   >
                     <Text
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.65}
                       style={[
                         styles.segBtnText,
                         {
@@ -467,13 +518,17 @@ function SettingsContent({
             </View>
           </View>
 
-          <View style={styles.ctrlRow}>
-            <Text style={[styles.ctrlLabel, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}>
+          <View style={stackControlRow ? styles.ctrlRowStacked : styles.ctrlRow}>
+            <Text
+              style={[styles.ctrlLabel, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}
+              numberOfLines={1}
+            >
               الفقرات
             </Text>
             <View
               style={[
                 styles.segGroup,
+                stackControlRow && styles.segGroupStacked,
                 { borderColor: palette.border, backgroundColor: palette.surface },
               ]}
             >
@@ -484,6 +539,7 @@ function SettingsContent({
                     key={opt.value}
                     testID={`settings-indent-${opt.value}`}
                     onPress={() => onChange({ indentMode: opt.value })}
+                    hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
                     style={({ pressed }) => [
                       styles.segBtn,
                       active && { backgroundColor: palette.ctaBg },
@@ -493,6 +549,9 @@ function SettingsContent({
                     accessibilityState={{ selected: active }}
                   >
                     <Text
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.65}
                       style={[
                         styles.segBtnText,
                         {
@@ -555,13 +614,17 @@ function SettingsContent({
             palette={palette}
           />
 
-          <View style={styles.ctrlRow}>
-            <Text style={[styles.ctrlLabel, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}>
+          <View style={stackControlRow ? styles.ctrlRowStacked : styles.ctrlRow}>
+            <Text
+              style={[styles.ctrlLabel, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}
+              numberOfLines={1}
+            >
               اتجاه النص
             </Text>
             <View
               style={[
                 styles.segGroup,
+                stackControlRow && styles.segGroupStacked,
                 { borderColor: palette.border, backgroundColor: palette.surface },
               ]}
             >
@@ -572,6 +635,7 @@ function SettingsContent({
                     key={opt.value}
                     testID={`settings-dir-${opt.value}`}
                     onPress={() => onChange({ dirOverride: opt.value })}
+                    hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
                     style={({ pressed }) => [
                       styles.segBtn,
                       active && { backgroundColor: palette.ctaBg },
@@ -581,6 +645,9 @@ function SettingsContent({
                     accessibilityState={{ selected: active }}
                   >
                     <Text
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.65}
                       style={[
                         styles.segBtnText,
                         {
@@ -631,6 +698,7 @@ function SettingsContent({
                   key={t.id}
                   testID={`theme-option-${t.id}`}
                   onPress={() => onChange({ theme: t.id })}
+                  hitSlop={4}
                   style={({ pressed }) => [
                     isSidePanel ? styles.themeSwatchSide : styles.themeSwatch,
                     {
@@ -671,6 +739,8 @@ function SettingsContent({
                         },
                       ]}
                       numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.75}
                     >
                       {t.labelAr}
                     </Text>
@@ -691,8 +761,8 @@ function SettingsContent({
           </View>
         </View>
         ) : null}
-      </ScrollContainer>
-    </View>
+      </View>
+    </ScrollContainer>
   );
 }
 
@@ -707,7 +777,7 @@ export function ReaderSettingsSheet({
   const insets = useSafeAreaInsets();
   const layout = useResponsiveLayout();
   const palette = getAppThemeTokens(settings.theme);
-  const snapPoints = useMemo(() => ['35%', '65%'], []);
+  const maxSheetHeight = Math.round(layout.height * 0.6);
   const isSidePanel = layout.settingsMode === 'side-panel';
 
   useEffect(() => {
@@ -763,8 +833,8 @@ export function ReaderSettingsSheet({
       <BottomSheet
         ref={sheetRef}
         index={0}
-        snapPoints={snapPoints}
-        enableDynamicSizing={false}
+        enableDynamicSizing
+        maxDynamicContentSize={maxSheetHeight}
         enablePanDownToClose
         onChange={(idx) => {
           if (idx === -1) {
@@ -829,10 +899,12 @@ const styles = StyleSheet.create({
     gap: 18,
   },
   sheetTab: {
+    minHeight: 36,
     paddingVertical: 10,
     paddingHorizontal: 2,
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
+    justifyContent: 'center',
   },
   sheetTabText: {
     fontSize: 13,
@@ -841,7 +913,7 @@ const styles = StyleSheet.create({
   headActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 10,
     paddingBottom: 6,
   },
   resetBtn: {
@@ -902,9 +974,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
   },
+  ctrlRowStacked: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 6,
+  },
   ctrlLabel: {
     fontSize: 12,
     minWidth: 74,
+    flexShrink: 1,
     textAlign: 'right',
   },
   stepper: {
@@ -944,8 +1022,13 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.button,
     overflow: 'hidden',
   },
+  segGroupStacked: {
+    flex: 0,
+    width: '100%',
+  },
   segBtn: {
     flex: 1,
+    minHeight: 32,
     paddingVertical: 7,
     paddingHorizontal: 4,
     alignItems: 'center',
@@ -958,10 +1041,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 12,
     paddingTop: 10,
     borderTopWidth: 1,
   },
   switchLabel: {
+    flex: 1,
+    flexShrink: 1,
     fontSize: 12.5,
     fontWeight: '500',
   },

@@ -1,6 +1,7 @@
 export type {
   IndentMode,
   RNToWebMessage,
+  ReaderInsets,
   ReaderSettings,
   TapZone,
   TextAlignMode,
