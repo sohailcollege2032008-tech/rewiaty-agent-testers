@@ -776,4 +776,151 @@ test.describe('Rewiaty two-page spread (R2)', () => {
     await sendBridge(page, { type: 'next' });
     await expect.poll(async () => (await getLatestPosition(page))?.page).toBeGreaterThan(before);
   });
+
+  test('(s13) fractional landscape spread with insets keeps bounds, anchor and both pages intact across turns and resize', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1024, height: 700 });
+    await mountEngine(page);
+    await page.evaluate(() => {
+      const root = document.getElementById('reader-root')!;
+      root.style.width = '1023.5px';
+      root.style.height = '700px';
+    });
+
+    const book = buildArabicBook(180, 3);
+    const insets = { top: 56, bottom: 64 };
+
+    await sendBridge(page, {
+      type: 'load',
+      book,
+      insets,
+      settings: { disableAnimation: true, spread: 'auto', fontSize: 20 },
+    });
+    await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(1);
+
+    const verifySpreadBounds = async (expectedInsets: { top: number; bottom: number }) => {
+      const state = await page.evaluate((ins) => {
+        const root = document.getElementById('reader-root')!.getBoundingClientRect();
+        const stage = document.getElementById('reader-stage')!.getBoundingClientRect();
+        const track = document.getElementById('reader-track')!;
+        const curr = document.querySelector<HTMLElement>('.chapter[aria-hidden="false"]')!;
+        const pageWidth = Number.parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue('--page-width'),
+        );
+
+        const trackTransform = getComputedStyle(track).transform;
+        let translateX = 0;
+        if (trackTransform && trackTransform !== 'none') {
+          const match = /matrix\(([^)]+)\)/.exec(trackTransform);
+          if (match?.[1]) {
+            const parts = match[1].split(',').map((v) => Number(v.trim()));
+            translateX = parts[4] ?? 0;
+          }
+        }
+
+        const rightPageLeft = stage.left + stage.width / 2 + 54;
+        const leftPageRight = stage.left + stage.width / 2 - 54;
+        const outOfBounds: Array<{ left: number; right: number; top: number; bottom: number; text: string }> = [];
+        let leftPageLines = 0;
+        let rightPageLines = 0;
+
+        const walker = document.createTreeWalker(curr, NodeFilter.SHOW_TEXT);
+        const range = document.createRange();
+        let node = walker.nextNode() as Text | null;
+        while (node) {
+          if (node.data.trim().length > 0) {
+            range.selectNodeContents(node);
+            const rects = range.getClientRects();
+            for (let i = 0; i < rects.length; i++) {
+              const r = rects[i]!;
+              if (r.width <= 0 || r.height <= 0) continue;
+              if (r.right <= stage.left + 0.5 || r.left >= stage.right - 0.5) continue;
+
+              const centerX = (r.left + r.right) / 2;
+              if (centerX > stage.left + stage.width / 2) rightPageLines++;
+              else leftPageLines++;
+
+              const crossesGutter = r.left < rightPageLeft - 2 && r.right > leftPageRight + 2;
+              const out =
+                r.left < stage.left - 0.5 ||
+                r.right > stage.right + 0.5 ||
+                r.top < stage.top + ins.top - 0.5 ||
+                r.bottom > stage.bottom - ins.bottom + 0.5 ||
+                crossesGutter;
+              if (out) {
+                outOfBounds.push({
+                  left: r.left,
+                  right: r.right,
+                  top: r.top,
+                  bottom: r.bottom,
+                  text: node.data.slice(0, 24),
+                });
+              }
+            }
+          }
+          node = walker.nextNode() as Text | null;
+        }
+
+        return {
+          rootWidth: root.width,
+          stageLeft: stage.left,
+          stageRight: stage.right,
+          stageWidth: stage.width,
+          stageHeight: stage.height,
+          rootLeft: root.left,
+          rootRight: root.right,
+          pageWidth,
+          translateX,
+          leftPageLines,
+          rightPageLines,
+          outOfBounds,
+        };
+      }, expectedInsets);
+
+      expect(Number.isInteger(state.pageWidth)).toBe(true);
+      expect(state.stageWidth).toBe(state.pageWidth * 2);
+      expect(state.stageLeft).toBeGreaterThanOrEqual(state.rootLeft - 0.5);
+      expect(state.stageRight).toBeLessThanOrEqual(state.rootRight + 0.5);
+      expect(Number.isInteger(state.translateX)).toBe(true);
+      expect(Math.abs(state.translateX) % state.pageWidth).toBe(0);
+      expect(state.outOfBounds).toEqual([]);
+      expect(state.rightPageLines).toBeGreaterThan(0);
+      expect(state.leftPageLines).toBeGreaterThan(0);
+    };
+
+    // Turn 5 spreads forward and check bounds after turning.
+    for (let i = 0; i < 5; i++) {
+      const prevPage = (await getLatestPosition(page))!.page;
+      await sendBridge(page, { type: 'next' });
+      await expect.poll(async () => (await getLatestPosition(page))?.page).toBeGreaterThan(prevPage);
+    }
+
+    await verifySpreadBounds(insets);
+    const beforeResize = (await getLatestPosition(page))!;
+    expect(beforeResize.spread).toBe(true);
+
+    // Resize to fractional 900.25 x 640 and wait for reflow position update.
+    const msgCountBeforeResize = (await getMessages(page)).length;
+    await page.setViewportSize({ width: 901, height: 640 });
+    await page.evaluate(() => {
+      const root = document.getElementById('reader-root')!;
+      root.style.width = '900.25px';
+      root.style.height = '640px';
+    });
+
+    await expect
+      .poll(async () => {
+        const msgs = await getMessages(page);
+        return msgs.slice(msgCountBeforeResize).some((m) => m.type === 'position');
+      })
+      .toBe(true);
+
+    const afterResize = (await getLatestPosition(page))!;
+    expect(afterResize.spread).toBe(true);
+    expect(afterResize.anchor).toEqual(beforeResize.anchor);
+    expect(await isBlockVisible(page, beforeResize.anchor.blockId)).toBe(true);
+
+    await verifySpreadBounds(insets);
+  });
 });
