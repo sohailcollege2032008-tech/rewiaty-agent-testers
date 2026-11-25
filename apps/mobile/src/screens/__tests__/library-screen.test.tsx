@@ -3,7 +3,7 @@ import { Alert, Dimensions } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import { ToastOverlay } from '@/components/toast-overlay';
-import { LibraryScreen } from '@/screens/library-screen';
+import { IMPORT_GUIDE_COUNT_KV_KEY, LibraryScreen } from '@/screens/library-screen';
 import { deleteBookBundle, ensureSampleBookSeeded } from '@/storage/bundle';
 import { listBooks } from '@/storage/database';
 import { pickAndImportBook } from '@/storage/importer';
@@ -34,8 +34,16 @@ jest.mock('@/storage/bundle', () => ({
   deleteBookBundle: jest.fn(),
 }));
 
+const mockKv = new Map<string, unknown>();
+
 jest.mock('@/storage/database', () => ({
   listBooks: jest.fn(),
+  getKv: jest.fn(async (key: string, fallback: unknown) =>
+    mockKv.has(key) ? mockKv.get(key) : fallback,
+  ),
+  setKv: jest.fn(async (key: string, value: unknown) => {
+    mockKv.set(key, value);
+  }),
 }));
 
 jest.mock('@/storage/importer', () => ({
@@ -80,6 +88,7 @@ describe('LibraryScreen', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockKv.clear();
     clearToast();
     colorSchemeSpy = jest.spyOn(ReactNative, 'useColorScheme').mockReturnValue('light');
     Dimensions.set({
@@ -108,8 +117,8 @@ describe('LibraryScreen', () => {
     });
   });
 
-  it('shows toast and opens the book immediately after importing (P3-1)', async () => {
-    const { getAllByText, getByTestId, getByText } = await render(
+  it('shows import guide sheet on first 3 imports, expands help link, and opens picker directly after 3 times (A10, P3-1)', async () => {
+    const { getAllByText, getByTestId, getByText, queryByTestId } = await render(
       <>
         <LibraryScreen />
         <ToastOverlay />
@@ -120,11 +129,26 @@ describe('LibraryScreen', () => {
       expect(getAllByText('أَوْرَاقُ الْبَحْرِ الْقَدِيمِ').length).toBeGreaterThan(0);
     });
 
-    (pickAndImportBook as jest.Mock).mockResolvedValueOnce(IMPORTED_RECORD);
-    (listBooks as jest.Mock).mockResolvedValueOnce([IMPORTED_RECORD, SAMPLE_RECORD]);
+    (pickAndImportBook as jest.Mock).mockResolvedValue(IMPORTED_RECORD);
+    (listBooks as jest.Mock).mockResolvedValue([IMPORTED_RECORD, SAMPLE_RECORD]);
 
+    // 1st press: shows guide sheet with 3 steps + help link + pick button
     await fireEvent.press(getByTestId('import-book-button'));
+    await waitFor(() => {
+      expect(getByTestId('import-guide-sheet')).toBeTruthy();
+      expect(getByText('افتح الملف في تيليجرام ← ⋮ ← فتح بواسطة ← روايتي')).toBeTruthy();
+      expect(getByTestId('import-guide-pick-button')).toBeTruthy();
+      expect(getByTestId('import-guide-help-link')).toBeTruthy();
+    });
+    expect(pickAndImportBook).not.toHaveBeenCalled();
 
+    // Tapping "إزاي أجيب روايات؟" reveals help text
+    expect(queryByTestId('import-guide-help-box')).toBeNull();
+    await fireEvent.press(getByTestId('import-guide-help-link'));
+    expect(getByTestId('import-guide-help-box')).toBeTruthy();
+
+    // Pressing "اختار ملف من الموبايل" triggers picker, shows toast, and opens book
+    await fireEvent.press(getByTestId('import-guide-pick-button'));
     await waitFor(() => {
       expect(pickAndImportBook).toHaveBeenCalledTimes(1);
       expect(getByText('اتضافت «رواية مستوردة»')).toBeTruthy();
@@ -132,6 +156,40 @@ describe('LibraryScreen', () => {
         pathname: '/reader/[id]',
         params: { id: 'book_imported' },
       });
+    });
+
+    // 2nd and 3rd presses still show the guide sheet
+    await fireEvent.press(getByTestId('import-book-button'));
+    await waitFor(() => expect(getByTestId('import-guide-sheet')).toBeTruthy());
+    await fireEvent.press(getByTestId('import-guide-backdrop'));
+
+    await fireEvent.press(getByTestId('import-book-button'));
+    await waitFor(() => expect(getByTestId('import-guide-sheet')).toBeTruthy());
+    await fireEvent.press(getByTestId('import-guide-backdrop'));
+    expect(mockKv.get(IMPORT_GUIDE_COUNT_KV_KEY)).toBe(3);
+
+    // 4th press skips the guide sheet and opens the picker directly
+    await fireEvent.press(getByTestId('import-book-button'));
+    await waitFor(() => {
+      expect(pickAndImportBook).toHaveBeenCalledTimes(2);
+    });
+    expect(queryByTestId('import-guide-sheet')).toBeNull();
+  });
+
+  it('shows ابدأ القراية on hero CTA when progress is 0 and كمّل القراية when > 0 (A1)', async () => {
+    const unopenedHero: BookLibraryRecord = {
+      ...IMPORTED_RECORD,
+      id: 'book_zero',
+      title: 'كتاب لم يبدأ',
+      progress: 0,
+    };
+    (listBooks as jest.Mock).mockResolvedValueOnce([unopenedHero]);
+
+    const { getByTestId, getByText, queryByText } = await render(<LibraryScreen />);
+    await waitFor(() => {
+      expect(getByText('ابدأ القراية')).toBeTruthy();
+      expect(queryByText('كمّل القراية')).toBeNull();
+      expect(getByTestId('continue-reading-button').props.accessibilityLabel).toBe('ابدأ القراية');
     });
   });
 

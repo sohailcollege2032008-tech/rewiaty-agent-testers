@@ -15,6 +15,7 @@ import type { Anchor, Book } from '@rewiaty/book-format';
 import { useKeepAwake } from 'expo-keep-awake';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import WebView, { type WebViewMessageEvent, type WebViewNavigation } from 'react-native-webview';
@@ -27,11 +28,13 @@ import { getKv, setKv, touchBookOpened } from '@/storage/database';
 import { ensureOfflineFontsDir } from '@/storage/font-assets';
 import {
   DEFAULT_SETTINGS,
+  getSectionResetPartial,
   loadThemePreference,
   mergeReaderSettings,
-  resetReaderSettings,
+  resetSection,
   saveReaderSettings,
   selectManualTheme,
+  type SettingsTabId,
 } from '@/storage/settings-store';
 import { RADIUS, TYPOGRAPHY, useResponsiveLayout } from '@/theme/layout';
 import { getAppThemeTokens, resolveAppTheme, resolveSystemTheme } from '@/theme/reader-theme';
@@ -103,6 +106,8 @@ export function ReaderScreen() {
 
   const [hudVisible, setHudVisible] = useState(false);
   const [showHudHint, setShowHudHint] = useState(false);
+  const hintOpacity = useSharedValue(1);
+  const hintAnimatedStyle = useAnimatedStyle(() => ({ opacity: hintOpacity.get() }));
   const [tocVisible, setTocVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const settingsVisibleRef = useRef(false);
@@ -494,16 +499,46 @@ export function ReaderScreen() {
     [postToEngine],
   );
 
-  const handleResetSettings = useCallback(() => {
-    hasManualThemeRef.current = false;
-    const systemTheme = resolveSystemTheme(colorSchemeRef.current);
-    const defaults: ReaderSettings = { ...DEFAULT_SETTINGS, theme: systemTheme };
-    postToEngine({ type: 'settings', partial: defaults });
-    initialSettingsRef.current = defaults;
-    setSettings(defaults);
-    notifyThemeListeners({ theme: systemTheme, hasManualTheme: false });
-    void resetReaderSettings();
-  }, [postToEngine]);
+  useEffect(() => {
+    if (!showHudHint || !hudVisible) {
+      hintOpacity.set(1);
+      return;
+    }
+    hintOpacity.set(1);
+    const fadeTimer = setTimeout(() => {
+      hintOpacity.set(withTiming(0, { duration: 350 }));
+    }, 5000);
+    const hideTimer = setTimeout(() => {
+      setShowHudHint(false);
+    }, 5350);
+    return () => {
+      clearTimeout(fadeTimer);
+      clearTimeout(hideTimer);
+    };
+  }, [showHudHint, hudVisible, hintOpacity]);
+
+  const handleResetSettings = useCallback(
+    (tab: SettingsTabId) => {
+      const systemTheme = resolveSystemTheme(colorSchemeRef.current);
+      const sectionPartial = getSectionResetPartial(tab, systemTheme);
+      const enginePartial: EngineSettingsPayload =
+        tab === 'layout' && layout.readerMaxReadingWidthCh !== null
+          ? { ...sectionPartial, maxReadingWidth: layout.readerMaxReadingWidthCh }
+          : sectionPartial;
+      postToEngine({ type: 'settings', partial: enginePartial });
+      setSettings((prev) => {
+        const next = mergeReaderSettings(prev, sectionPartial);
+        initialSettingsRef.current = next;
+        void resetSection(tab, undefined, systemTheme);
+        if (tab === 'theme') {
+          hasManualThemeRef.current = false;
+          notifyThemeListeners({ theme: systemTheme, hasManualTheme: false });
+        }
+        return next;
+      });
+    },
+    [layout.readerMaxReadingWidthCh, postToEngine],
+  );
 
   const handleToggleBookmark = useCallback(() => {
     setBookmarks((prev) => {
@@ -834,15 +869,19 @@ export function ReaderScreen() {
         {book ? (
           <>
             {showHudHint && hudVisible ? (
-              <View
+              <Animated.View
                 testID="reader-hud-hint"
                 pointerEvents="none"
-                style={[styles.hudHint, { backgroundColor: themeTokens.surface, borderColor: themeTokens.border }]}
+                style={[
+                  styles.hudHint,
+                  { backgroundColor: themeTokens.surface, borderColor: themeTokens.border },
+                  hintAnimatedStyle,
+                ]}
               >
                 <Text style={[styles.hudHintText, { color: themeTokens.text, fontFamily: TYPOGRAPHY.uiFont }]}>
                   {HUD_HINT_TEXT}
                 </Text>
-              </View>
+              </Animated.View>
             ) : null}
             <ReaderHud
               visible={hudVisible}
@@ -860,6 +899,7 @@ export function ReaderScreen() {
               onBack={handleBack}
               onOpenToc={() => setTocVisible(true)}
               onOpenSettings={handleOpenSettings}
+              onSelectTheme={(theme) => handleSettingsChange({ theme })}
               onSeekPage={handleSeekPage}
               onBarsLayout={setMeasuredHudHeights}
             />

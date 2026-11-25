@@ -15,6 +15,14 @@ appId: com.rewiaty.app
     timeout: 5000
 - tapOn:
     id: "import-book-button"
+# First 3 imports show the Telegram-first guide sheet before the system picker
+- runFlow:
+    when:
+      visible:
+        id: "import-guide-pick-button"
+    commands:
+      - tapOn:
+          id: "import-guide-pick-button"
 # Navigate Android system file picker (DocumentsUI) to /sdcard/Download/sample-ar.md
 - runFlow:
     when:
