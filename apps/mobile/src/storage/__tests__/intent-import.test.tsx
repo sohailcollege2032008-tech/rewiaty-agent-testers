@@ -77,6 +77,25 @@ describe('intent-import & Android Open With flow', () => {
     );
   });
 
+  it('falls back to the provider MIME type only when no extension exists anywhere (MediaStore / Telegram)', () => {
+    // Seen in CI: content://media/external/downloads/1000000019 with type text/markdown was refused.
+    expect(resolveBookFileNameFromUri('content://media/external/downloads/1000000019', null, 'text/markdown')).toBe('كتاب.md');
+    expect(resolveBookFileNameFromUri('content://media/external/downloads/7', 'رواية جديدة', 'text/plain; charset=utf-8')).toBe('رواية جديدة.txt');
+    expect(resolveBookFileNameFromUri('content://x/files/9', 'edge-cases.md', 'application/octet-stream')).toBe('edge-cases.md');
+    // An explicit unsupported extension, an unknown MIME, or a traversal label never becomes a book.
+    expect(() => resolveBookFileNameFromUri('file:///tmp/book.pdf', null, 'text/plain')).toThrow('صيغة الملف غير مدعومة');
+    expect(() => resolveBookFileNameFromUri('content://media/external/file/42', null, 'application/pdf')).toThrow('صيغة الملف غير مدعومة');
+    expect(() => resolveBookFileNameFromUri('content://media/external/file/42', null, 'constructor')).toThrow('صيغة الملف غير مدعومة');
+    expect(() => resolveBookFileNameFromUri('content://media/external/file/42', '../../etc', 'text/plain')).toThrow('صيغة الملف غير مدعومة');
+  });
+
+  it('imports an extensionless MediaStore URI when the reader reports a text MIME type', async () => {
+    const readFile = jest.fn().mockResolvedValue({ text: '# فصل\n\nنص.', name: null, mimeType: 'text/markdown' });
+    const importContent = jest.fn().mockResolvedValue(MOCK_RECORD);
+    await importBookFromUri('content://media/external/downloads/1000000019', { readFile, importContent });
+    expect(importContent).toHaveBeenCalledWith('# فصل\n\nنص.', 'كتاب.md', undefined);
+  });
+
   it('imports book content from URI using injected file reader and importer', async () => {
     const readFile = jest.fn().mockResolvedValue({
       text: '# الفصل الأول\n\nنص تجريبي للفتح من تطبيق خارجي.',

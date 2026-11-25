@@ -12,12 +12,15 @@ export const BOOK_FILE_ENCODING_MESSAGE =
 export type ReadableBookFile = {
   size: number;
   name?: string;
+  /** MIME type reported by the content provider (Android ContentResolver), if any. */
+  type?: string | null;
   bytes: () => Promise<Uint8Array>;
 };
 
 export type BookFileRead = {
   text: string;
   name: string | null;
+  mimeType: string | null;
 };
 
 export function assertBookFileSize(sizeBytes: number): void {
@@ -56,8 +59,10 @@ export async function readBookTextFile(file: ReadableBookFile): Promise<BookFile
   // Content providers sometimes report 0 for size; re-check what we actually read.
   assertBookFileSize(bytes.byteLength);
   const name = file.name?.trim();
+  const mimeType = typeof file.type === 'string' ? file.type.trim().toLowerCase() : '';
   return {
     text: decodeBookBytes(bytes),
     name: name ? name : null,
+    mimeType: mimeType ? mimeType : null,
   };
 }

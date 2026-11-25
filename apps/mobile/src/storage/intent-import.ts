@@ -78,17 +78,50 @@ function resolveUriSegment(uri: string): string {
   return assertUsableBookFileName(baseName);
 }
 
-export function resolveBookFileNameFromUri(uri: string, explicitName?: string | null): string {
+// Why (product): Telegram and MediaStore hand us URIs like content://media/external/downloads/1000000019,
+// with no extension anywhere. The provider still says what the file is through its MIME type, and the
+// bytes are checked as strict UTF-8 text afterwards, so a text MIME type is enough to accept the file.
+const MIME_EXTENSION: Record<string, 'md' | 'txt'> = {
+  'text/markdown': 'md',
+  'text/x-markdown': 'md',
+  'text/plain': 'txt',
+};
+
+function extensionFromMime(mimeType?: string | null): 'md' | 'txt' | null {
+  const base = mimeType?.split(';')[0]?.trim().toLowerCase();
+  return base && Object.hasOwn(MIME_EXTENSION, base) ? MIME_EXTENSION[base]! : null;
+}
+
+/** A display label safe to reuse as a base name (no path parts, no traversal). */
+function safeLabel(raw?: string | null): string | null {
+  const decoded = raw ? decodeUriPart(raw.trim()) : '';
+  if (!decoded || decoded.includes('/') || decoded.includes('\\') || decoded.includes('..')) return null;
+  return decoded;
+}
+
+export function resolveBookFileNameFromUri(
+  uri: string,
+  explicitName?: string | null,
+  mimeType?: string | null,
+): string {
   const providerName = explicitName?.trim();
   if (providerName) {
     const resolved = resolveProviderName(providerName);
     if (resolved) return resolved;
   }
-  return resolveUriSegment(uri);
+  try {
+    return resolveUriSegment(uri);
+  } catch (err) {
+    // Only a name with *no* extension may fall back to the MIME type; an explicit .pdf stays rejected.
+    const segment = decodeUriPart((uri.split(/[?#]/)[0] ?? uri).split('/').filter(Boolean).pop() ?? '');
+    const ext = extensionFromMime(mimeType);
+    if (!ext || EXTENSION_RE.test(segment) || segment.includes('..')) throw err;
+    return `${safeLabel(providerName) ?? 'كتاب'}.${ext}`;
+  }
 }
 
 export type ImportFromUriDeps = {
-  readFile?: (uri: string) => Promise<{ text: string; name?: string | null }>;
+  readFile?: (uri: string) => Promise<{ text: string; name?: string | null; mimeType?: string | null }>;
   importContent?: (
     rawText: string,
     fileName: string,
@@ -104,10 +137,12 @@ export const FILE_ACCESS_MESSAGE =
 // file:// intent in CI) are English and technical. The reader only ever sees our own Arabic messages.
 const ARABIC_RE = /[\u0600-\u06FF]/;
 
-async function defaultReadFile(uri: string): Promise<{ text: string; name?: string | null }> {
+async function defaultReadFile(
+  uri: string,
+): Promise<{ text: string; name?: string | null; mimeType?: string | null }> {
   try {
     const read = await readBookTextFile(new File(uri));
-    return { text: read.text, name: read.name };
+    return { text: read.text, name: read.name, mimeType: read.mimeType };
   } catch (err) {
     if (err instanceof Error && ARABIC_RE.test(err.message)) throw err;
     throw new Error(FILE_ACCESS_MESSAGE);
@@ -125,8 +160,8 @@ export async function importBookFromUri(
   const readFile = deps.readFile ?? defaultReadFile;
   const importContent = deps.importContent ?? importBookContent;
 
-  const { text, name } = await readFile(uri);
-  const fileName = resolveBookFileNameFromUri(uri, name);
+  const { text, name, mimeType } = await readFile(uri);
+  const fileName = resolveBookFileNameFromUri(uri, name, mimeType);
 
   if (!text || !text.trim()) {
     throw new Error('الملف فارغ ولا يحتوي على نص.');
