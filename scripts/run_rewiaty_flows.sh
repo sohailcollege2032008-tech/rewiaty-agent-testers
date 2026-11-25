@@ -125,15 +125,20 @@ fi
 adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
 # Why (tech): Telegram / file managers hand over a content:// URI with a read grant; file:// between apps
 # is blocked since Android 7. So we index the pushed file in MediaStore and send its content:// URI.
-adb shell content call --uri content://media --method scan_volume --arg external_primary >/dev/null 2>&1 || true
+mkdir -p results/logs; : > results/logs/open-with-intent.txt
+adb shell "content call --uri content://media --method scan_volume --arg external_primary" >> results/logs/open-with-intent.txt 2>&1 || true
 sleep 3
 MEDIA_ID=""
 for coll in downloads file; do
-  MEDIA_ID="$(adb shell content query --uri "content://media/external/${coll}" --projection _id --where "_display_name='edge-cases.md'" 2>/dev/null | sed -n 's/.*_id=\([0-9]*\).*/\1/p' | head -n 1 | tr -d '\r')"
+  # Why (tech): the whole command goes as ONE quoted string; otherwise the device shell strips the inner quotes
+  # of the WHERE clause and the query silently returns nothing (run 45517261586).
+  QOUT="$(adb shell "content query --uri content://media/external/${coll} --projection _id:_display_name --where \"_display_name='edge-cases.md'\"" 2>&1)"
+  echo "[$coll] $QOUT" >> results/logs/open-with-intent.txt
+  MEDIA_ID="$(printf '%s' "$QOUT" | sed -n 's/.*_id=\([0-9]*\).*/\1/p' | head -n 1 | tr -d '\r')"
   if [ -n "$MEDIA_ID" ]; then INTENT_URI="content://media/external/${coll}/${MEDIA_ID}"; break; fi
 done
 if [ -z "$MEDIA_ID" ]; then
-  echo "ERROR: edge-cases.md not indexed in MediaStore; refusing to fall back to file:// (not a real-world path)" | tee results/logs/open-with-intent.txt
+  echo "ERROR: edge-cases.md not indexed in MediaStore; refusing to fall back to file:// (not a real-world path)" | tee -a results/logs/open-with-intent.txt
   INTENT_URI=""
 fi
 echo "Triggering ACTION_VIEW with URI: $INTENT_URI" | tee -a results/logs/open-with-intent.txt
