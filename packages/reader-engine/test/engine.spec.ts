@@ -319,6 +319,67 @@ test.describe('Rewiaty Reader Engine', () => {
     expect(layoutChecks.spansInParagraphs).toBe(0);
   });
 
+  test('(c2) repeated reflows never drift the anchor: blockId + charOffset stay exact and a turn still moves', async ({
+    page,
+  }) => {
+    await mountEngine(page);
+    const book = buildLongArabicBook(60, 2);
+
+    await sendBridge(page, { type: 'load', book, settings: { disableAnimation: true, fontSize: 18 } });
+    await expect.poll(async () => (await getLatestPosition(page))?.chapterId).toBe('ch01');
+
+    for (let i = 0; i < 5; i++) {
+      await sendBridge(page, { type: 'next' });
+    }
+    await expect.poll(async () => (await getLatestPosition(page))?.chapterPage).toBe(6);
+
+    // A page usually starts mid-paragraph, so the position is a character offset inside a
+    // block — not a block boundary. Every reflow must carry that offset, not re-derive it
+    // from the new (and therefore different) top-of-page block.
+    let anchor = (await getLatestPosition(page))!.anchor;
+    expect(anchor.blockId).not.toBe('ch01_p0001');
+
+    // Walking the font slider up, then back down, must be idempotent.
+    for (const fontSize of [30, 30, 22, 34, 18]) {
+      const msgCountBefore = (await getMessages(page)).length;
+      await sendBridge(page, { type: 'settings', partial: { fontSize } });
+      await expect
+        .poll(async () => {
+          const msgs = await getMessages(page);
+          return msgs.slice(msgCountBefore).some((m) => m.type === 'position');
+        })
+        .toBe(true);
+
+      const after = (await getLatestPosition(page))!;
+      expect(after.anchor.blockId, `blockId drifted at fontSize ${fontSize}`).toBe(anchor.blockId);
+      expect(after.anchor.charOffset, `charOffset drifted at fontSize ${fontSize}`).toBe(anchor.charOffset);
+
+      // …and the anchor block is still on the visible page.
+      const visible = await page.evaluate((targetBlockId) => {
+        const stage = document.getElementById('reader-stage')!.getBoundingClientRect();
+        const curr = document.querySelector<HTMLElement>('.chapter[aria-hidden="false"]')!;
+        const block = curr.querySelector<HTMLElement>(`[data-block-id="${targetBlockId}"]`)!;
+        const range = document.createRange();
+        range.selectNodeContents(block);
+        const rects = range.getClientRects();
+        for (let i = 0; i < rects.length; i++) {
+          const r = rects[i]!;
+          if (r.right > stage.left + 1 && r.left < stage.right - 1) return true;
+        }
+        return false;
+      }, anchor.blockId);
+      expect(visible, `anchor ${anchor.blockId} not on screen at fontSize ${fontSize}`).toBe(true);
+
+      anchor = after.anchor;
+    }
+
+    // The stored anchor only overrides the geometry right after a reflow: a real page
+    // turn must move again instead of pinning the reader to the restored anchor.
+    const pageBeforeTurn = (await getLatestPosition(page))!.page;
+    await sendBridge(page, { type: 'next' });
+    await expect.poll(async () => (await getLatestPosition(page))?.page).toBeGreaterThan(pageBeforeTurn);
+  });
+
   test('(d) tap zones work with reversed direction in RTL vs LTR', async ({ page }) => {
     await mountEngine(page);
 
