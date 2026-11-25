@@ -1,0 +1,47 @@
+appId: com.rewiaty.app
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+- takeScreenshot: "01-library-sample"
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 20000
+- waitForAnimationToEnd
+- takeScreenshot: "02-page-1-tashkeel"
+# RTL: tapping left edge (15%) advances to the next page (5 pages -> page 6)
+- tapOn:
+    point: "15%,50%"
+- waitForAnimationToEnd
+- tapOn:
+    point: "15%,50%"
+- waitForAnimationToEnd
+- tapOn:
+    point: "15%,50%"
+- waitForAnimationToEnd
+- tapOn:
+    point: "15%,50%"
+- waitForAnimationToEnd
+- tapOn:
+    point: "15%,50%"
+- waitForAnimationToEnd
+- takeScreenshot: "03-page-6-tashkeel"
+# Open the bars only if they are closed (they open on their own with a hint on first launch).
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-page-counter"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-page-counter"
+    timeout: 5000
+- assertVisible:
+    id: "reader-page-counter"
+    text: "صفحة 6 من .*"
+- takeScreenshot: "04-page-6-hud"

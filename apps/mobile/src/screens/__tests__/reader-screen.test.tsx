@@ -67,8 +67,13 @@ jest.mock('@/storage/bundle', () => ({
   saveBookReaderState: jest.fn(),
 }));
 
+const mockKv = new Map<string, unknown>();
 jest.mock('@/storage/database', () => ({
   touchBookOpened: jest.fn(),
+  getKv: jest.fn(async (key: string, fallback: unknown) => (mockKv.has(key) ? mockKv.get(key) : fallback)),
+  setKv: jest.fn(async (key: string, value: unknown) => {
+    mockKv.set(key, value);
+  }),
 }));
 
 jest.mock('@/storage/font-assets', () => ({
@@ -202,7 +207,8 @@ describe('ReaderScreen', () => {
     expect(loadPayload.type).toBe('load');
     expect(loadPayload.book.id).toBe('book_123');
     expect(loadPayload.anchor).toEqual({ blockId: 'ch01_p0003', charOffset: 12 });
-    expect(loadPayload.settings).toEqual(DEFAULT_SETTINGS);
+    // A phone always gets one page, sent explicitly on load (the engine's own default is 'auto').
+    expect(loadPayload.settings).toEqual({ ...DEFAULT_SETTINGS, spread: 'single' });
     expect(loadPayload.fontBaseUrl).toBe('file:///mock/cache/rewiaty-fonts/');
   });
 
@@ -320,6 +326,8 @@ describe('ReaderScreen', () => {
       partial: { fontSize: 21 },
     });
 
+    // Each settings tab shows only its own section.
+    await fireEvent.press(getByTestId('settings-tab-theme'));
     await fireEvent.press(getByTestId('theme-option-oled-crimson'));
     expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
       type: 'settings',
@@ -327,12 +335,14 @@ describe('ReaderScreen', () => {
     });
     expect(selectManualTheme).toHaveBeenCalledWith('oled-crimson');
 
+    await fireEvent.press(getByTestId('settings-tab-font'));
     await fireEvent.press(getByTestId('font-option-Readex Pro'));
     expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
       type: 'settings',
       partial: { fontFamily: 'Readex Pro' },
     });
 
+    await fireEvent.press(getByTestId('settings-tab-layout'));
     await fireEvent(getByTestId('settings-disable-animation-switch'), 'valueChange', true);
     expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
       type: 'settings',
@@ -386,7 +396,7 @@ describe('ReaderScreen', () => {
     const { getByTestId, queryByTestId } = await renderLoadedReader();
 
     const loadPayload = JSON.parse(postedToWebView[0]!);
-    expect(loadPayload.settings.spread).toBeUndefined();
+    expect(loadPayload.settings.spread).toBe('single');
     expect(loadPayload.settings.maxReadingWidth).toBe(62);
 
     await act(async () => {
@@ -397,5 +407,49 @@ describe('ReaderScreen', () => {
     await fireEvent.press(getByTestId('reader-settings-button'));
     expect(getByTestId('mock-bottom-sheet')).toBeTruthy();
     expect(queryByTestId('reader-settings-side-panel')).toBeNull();
+  });
+
+  it('shows the bars with a hint the first time a reader opens a book', async () => {
+    mockKv.clear();
+    const screen = await renderLoadedReader();
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+    });
+    await waitFor(() => expect(screen.getByTestId('reader-hud-hint')).toBeTruthy());
+    expect(screen.getByTestId('reader-settings-button')).toBeTruthy();
+    expect(mockKv.get('reader_hud_hint_seen_v1')).toBe(true);
+  });
+
+  it('does not show the hint again once it was seen', async () => {
+    // One render per test: two renders in one test overlapped act() and broke the following tests.
+    mockKv.clear();
+    mockKv.set('reader_hud_hint_seen_v1', true);
+    const screen = await renderLoadedReader();
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+    });
+    expect(screen.queryByTestId('reader-hud-hint')).toBeNull();
+  });
+
+  it('checks the first-open hint once even when ready arrives twice', async () => {
+    const db = jest.requireMock('@/storage/database');
+    mockKv.clear();
+    await renderLoadedReader();
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({ type: 'ready' });
+    });
+    expect((db.getKv as jest.Mock).mock.calls.filter(([k]: [string]) => k === 'reader_hud_hint_seen_v1')).toHaveLength(1);
+  });
+
+  it('keeps reading when the hint storage fails', async () => {
+    const db = jest.requireMock('@/storage/database');
+    (db.getKv as jest.Mock).mockRejectedValueOnce(new Error('sqlite busy'));
+    const screen = await renderLoadedReader();
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+    });
+    expect(screen.queryByTestId('reader-hud-hint')).toBeNull();
+    expect(screen.getByTestId('reader-webview')).toBeTruthy();
   });
 });

@@ -4,29 +4,29 @@ flows:
     who: "قارئ عربي بيفتح التطبيق أول مرة"
     steps: "يفتح التطبيق ← يلاقي الرواية التجريبية في المكتبة ← يفتحها ← يقلّب 5 صفحات بالـ tap (الشمال = اللي بعدها) ← التشكيل سليم ومفيش سطر مقطوع"
     target: release-apk
-    run: ""
-    artifact: "apps/mobile/android/app/build/outputs/apk/release/app-release.apk"
+    run: "bash scripts/ci-flows.sh first-launch-sample"
+    artifact: ".factory/evidence/latest/apk/app.apk"
   - id: import-md
     who: "قارئ عنده ملف رواية md"
     steps: "المكتبة ← استيراد ← يختار ملف md ← الكتاب يظهر بعنوانه من الـ frontmatter ← يفتحه ← الفهرس فيه الفصول"
     target: release-apk
-    run: ""
-    artifact: "apps/mobile/android/app/build/outputs/apk/release/app-release.apk"
+    run: "bash scripts/ci-flows.sh import-md"
+    artifact: ".factory/evidence/latest/apk/app.apk"
   - id: resume-position
     who: "قارئ رجع يكمل"
     steps: "يقرا لحد صفحة في الفصل 2 ← يكبّر الخط ← نفس الفقرة باينة ← يقفل التطبيق ويفتحه ← يرجع لنفس الفقرة"
     target: release-apk
-    run: ""
-    artifact: "apps/mobile/android/app/build/outputs/apk/release/app-release.apk"
+    run: "bash scripts/ci-flows.sh resume-position"
+    artifact: ".factory/evidence/latest/apk/app.apk"
   - id: settings-live
     who: "قارئ بالليل"
     steps: "tap في النص ← الإعدادات ← OLED Night ← يغيّر الخط لـ Amiri والحجم ← التغيير يبان فوراً"
     target: release-apk
-    run: ""
-    artifact: "apps/mobile/android/app/build/outputs/apk/release/app-release.apk"
+    run: "bash scripts/ci-flows.sh settings-live"
+    artifact: ".factory/evidence/latest/apk/app.apk"
   - id: open-with-telegram
     who: "قارئ وصله ملف من تيليجرام"
     steps: "يفتح ملف md بـ «روايتي» من مدير الملفات ← يتعمله import ويتفتح"
     target: release-apk
-    run: ""
-    artifact: "apps/mobile/android/app/build/outputs/apk/release/app-release.apk"
+    run: "bash scripts/ci-flows.sh open-with-telegram"
+    artifact: ".factory/evidence/latest/apk/app.apk"

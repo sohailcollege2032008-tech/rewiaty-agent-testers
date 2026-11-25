@@ -1,0 +1,27 @@
+appId: com.rewiaty.app
+---
+# Workflow fires ACTION_VIEW intent for edge-cases.md right before invoking this flow
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 20000
+- waitForAnimationToEnd
+- assertNotVisible:
+    id: "reader-error-state"
+- takeScreenshot: "01-opened-from-intent"
+# The HUD may already be open (e.g. after closing the TOC); a blind center tap would hide it.
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-chapter-title"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-chapter-title"
+    timeout: 5000
+- assertVisible:
+    id: "reader-chapter-title"
+    text: ".*حالات حدية.*"
+- takeScreenshot: "02-intent-book-hud"

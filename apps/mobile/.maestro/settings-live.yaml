@@ -1,0 +1,64 @@
+appId: com.rewiaty.app
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 20000
+- waitForAnimationToEnd
+# Center tap -> Settings -> OLED Night -> Font Amiri -> Font Size
+# Open the bars only if they are closed (they open on their own with a hint on first launch).
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-settings-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-settings-button"
+    timeout: 5000
+- tapOn:
+    id: "reader-settings-button"
+# The settings sheet has tabs since R1: الخط (font) · الصفحة (layout) · المظهر (theme).
+- tapOn:
+    id: "settings-tab-theme"
+- extendedWaitUntil:
+    visible:
+      id: "theme-option-oled-crimson"
+    timeout: 5000
+- tapOn:
+    id: "theme-option-oled-crimson"
+- tapOn:
+    id: "settings-tab-font"
+- tapOn:
+    id: "font-option-Readex Pro"
+- waitForAnimationToEnd
+- tapOn:
+    id: "font-option-Amiri"
+- scrollUntilVisible:
+    element:
+      id: "settings-font-size-inc"
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: "settings-font-size-inc"
+- tapOn:
+    id: "settings-font-size-inc"
+- tapOn:
+    id: "settings-font-size-inc"
+- tapOn:
+    id: "settings-font-size-inc"
+- assertVisible:
+    id: "settings-font-size-value"
+    text: "24"
+- takeScreenshot: "01-settings-sheet-oled-amiri"
+- tapOn:
+    id: "settings-close-button"
+- waitForAnimationToEnd
+- takeScreenshot: "02-reader-oled-amiri-live"

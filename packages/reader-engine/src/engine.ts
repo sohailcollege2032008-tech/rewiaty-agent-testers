@@ -139,7 +139,22 @@ export class ReaderEngine {
       if (this.paginator.handleFontLoad()) {
         this.emitPositionAndToc();
       }
+      this.logFontStatus();
     });
+  }
+
+  private logFontStatus(): void {
+    const fonts = document.fonts;
+    if (!fonts) return;
+    const loadedFamilies: string[] = [];
+    fonts.forEach((face) => {
+      if (face.status === 'loaded' && !loadedFamilies.includes(face.family)) {
+        loadedFamilies.push(face.family);
+      }
+    });
+    console.info(
+      `[rewiaty-fonts] amiri=${fonts.check('16px "Amiri"')} loaded=${loadedFamilies.join(',')}`,
+    );
   }
 
   private applyFontFaces(fontBaseUrl?: string): void {
@@ -190,6 +205,9 @@ export class ReaderEngine {
         const partial = msg.partial ?? {};
         this.paginator.updateSettings(partial);
         this.emitPositionAndToc();
+        if (partial.fontFamily !== undefined) {
+          void document.fonts?.ready?.then(() => this.logFontStatus());
+        }
         break;
       }
       case 'goto': {

@@ -130,6 +130,7 @@ export function ReaderHud({
 
         <View style={styles.titleCenterWrap}>
           <Text
+            testID="reader-book-title"
             style={[
               styles.bookTitle,
               {
@@ -241,6 +242,7 @@ export function ReaderHud({
         <View style={[styles.footerInner, isTablet && styles.footerInnerTablet]}>
           <View style={styles.footerInfoRow}>
             <Text
+              testID="reader-chapter-title"
               style={[
                 styles.chapterTitle,
                 { color: palette.text, fontFamily: TYPOGRAPHY.uiFont },
@@ -250,6 +252,7 @@ export function ReaderHud({
               {chapterTitle}
             </Text>
             <Text
+              testID="reader-page-counter"
               style={[
                 styles.pageCounter,
                 { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },

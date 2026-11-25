@@ -8,5 +8,6 @@ samples/long-ar.md
 
 .factory/evidence/*/*
 !.factory/evidence/*/summary.md
+.factory/evidence/
 
 .factory/features.html

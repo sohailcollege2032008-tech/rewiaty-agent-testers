@@ -3,6 +3,7 @@ import { render, waitFor } from '@testing-library/react-native';
 import * as Linking from 'expo-linking';
 
 import {
+  FILE_ACCESS_MESSAGE,
   importBookFromUri,
   isBookImportUri,
   resolveBookFileNameFromUri,
@@ -11,6 +12,16 @@ import type { BookLibraryRecord } from '@/types/reader';
 import { useIncomingBookIntent } from '@/utils/use-incoming-book-intent';
 
 const mockPush = jest.fn();
+
+const mockFileBytes = jest.fn();
+jest.mock('expo-file-system', () => ({
+  File: jest.fn().mockImplementation((uri: string) => ({
+    uri,
+    name: uri.split('/').pop(),
+    size: 10,
+    bytes: () => mockFileBytes(),
+  })),
+}));
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush }),
@@ -64,6 +75,35 @@ describe('intent-import & Android Open With flow', () => {
     expect(() => resolveBookFileNameFromUri('file:///tmp/book.pdf')).toThrow(
       'صيغة الملف غير مدعومة',
     );
+  });
+
+  it('falls back to the provider MIME type only when no extension exists anywhere (MediaStore / Telegram)', () => {
+    // Seen in CI: content://media/external/downloads/1000000019 with type text/markdown was refused.
+    expect(resolveBookFileNameFromUri('content://media/external/downloads/1000000019', null, 'text/markdown')).toBe('كتاب.md');
+    expect(resolveBookFileNameFromUri('content://media/external/downloads/7', 'رواية جديدة', 'text/plain; charset=utf-8')).toBe('رواية جديدة.txt');
+    expect(resolveBookFileNameFromUri('content://x/files/9', 'edge-cases.md', 'application/octet-stream')).toBe('edge-cases.md');
+    // An explicit unsupported extension, an unknown MIME, or a traversal label never becomes a book.
+    expect(() => resolveBookFileNameFromUri('file:///tmp/book.pdf', null, 'text/plain')).toThrow('صيغة الملف غير مدعومة');
+    expect(() => resolveBookFileNameFromUri('content://media/external/file/42', null, 'application/pdf')).toThrow('صيغة الملف غير مدعومة');
+    expect(() => resolveBookFileNameFromUri('content://media/external/file/42', null, 'constructor')).toThrow('صيغة الملف غير مدعومة');
+    expect(() => resolveBookFileNameFromUri('content://media/external/file/42', '../../etc', 'text/plain')).toThrow('صيغة الملف غير مدعومة');
+  });
+
+  it('imports an extensionless MediaStore URI when the reader reports a text MIME type', async () => {
+    const readFile = jest.fn().mockResolvedValue({ text: '# فصل\n\nنص.', name: null, mimeType: 'text/markdown' });
+    const importContent = jest.fn().mockResolvedValue(MOCK_RECORD);
+    await importBookFromUri('content://media/external/downloads/1000000019', { readFile, importContent });
+    expect(importContent).toHaveBeenCalledWith('# فصل\n\nنص.', 'كتاب.md', undefined);
+  });
+
+  it('rejects binary bytes even when the provider claims a text MIME type', async () => {
+    const { File } = jest.requireMock('expo-file-system');
+    (File as jest.Mock).mockImplementationOnce((uri: string) => ({
+      uri, name: '1000000020', size: 4, type: 'text/plain', bytes: () => Promise.resolve(new Uint8Array([0x50, 0x4b, 0x00, 0x03])),
+    }));
+    const importContent = jest.fn();
+    await expect(importBookFromUri('content://media/external/downloads/1000000020', { importContent })).rejects.toThrow('مش ملف نصي');
+    expect(importContent).not.toHaveBeenCalled();
   });
 
   it('imports book content from URI using injected file reader and importer', async () => {
@@ -157,5 +197,16 @@ describe('intent-import & Android Open With flow', () => {
 
     alertSpy.mockRestore();
     intentSpy.mockRestore();
+  });
+});
+
+describe('default file reading errors', () => {
+  it('turns a technical OS error into an Arabic message the reader can act on', async () => {
+    mockFileBytes.mockRejectedValueOnce(
+      new Error("Call to function 'FileSystemFile.bytes' has been rejected. Missing 'READ' permission"),
+    );
+    await expect(importBookFromUri('file:///storage/emulated/0/Download/x.md')).rejects.toThrow(
+      FILE_ACCESS_MESSAGE,
+    );
   });
 });
