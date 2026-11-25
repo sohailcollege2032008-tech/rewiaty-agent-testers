@@ -1,5 +1,14 @@
 import { File } from 'expo-file-system';
 
+import { MAX_ARCHIVE_FILE_BYTES } from '@rewiaty/book-format';
+
+import {
+  ARCHIVE_READ_FAILED_MESSAGE,
+  ARCHIVE_TOO_LARGE_FILE_MESSAGE,
+  importBookArchiveBytes,
+  isArchiveBookFileName,
+  isArchiveBookMimeType,
+} from './archive-import';
 import { readBookTextFile } from './book-file';
 import { importBookContent } from './bundle';
 import type { DatabaseAdapter } from './database';
@@ -7,7 +16,8 @@ import { isSupportedBookFileName } from './importer';
 import type { BookLibraryRecord } from '@/types/reader';
 
 const EXTENSION_RE = /\.([a-z0-9]{1,10})$/i;
-export const UNSUPPORTED_FORMAT_MESSAGE = 'صيغة الملف غير مدعومة. اختر ملف .md أو .txt.';
+export const UNSUPPORTED_FORMAT_MESSAGE =
+  'صيغة الملف غير مدعومة. اختر ملف .md أو .txt أو .zip أو .epub.';
 
 export function isBookImportUri(uri: string | null | undefined): uri is string {
   if (!uri || typeof uri !== 'string') return false;
@@ -81,13 +91,16 @@ function resolveUriSegment(uri: string): string {
 // Why (product): Telegram and MediaStore hand us URIs like content://media/external/downloads/1000000019,
 // with no extension anywhere. The provider still says what the file is through its MIME type, and the
 // bytes are checked as strict UTF-8 text afterwards, so a text MIME type is enough to accept the file.
-const MIME_EXTENSION: Record<string, 'md' | 'txt'> = {
+const MIME_EXTENSION: Record<string, 'md' | 'txt' | 'zip' | 'epub'> = {
   'text/markdown': 'md',
   'text/x-markdown': 'md',
   'text/plain': 'txt',
+  'application/zip': 'zip',
+  'application/x-zip-compressed': 'zip',
+  'application/epub+zip': 'epub',
 };
 
-function extensionFromMime(mimeType?: string | null): 'md' | 'txt' | null {
+function extensionFromMime(mimeType?: string | null): 'md' | 'txt' | 'zip' | 'epub' | null {
   const base = mimeType?.split(';')[0]?.trim().toLowerCase();
   return base && Object.hasOwn(MIME_EXTENSION, base) ? MIME_EXTENSION[base]! : null;
 }
@@ -120,10 +133,23 @@ export function resolveBookFileNameFromUri(
   }
 }
 
+export type ReadBookFileResult = {
+  text: string;
+  name?: string | null;
+  mimeType?: string | null;
+  /** Present only for `.zip` / `.epub`, where the file is binary and must not be decoded as text. */
+  bytes?: Uint8Array;
+};
+
 export type ImportFromUriDeps = {
-  readFile?: (uri: string) => Promise<{ text: string; name?: string | null; mimeType?: string | null }>;
+  readFile?: (uri: string) => Promise<ReadBookFileResult>;
   importContent?: (
     rawText: string,
+    fileName: string,
+    db?: DatabaseAdapter,
+  ) => Promise<BookLibraryRecord>;
+  importArchive?: (
+    bytes: Uint8Array,
     fileName: string,
     db?: DatabaseAdapter,
   ) => Promise<BookLibraryRecord>;
@@ -137,11 +163,25 @@ export const FILE_ACCESS_MESSAGE =
 // file:// intent in CI) are English and technical. The reader only ever sees our own Arabic messages.
 const ARABIC_RE = /[\u0600-\u06FF]/;
 
-async function defaultReadFile(
-  uri: string,
-): Promise<{ text: string; name?: string | null; mimeType?: string | null }> {
+async function defaultReadFile(uri: string): Promise<ReadBookFileResult> {
   try {
-    const read = await readBookTextFile(new File(uri));
+    const file = new File(uri);
+    const name = typeof file.name === 'string' ? file.name : null;
+    const mimeType = typeof file.type === 'string' ? file.type.trim().toLowerCase() : null;
+
+    if (isArchiveBookFileName(name) || isArchiveBookMimeType(mimeType)) {
+      const declaredSize = typeof file.size === 'number' ? file.size : 0;
+      if (declaredSize > MAX_ARCHIVE_FILE_BYTES) {
+        throw new Error(ARCHIVE_TOO_LARGE_FILE_MESSAGE);
+      }
+      const bytes = await file.bytes();
+      if (bytes.byteLength > MAX_ARCHIVE_FILE_BYTES) {
+        throw new Error(ARCHIVE_TOO_LARGE_FILE_MESSAGE);
+      }
+      return { text: '', name, mimeType, bytes };
+    }
+
+    const read = await readBookTextFile(file);
     return { text: read.text, name: read.name, mimeType: read.mimeType };
   } catch (err) {
     if (err instanceof Error && ARABIC_RE.test(err.message)) throw err;
@@ -160,12 +200,22 @@ export async function importBookFromUri(
   const readFile = deps.readFile ?? defaultReadFile;
   const importContent = deps.importContent ?? importBookContent;
 
-  const { text, name, mimeType } = await readFile(uri);
-  const fileName = resolveBookFileNameFromUri(uri, name, mimeType);
+  const read = await readFile(uri);
+  const fileName = resolveBookFileNameFromUri(uri, read.name, read.mimeType);
 
-  if (!text || !text.trim()) {
+  // `resolveBookFileNameFromUri` is the single source of truth for the format: a `.zip`/`.epub`
+  // (declared by name or by MIME fallback) goes through the archive importer, never the text one.
+  if (isArchiveBookFileName(fileName) || isArchiveBookMimeType(read.mimeType)) {
+    const importArchive = deps.importArchive ?? importBookArchiveBytes;
+    if (!read.bytes) {
+      throw new Error(ARCHIVE_READ_FAILED_MESSAGE);
+    }
+    return importArchive(read.bytes, fileName, deps.db);
+  }
+
+  if (!read.text || !read.text.trim()) {
     throw new Error('الملف فارغ ولا يحتوي على نص.');
   }
 
-  return importContent(text, fileName, deps.db);
+  return importContent(read.text, fileName, deps.db);
 }

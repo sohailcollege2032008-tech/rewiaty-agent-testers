@@ -89,6 +89,60 @@ describe('intent-import & Android Open With flow', () => {
     expect(() => resolveBookFileNameFromUri('content://media/external/file/42', '../../etc', 'text/plain')).toThrow('صيغة الملف غير مدعومة');
   });
 
+  it('falls back to the archive MIME types for zip and epub', () => {
+    // Android/Telegram providers hand over `content://…` ids with no extension at all.
+    expect(
+      resolveBookFileNameFromUri('content://media/external/downloads/55', null, 'application/epub+zip'),
+    ).toBe('كتاب.epub');
+    expect(resolveBookFileNameFromUri('content://media/external/downloads/56', null, 'application/zip')).toBe(
+      'كتاب.zip',
+    );
+    expect(
+      resolveBookFileNameFromUri('content://media/external/downloads/57', 'حكاية.epub', 'application/octet-stream'),
+    ).toBe('حكاية.epub');
+  });
+
+  it('routes a .epub / .zip to the archive importer instead of the text importer', async () => {
+    const archiveBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+    const readFile = jest.fn().mockResolvedValue({
+      text: '',
+      name: 'حكاية.epub',
+      mimeType: 'application/epub+zip',
+      bytes: archiveBytes,
+    });
+    const importContent = jest.fn();
+    const importArchive = jest.fn().mockResolvedValue(MOCK_RECORD);
+
+    const record = await importBookFromUri('file:///storage/emulated/0/Download/%D8%AD%D9%83%D8%A7%D9%8A%D8%A9.epub', {
+      readFile,
+      importContent,
+      importArchive,
+    });
+
+    expect(record).toEqual(MOCK_RECORD);
+    expect(importArchive).toHaveBeenCalledWith(archiveBytes, 'حكاية.epub', undefined);
+    expect(importContent).not.toHaveBeenCalled();
+  });
+
+  it('routes an extensionless zip handed over by MIME type', async () => {
+    const archiveBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+    const readFile = jest.fn().mockResolvedValue({
+      text: '',
+      name: null,
+      mimeType: 'application/zip',
+      bytes: archiveBytes,
+    });
+    const importArchive = jest.fn().mockResolvedValue(MOCK_RECORD);
+
+    await importBookFromUri('content://media/external/downloads/1000000030', {
+      readFile,
+      importContent: jest.fn(),
+      importArchive,
+    });
+
+    expect(importArchive).toHaveBeenCalledWith(archiveBytes, 'كتاب.zip', undefined);
+  });
+
   it('imports an extensionless MediaStore URI when the reader reports a text MIME type', async () => {
     const readFile = jest.fn().mockResolvedValue({ text: '# فصل\n\nنص.', name: null, mimeType: 'text/markdown' });
     const importContent = jest.fn().mockResolvedValue(MOCK_RECORD);
