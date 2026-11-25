@@ -220,6 +220,28 @@ describe('bundle storage & importer', () => {
     expect(loaded.state.anchor).toEqual({ blockId: 'ch01_p0001', charOffset: 5 });
   });
 
+  it('lands overlapping reader-state writes in call order (Codex #26)', async () => {
+    const record = await importBookContent(SAMPLE_MD, 'race.md', db);
+    const originalWrite = File.prototype.write;
+    let call = 0;
+    const writeSpy = jest
+      .spyOn(File.prototype, 'write')
+      .mockImplementation(async function (this: File, ...args: Parameters<File['write']>) {
+        call += 1;
+        // The first (older) write is slower; without chaining it would land last.
+        if (call === 1) await new Promise((resolve) => setTimeout(resolve, 50));
+        return originalWrite.apply(this, args);
+      });
+    const base = { anchor: null, chapterId: 'ch01', page: 1, pageCount: 7, updatedAt: 1 };
+    const older = saveBookReaderState(record.id, { ...base, progress: 0.1 }, db);
+    const newer = saveBookReaderState(record.id, { ...base, progress: 0.9 }, db);
+    await Promise.all([older, newer]);
+    writeSpy.mockRestore();
+
+    const loaded = await readBookBundle(record.id);
+    expect(loaded.state.progress).toBeCloseTo(0.9);
+  });
+
   it('supports .txt imports and orders library by lastOpenedAt DESC', async () => {
     const nowSpy = jest.spyOn(Date, 'now');
     nowSpy.mockReturnValue(1000);

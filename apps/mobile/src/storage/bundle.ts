@@ -212,7 +212,28 @@ export async function readBookBundle(bookId: string): Promise<{
   return { book, manifest: fallbackManifest, state };
 }
 
-export async function saveBookReaderState(
+// Why: page saves, bookmarks and highlights all write the same `.reader-state.json`. Two
+// overlapping writes can finish out of order and leave the older state on disk (Codex #26), so
+// writes for one book are chained and always land in call order.
+const stateWriteChains = new Map<string, Promise<void>>();
+
+export function saveBookReaderState(
+  bookId: string,
+  state: BookReaderState,
+  db?: DatabaseAdapter,
+): Promise<void> {
+  const previous = stateWriteChains.get(bookId) ?? Promise.resolve();
+  const next = previous
+    .catch(() => undefined)
+    .then(() => writeBookReaderState(bookId, state, db));
+  stateWriteChains.set(bookId, next);
+  void next.finally(() => {
+    if (stateWriteChains.get(bookId) === next) stateWriteChains.delete(bookId);
+  });
+  return next;
+}
+
+async function writeBookReaderState(
   bookId: string,
   state: BookReaderState,
   db?: DatabaseAdapter,
