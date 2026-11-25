@@ -88,8 +88,25 @@ export function ReaderScreen() {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const layout = useResponsiveLayout();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, blockId, charOffset } = useLocalSearchParams<{
+    id: string;
+    blockId?: string;
+    charOffset?: string;
+  }>();
   const bookId = Array.isArray(id) ? id[0] : id;
+  const targetBlockId = Array.isArray(blockId) ? blockId[0] : blockId;
+  const targetCharOffset = Array.isArray(charOffset) ? charOffset[0] : charOffset;
+  const searchAnchor = useMemo<Anchor | undefined>(() => {
+    if (!targetBlockId || !targetBlockId.trim()) return undefined;
+    const parsedOffset = targetCharOffset !== undefined ? Number(targetCharOffset) : 0;
+    return {
+      blockId: targetBlockId.trim(),
+      charOffset: Number.isFinite(parsedOffset) && parsedOffset >= 0 ? Math.floor(parsedOffset) : 0,
+    };
+  }, [targetBlockId, targetCharOffset]);
+  const searchAnchorRef = useRef<Anchor | undefined>(searchAnchor);
+  searchAnchorRef.current = searchAnchor;
+  const appliedSearchKeyRef = useRef<string | null>(null);
 
   const webViewRef = useRef<WebView<Record<string, unknown>> | null>(null);
   const hasSentLoadRef = useRef(false);
@@ -246,7 +263,11 @@ export function ReaderScreen() {
         };
 
         hasManualThemeRef.current = pref.hasManualTheme;
-        initialAnchorRef.current = bundle.state.anchor ?? undefined;
+        const activeSearchAnchor = searchAnchorRef.current;
+        appliedSearchKeyRef.current = activeSearchAnchor
+          ? `${bookId}:${activeSearchAnchor.blockId}:${activeSearchAnchor.charOffset}`
+          : null;
+        initialAnchorRef.current = activeSearchAnchor ?? bundle.state.anchor ?? undefined;
         initialSettingsRef.current = resolvedSettings;
         fontBaseUrlRef.current = resolvedFontsUrl;
         latestStateRef.current = bundle.state;
@@ -287,6 +308,14 @@ export function ReaderScreen() {
   const postToEngine = useCallback((msg: RNToWebMessage) => {
     webViewRef.current?.postMessage(JSON.stringify(msg));
   }, []);
+
+  useEffect(() => {
+    if (!bookId || !engineReady || !hasSentLoadRef.current || !searchAnchor) return;
+    const key = `${bookId}:${searchAnchor.blockId}:${searchAnchor.charOffset}`;
+    if (appliedSearchKeyRef.current === key) return;
+    appliedSearchKeyRef.current = key;
+    postToEngine({ type: 'goto', anchor: searchAnchor });
+  }, [bookId, engineReady, searchAnchor, postToEngine]);
 
   useEffect(() => {
     if (!webLoaded || !book || hasSentLoadRef.current) return;

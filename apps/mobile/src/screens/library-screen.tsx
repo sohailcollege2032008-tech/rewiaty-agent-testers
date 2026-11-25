@@ -12,7 +12,7 @@ import {
 import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Circle, Path } from 'react-native-svg';
 
 import { BookCard } from '@/components/book-card';
 import { BookCover } from '@/components/book-cover';
@@ -480,6 +480,31 @@ export function LibraryScreen() {
 
         <View style={styles.headerActions}>
           <Pressable
+            testID="library-search-button"
+            onPress={() => router.push('/search')}
+            hitSlop={6}
+            style={({ pressed }) => [
+              styles.searchBtn,
+              {
+                borderColor: palette.border,
+                backgroundColor: pressed ? palette.accentSoft : palette.surface,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="بحث في المكتبة"
+          >
+            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+              <Circle cx={11} cy={11} r={7} stroke={palette.text} strokeWidth={1.8} />
+              <Path
+                d="M20 20l-3.5-3.5"
+                stroke={palette.text}
+                strokeWidth={1.8}
+                strokeLinecap="round"
+              />
+            </Svg>
+          </Pressable>
+
+          <Pressable
             testID="import-book-button"
             onPress={() => void handleImport()}
             disabled={importing}
@@ -725,6 +750,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  searchBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.button,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   importBtn: {
     height: 38,
