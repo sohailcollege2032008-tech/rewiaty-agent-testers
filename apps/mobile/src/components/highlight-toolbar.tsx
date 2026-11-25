@@ -173,7 +173,7 @@ export function HighlightToolbar({
 
 const styles = StyleSheet.create({
   overlayContainer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     direction: 'ltr',
     zIndex: 35,
   },
