@@ -1,4 +1,7 @@
 import type { Anchor, Book } from '@rewiaty/book-format';
+import type { TashkeelMode } from './tashkeel.js';
+
+export type { TashkeelMode };
 
 export type ThemeId = 'warraq' | 'sepia' | 'burnt-paper' | 'oled-crimson';
 
@@ -16,6 +19,15 @@ export type ReaderSettings = {
   paragraphSpacing: number; // px
   textAlign: TextAlignMode;
   indentMode: IndentMode;
+  /**
+   * F18 — أوضاع التشكيل at render time.
+   * - `full` (default): the text exactly as the book file has it.
+   * - `none`: every haraka dropped (fatha, damma, kasra, sukun, shadda, tanween).
+   * - `shadda-tanween`: only shadda (U+0651) and tanween (U+064B..U+064D) kept.
+   * Applied to text nodes only; the file and the parsed HTML are never touched, and the
+   * anchor stays in original-text coordinates (see `tashkeel.ts`).
+   */
+  tashkeel: TashkeelMode;
   marginHorizontal: number; // px
   marginVertical: number; // px (>= 16 to protect Tashkeel)
   fontWeight: number; // 300..600
@@ -95,6 +107,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   paragraphSpacing: 8,
   textAlign: 'justify',
   indentMode: 'classic',
+  tashkeel: 'full',
   marginHorizontal: 24,
   marginVertical: 24,
   fontWeight: 400,

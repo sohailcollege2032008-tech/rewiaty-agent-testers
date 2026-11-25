@@ -7,6 +7,7 @@ import {
   spineTokensFor,
 } from './spread.js';
 import { THEMES, type ReaderInsets, type ReaderSettings, type TocEntry } from './types.js';
+import { applyTashkeelToElement, toDisplayOffset, toOriginalOffset } from './tashkeel.js';
 
 function normalizeInsets(insets?: ReaderInsets | null): ReaderInsets {
   const top = typeof insets?.top === 'number' && Number.isFinite(insets.top) ? Math.max(0, Math.round(insets.top)) : 0;
@@ -488,6 +489,8 @@ export class Paginator {
     this.cancelIdleWork();
     this.layoutGeneration++;
 
+    // Captured *before* the new mode rewrites any text node, so the anchor is already in
+    // original-text coordinates and can be re-resolved against the new display text.
     const anchorBefore = this.book ? this.captureCurrentAnchor() : null;
     // The anchor is authoritative across the reflow: report it back verbatim instead of
     // re-deriving a (lossy) top-of-page block from the new layout.
@@ -497,6 +500,10 @@ export class Paginator {
       this.insets = normalizeInsets(insets);
     }
     this.resolveEffectiveDirection();
+
+    // F18: a tashkeel change rewrites text nodes, so it has to happen before the reflow
+    // that resolves the anchor and measures the new page counts.
+    this.applyTashkeelToMounted();
 
     for (const entry of this.rendered.values()) {
       entry.el.setAttribute('dir', this.dir);
@@ -988,7 +995,36 @@ export class Paginator {
       };
     }
 
-    return { blockId, charOffset: foundOffset };
+    // The binary search above walked the *displayed* text (that is what the layout has),
+    // but every anchor the app persists — bookmarks, search results, the last position —
+    // addresses the book's own text. Report original coordinates, always.
+    return { blockId, charOffset: this.toOriginalAnchorOffset(blockEl, foundOffset) };
+  }
+
+  /**
+   * F18: anchors are stored in original-text coordinates. With a tashkeel mode that hides
+   * marks the DOM is shorter than the file, so `foundOffset` (a displayed offset) has to be
+   * translated back before it leaves the engine.
+   */
+  private toOriginalAnchorOffset(el: HTMLElement, displayOffset: number): number {
+    const mode = this.settings.tashkeel;
+    if (mode === 'full') return displayOffset;
+    return toOriginalOffset(el, displayOffset, mode);
+  }
+
+  /** F18: the inverse of {@link toOriginalAnchorOffset}, applied before measuring. */
+  private toDisplayAnchorOffset(el: HTMLElement, originalOffset: number): number {
+    const mode = this.settings.tashkeel;
+    if (mode === 'full') return originalOffset;
+    return toDisplayOffset(el, originalOffset, mode);
+  }
+
+  /** Rewrite every mounted chapter's text nodes for the current tashkeel mode. */
+  private applyTashkeelToMounted(): void {
+    const mode = this.settings.tashkeel;
+    for (const entry of this.rendered.values()) {
+      applyTashkeelToElement(entry.el, mode);
+    }
   }
 
   private resolveAnchorPageInCurrentChapter(anchor: Anchor): number {
@@ -999,9 +1035,12 @@ export class Paginator {
     if (!blockEl) return 0;
 
     const chRect = curr.el.getBoundingClientRect();
+    // F18: the anchor addresses the file's text; the layout was measured on the displayed
+    // text, so convert before asking the DOM where that character sits.
+    const displayOffset = this.toDisplayAnchorOffset(blockEl, anchor.charOffset);
     const rect =
-      anchor.charOffset > 0
-        ? getCharacterRect(blockEl, anchor.charOffset)
+      displayOffset > 0
+        ? getCharacterRect(blockEl, displayOffset)
         : this.getFirstContentRect(blockEl);
 
     if (!rect) return 0;
@@ -1244,6 +1283,9 @@ export class Paginator {
 
     const sliceHtml = chapter.blocks.slice(0, count).map(renderBlockHtml).join('');
     el.innerHTML = `<header class="chapter-header"><h1 class="chapter-title">${escapeHtml(chapter.title)}</h1><div class="chapter-ornament" aria-hidden="true">✦</div></header>${sliceHtml}`;
+    // F18: hide the diacritics the reader chose to hide *before* this chapter is measured,
+    // so the page count belongs to the text that is actually on screen.
+    applyTashkeelToElement(el, this.settings.tashkeel);
     this.trackEl.appendChild(el);
 
     const blockEls: HTMLElement[] = [];
@@ -1306,6 +1348,9 @@ export class Paginator {
       if (id) {
         entry.blockEls.push(cursor);
         entry.blockById.set(id, cursor);
+        // F18: only the freshly appended blocks — the rest of the chapter is already in
+        // the reader's chosen tashkeel mode.
+        applyTashkeelToElement(cursor, this.settings.tashkeel);
       }
       cursor = cursor.nextElementSibling as HTMLElement | null;
     }
@@ -1336,6 +1381,9 @@ export class Paginator {
       if (id) {
         entry.blockEls.push(cursor);
         entry.blockById.set(id, cursor);
+        // F18: only the freshly appended blocks — the rest of the chapter is already in
+        // the reader's chosen tashkeel mode.
+        applyTashkeelToElement(cursor, this.settings.tashkeel);
       }
       cursor = cursor.nextElementSibling as HTMLElement | null;
     }
@@ -1481,6 +1529,11 @@ export class Paginator {
       s.textAlign,
       s.indentMode,
       s.fontWeight,
+      // F18: the displayed text — and the display↔original offset map — depend on the mode,
+      // so a measurement taken in one mode must never be reused in another. (For Arabic
+      // combining marks the page counts happen to agree, because the marks add no advance
+      // width; `test/tashkeel.spec.ts` measures that instead of assuming it.)
+      s.tashkeel,
     ].join('|');
   }
 
