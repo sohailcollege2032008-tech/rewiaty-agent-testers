@@ -15,6 +15,14 @@ appId: com.rewiaty.app
     timeout: 5000
 - tapOn:
     id: "import-book-button"
+# First 3 imports show the Telegram-first guide sheet before the system picker
+- runFlow:
+    when:
+      visible:
+        id: "import-guide-pick-button"
+    commands:
+      - tapOn:
+          id: "import-guide-pick-button"
 # Navigate Android system file picker (DocumentsUI) to /sdcard/Download/sample-ar.md
 - runFlow:
     when:
@@ -30,16 +38,15 @@ appId: com.rewiaty.app
     visible: "sample-ar.md"
     timeout: 15000
 - tapOn: "sample-ar.md"
-# Why (tech): on API 34 DocumentsUI sometimes turns that tap into a selection ("1 selected" + "Select",
-# run 45622404149: the picker stayed on screen and every later step ran inside it). Confirming an explicit
-# selection keeps the flow on the same import path; nothing below is weakened.
+# On a slow emulator DocumentsUI sometimes reads the tap as a long-press and enters selection mode
+# ("1 selected" + "Select"; runs 45622404149 and main's ca036eb); confirm the selection instead of hanging.
 - runFlow:
     when:
       visible: "1 selected"
     commands:
       - tapOn: "Select"
 # Wait for the reader itself, not just the absence of an overlay: while the picker is up the overlay is
-# absent too, so an "notVisible overlay" check alone let a stray tap land on the file list.
+# absent too, so a "notVisible overlay" check alone let a stray tap land on the file list.
 - extendedWaitUntil:
     visible:
       id: "reader-book-vessel"

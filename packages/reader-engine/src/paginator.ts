@@ -1568,6 +1568,8 @@ export class Paginator {
 
     rootStyle.setProperty('--bg-color', theme.bg);
     rootStyle.setProperty('--text-color', theme.text);
+    rootStyle.setProperty('--heading-color', theme.heading ?? theme.text);
+    rootStyle.setProperty('--subheading-color', theme.heading ?? theme.accent);
     rootStyle.setProperty('--muted-color', theme.muted);
     rootStyle.setProperty('--quote-bg', theme.quoteBg);
     rootStyle.setProperty('--quote-border', theme.quoteBorder);

@@ -99,18 +99,23 @@ mkdir -p "$EVIDENCE_DIR"
 echo "==> Downloading artifacts to .factory/evidence/$SHA12/..."
 gh run download "$RUN_ID" -R "$TESTERS_REPO" -n rewiaty-flows-results -D "$EVIDENCE_DIR" || true
 gh run download "$RUN_ID" -R "$TESTERS_REPO" -n rewiaty-apk -D "$EVIDENCE_DIR/apk" || true
+gh run download "$RUN_ID" -R "$TESTERS_REPO" -n rewiaty-apk-arm64 -D "$EVIDENCE_DIR/apk-arm64" || true
 ln -sfn "$SHA12" "$ROOT_DIR/.factory/evidence/latest"
 SHA256="$(cut -d' ' -f1 "$EVIDENCE_DIR/apk/apk.sha256" 2>/dev/null || echo unknown)"
+ARM64_SIZE="$(stat -c%s "$EVIDENCE_DIR/apk-arm64/app.apk" 2>/dev/null || echo 0)"
+ARM64_SHA256="$(cut -d' ' -f1 "$EVIDENCE_DIR/apk-arm64/apk.sha256" 2>/dev/null || echo unknown)"
 
 SUMMARY_PATH="$EVIDENCE_DIR/summary.md"
 TARGET_RC=0
-python3 - "$EVIDENCE_DIR" "$SUMMARY_PATH" "$RUN_ID" "$RUN_URL" "$SHA256" "$SHA12" "$FLOW_TARGET" "$WATCH_RC" <<'PY' || TARGET_RC=$?
+python3 - "$EVIDENCE_DIR" "$SUMMARY_PATH" "$RUN_ID" "$RUN_URL" "$SHA256" "$ARM64_SIZE" "$ARM64_SHA256" "$SHA12" "$FLOW_TARGET" "$WATCH_RC" <<'PY' || TARGET_RC=$?
 import os
 import sys
 import xml.etree.ElementTree as ET
 
-evidence_dir, summary_path, run_id, run_url, sha256, sha12, flow_target, watch_rc_str = sys.argv[1:9]
+evidence_dir, summary_path, run_id, run_url, sha256, arm64_size_str, arm64_sha256, sha12, flow_target, watch_rc_str = sys.argv[1:11]
 watch_rc = int(watch_rc_str)
+arm64_size = int(arm64_size_str or 0)
+arm64_mb = f"{arm64_size / (1024 * 1024):.2f} MB ({arm64_size} bytes)" if arm64_size > 0 else "missing"
 
 flows = [
     "first-launch-sample",
@@ -159,6 +164,8 @@ lines = [
     f"- **Actions Run:** {run_url}",
     f"- **Run ID:** `{run_id}`",
     f"- **APK SHA256:** `{sha256}`",
+    f"- **ARM64 APK Size:** {arm64_mb}",
+    f"- **ARM64 APK SHA256:** `{arm64_sha256}`",
     f"- **Requested Target:** `{flow_target}`",
     f"- **Workflow Exit Code:** `{watch_rc}`",
     f"- **CSP / Amiri Font Check:** {csp_status}",

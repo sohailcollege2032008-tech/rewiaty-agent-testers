@@ -12,6 +12,9 @@ import { getKv, setKv, type DatabaseAdapter } from './database';
 
 export const SETTINGS_KV_KEY = 'reader_settings_v1';
 export const THEME_MANUAL_KV_KEY = 'reader_theme_manual_v1';
+export const FONT_DEFAULT_MIGRATED_KV_KEY = 'reader_font_default_v2_migrated';
+
+export type SettingsTabId = 'font' | 'layout' | 'theme';
 
 export { DEFAULT_SETTINGS, READER_FONT_FAMILIES };
 
@@ -119,12 +122,25 @@ export type ThemePreferenceState = {
 export async function loadThemePreference(db?: DatabaseAdapter): Promise<ThemePreferenceState> {
   const stored = await getKv<RawStoredSettings | null>(SETTINGS_KV_KEY, null, db);
   const manualStored = await getKv<boolean | null>(THEME_MANUAL_KV_KEY, null, db);
+  const fontMigrated = await getKv<boolean>(FONT_DEFAULT_MIGRATED_KV_KEY, false, db);
 
-  const merged = mergeReaderSettings(DEFAULT_SETTINGS, stored);
+  let merged = mergeReaderSettings(DEFAULT_SETTINGS, stored);
   const rawTheme = stored?.theme;
-  const wasLegacy = isLegacyThemeId(rawTheme);
+  const wasLegacyTheme = isLegacyThemeId(rawTheme);
+  let shouldPersistSettings = wasLegacyTheme;
 
-  if (wasLegacy) {
+  // One-time default-font migration (R5 A5): Amiri was the previous default so anyone who changed
+  // another setting got Amiri saved implicitly. Migrate that old default to Noto Naskh Arabic once,
+  // while keeping any non-default font the reader explicitly chose.
+  if (stored && !fontMigrated) {
+    if (stored.fontFamily === 'Amiri') {
+      merged = { ...merged, fontFamily: DEFAULT_SETTINGS.fontFamily };
+      shouldPersistSettings = true;
+    }
+    await setKv(FONT_DEFAULT_MIGRATED_KV_KEY, true, db);
+  }
+
+  if (shouldPersistSettings) {
     await setKv(SETTINGS_KV_KEY, merged, db);
   }
 
@@ -157,6 +173,7 @@ export async function saveReaderSettings(
 ): Promise<ReaderSettings> {
   const sanitized = mergeReaderSettings(DEFAULT_SETTINGS, settings);
   await setKv(SETTINGS_KV_KEY, sanitized, db);
+  await setKv(FONT_DEFAULT_MIGRATED_KV_KEY, true, db);
   return sanitized;
 }
 
@@ -167,6 +184,7 @@ export async function updateReaderSettings(
   const current = await loadReaderSettings(db);
   const next = mergeReaderSettings(current, partial);
   await setKv(SETTINGS_KV_KEY, next, db);
+  await setKv(FONT_DEFAULT_MIGRATED_KV_KEY, true, db);
   if (partial.theme !== undefined) {
     await setKv(THEME_MANUAL_KV_KEY, true, db);
   }
@@ -184,9 +202,56 @@ export async function clearManualThemeOverride(db?: DatabaseAdapter): Promise<vo
   await setKv(THEME_MANUAL_KV_KEY, false, db);
 }
 
+export function getSectionResetPartial(
+  tab: SettingsTabId,
+  systemTheme: ThemeId = DEFAULT_SETTINGS.theme,
+): Partial<ReaderSettings> {
+  switch (tab) {
+    case 'font':
+      return {
+        fontFamily: DEFAULT_SETTINGS.fontFamily,
+        fontSize: DEFAULT_SETTINGS.fontSize,
+        fontWeight: DEFAULT_SETTINGS.fontWeight,
+        lineHeight: DEFAULT_SETTINGS.lineHeight,
+        wordSpacing: DEFAULT_SETTINGS.wordSpacing,
+        paragraphSpacing: DEFAULT_SETTINGS.paragraphSpacing,
+      };
+    case 'layout':
+      return {
+        textAlign: DEFAULT_SETTINGS.textAlign,
+        indentMode: DEFAULT_SETTINGS.indentMode,
+        marginHorizontal: DEFAULT_SETTINGS.marginHorizontal,
+        marginVertical: DEFAULT_SETTINGS.marginVertical,
+        maxReadingWidth: DEFAULT_SETTINGS.maxReadingWidth,
+        dirOverride: DEFAULT_SETTINGS.dirOverride,
+        disableAnimation: DEFAULT_SETTINGS.disableAnimation,
+      };
+    case 'theme':
+      return {
+        theme: systemTheme,
+      };
+  }
+}
+
+export async function resetSection(
+  tab: SettingsTabId,
+  db?: DatabaseAdapter,
+  systemTheme: ThemeId = DEFAULT_SETTINGS.theme,
+): Promise<ReaderSettings> {
+  const current = await loadReaderSettings(db);
+  const next = mergeReaderSettings(current, getSectionResetPartial(tab, systemTheme));
+  await setKv(SETTINGS_KV_KEY, next, db);
+  await setKv(FONT_DEFAULT_MIGRATED_KV_KEY, true, db);
+  if (tab === 'theme') {
+    await setKv(THEME_MANUAL_KV_KEY, false, db);
+  }
+  return next;
+}
+
 export async function resetReaderSettings(db?: DatabaseAdapter): Promise<ReaderSettings> {
   const defaults = { ...DEFAULT_SETTINGS };
   await setKv(SETTINGS_KV_KEY, defaults, db);
   await setKv(THEME_MANUAL_KV_KEY, false, db);
+  await setKv(FONT_DEFAULT_MIGRATED_KV_KEY, true, db);
   return defaults;
 }
