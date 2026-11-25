@@ -16,14 +16,19 @@ import type { BookLibraryRecord, BookManifest, BookReaderState } from '@/types/r
 
 /**
  * Read a file's text while keeping the native handle alive.
- * Why (tech): Hermes may collect a `File` that is not referenced after `await readFileText(file)`,
+ * Why (tech): Hermes may collect a `File` that is not referenced after `await file.text()`,
  * and expo-file-system then rejects with "Cannot use shared object that was already released"
- * (seen on the open-with flow, CI run 45597933250). Touching the object after the await pins it.
+ * (seen on the open-with flow, CI run 45597933250). A module-level set holds a strong reference
+ * until the read settles, so the object cannot be collected mid-call.
  */
+const filesInFlight = new Set<File>();
 async function readFileText(file: File): Promise<string> {
-  const text = await file.text();
-  void file.uri;
-  return text;
+  filesInFlight.add(file);
+  try {
+    return await file.text();
+  } finally {
+    filesInFlight.delete(file);
+  }
 }
 
 

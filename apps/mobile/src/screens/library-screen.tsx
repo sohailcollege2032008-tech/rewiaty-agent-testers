@@ -46,6 +46,7 @@ export function LibraryScreen() {
   const [books, setBooks] = useState<BookLibraryRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
+  const importLockRef = useRef(false);
   const [importGuideVisible, setImportGuideVisible] = useState(false);
   const [importGuideShowHelp, setImportGuideShowHelp] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -95,7 +96,17 @@ export function LibraryScreen() {
   };
 
   const handleImport = async () => {
-    if (importing) return;
+    // Synchronous lock: two quick taps must not open the guide twice or the picker twice.
+    if (importing || importLockRef.current) return;
+    importLockRef.current = true;
+    try {
+      await openImportFlow();
+    } finally {
+      importLockRef.current = false;
+    }
+  };
+
+  const openImportFlow = async () => {
     const shownCount = await getKv<number>(IMPORT_GUIDE_COUNT_KV_KEY, 0).catch(() => IMPORT_GUIDE_MAX_SHOWS);
     if (shownCount < IMPORT_GUIDE_MAX_SHOWS) {
       await setKv(IMPORT_GUIDE_COUNT_KV_KEY, shownCount + 1).catch(() => undefined);
