@@ -41,7 +41,6 @@ export type RenderedChapter = {
   layoutPageCount: number;
   /** Blank pad pages appended at the end of this chapter (0 or 1, spread mode only). */
   padPageCount: number;
-  estimatedTotalPages: number; // extrapolated total pages until mountedBlockCount === chapter.blocks.length
   mountedBlockCount: number;
   mountedWordCount: number;
   isComplete: boolean;
@@ -53,11 +52,35 @@ export type PositionSnapshot = {
   anchor: Anchor;
   chapterId: string;
   page: number; // 1-based global page
-  pageCount: number; // total book pages (exact for measured, estimated for unmeasured)
+  pageCount: number; // total book pages (exact once every chapter is measured)
   chapterPage: number; // 1-based page in current chapter
   chapterPageCount: number;
   bookProgress: number; // 0..1
   spread: boolean;
+  /**
+   * true while at least one chapter's page count is still an estimate (virtualized
+   * chapters are measured lazily). While this is true `pageCount` is pinned for the
+   * current layout, so the reader never sees it wobble just from turning pages.
+   */
+  estimated: boolean;
+};
+
+/**
+ * The one page map every reader-facing number is derived from: position, TOC, and
+ * `goto({ page })`. Built per layout (direction + metrics + typography) and pinned:
+ * navigating never rewrites the total, only measuring a chapter refines where the
+ * pages sit inside it.
+ */
+type PageMap = {
+  signature: string;
+  /** Real content pages per chapter (never pad pages). */
+  counts: number[];
+  /** counts[i] came from an actual measurement, not an estimate. */
+  exact: boolean[];
+  total: number;
+  estimated: boolean;
+  /** words per real page, frozen for this layout so estimates can't drift. */
+  density: number;
 };
 
 export type PaginatorCallbacks = {
@@ -230,6 +253,11 @@ export class Paginator {
   private rendered = new Map<number, RenderedChapter>();
   // Page count cache keyed by `${chapter.id}:${chapter.hash}:${layoutKey}`
   private pageCache = new Map<string, number>();
+  // Single source of truth for every page number exposed to RN (see `PageMap`).
+  private pageMap: PageMap | null = null;
+  // Layout signature whose first-frame measurements have already been reconciled with
+  // the styles/faces that actually ended up applied (see `settleLayout`).
+  private settledSignature: string | null = null;
 
   private idleHandle: { kind: 'idle' | 'timeout'; id: number } | null = null;
   private transitionResetRaf: number | null = null;
@@ -285,6 +313,8 @@ export class Paginator {
     this.settings = { ...settings };
     this.clearRenderedDom();
     this.clearRestoredAnchor();
+    this.invalidatePageMap();
+    this.settledSignature = null;
 
     this.resolveEffectiveDirection();
     this.applyStylesAndMeasureViewport();
@@ -500,11 +530,65 @@ export class Paginator {
 
     if (!changed) return false;
 
+    // The real face changed in place, so every count measured against the fallback
+    // face is stale while keeping the same cache key. Drop them and keep only what
+    // was just re-measured with the loaded font.
+    const signature = this.layoutSignature();
+    for (const key of Array.from(this.pageCache.keys())) {
+      if (key.endsWith(`|${signature}`)) this.pageCache.delete(key);
+    }
+    for (const entry of this.rendered.values()) {
+      if (entry.isComplete) {
+        this.pageCache.set(this.cacheKey(entry.chapter), entry.pageCount);
+      }
+    }
+    this.invalidatePageMap();
+
     this.rememberRestoredAnchor(anchorBefore);
     this.layoutVirtualizedChapterOffsets();
     this.currentChapterPage = this.alignToSpread(this.resolveAnchorPageInCurrentChapter(anchorBefore));
     this.applyTrackTransform(false);
     return true;
+  }
+
+  /**
+   * Re-measure what is already mounted against the styles that actually ended up
+   * applied, and report whether any page count moved.
+   *
+   * The very first frame of a book is laid out with whatever face the WebView has at
+   * that instant — typically a fallback that is meaningfully wider than the webfont
+   * that swaps in a moment later. Measuring then reports more pages than the chapter
+   * really occupies, and an estimate built on that reading pins the book total (and
+   * therefore the TOC) tens of pages away from the truth. `handleFontLoad` catches
+   * late swaps, but it only fires once a face is actually requested: this pass is the
+   * "look again now that a frame has been painted" half of the pair.
+   */
+  settleLayout(): boolean {
+    if (!this.book || this.rendered.size === 0) return false;
+    const signature = this.layoutSignature();
+    const firstForSignature = this.settledSignature !== signature;
+    this.settledSignature = signature;
+
+    let changed = false;
+    if (firstForSignature) {
+      // Counts cached before this pass were measured against an unsettled layout under
+      // the same cache key; they are not evidence. Keep only what we re-measure below.
+      for (const key of Array.from(this.pageCache.keys())) {
+        if (key.endsWith(`|${signature}`)) this.pageCache.delete(key);
+      }
+    }
+
+    for (const entry of this.rendered.values()) {
+      const before = entry.pageCount;
+      this.remeasureChapter(entry);
+      if (entry.pageCount !== before) changed = true;
+    }
+
+    if (changed || firstForSignature) {
+      this.invalidatePageMap();
+      this.layoutVirtualizedChapterOffsets();
+    }
+    return changed;
   }
 
   nextPage(): boolean {
@@ -655,7 +739,7 @@ export class Paginator {
 
     if (typeof target.page === 'number' && Number.isFinite(target.page)) {
       const desiredGlobalZero = Math.max(0, Math.floor(target.page) - 1);
-      const counts = this.getChapterPageEstimates();
+      const counts = this.refreshPageMap().counts;
       let offset = 0;
       let targetIdx = this.book.chapters.length - 1;
       let pageInChapter = 0;
@@ -700,19 +784,20 @@ export class Paginator {
     const curr = this.rendered.get(this.currentChapterIdx);
     if (!chapter || !curr) return null;
 
-    // Real pages only: `getChapterPageEstimates()` never returns pad pages, so the
-    // reported `page` / `pageCount` / `bookProgress` line up with what the reader sees.
-    const counts = this.getChapterPageEstimates();
+    // Every exposed number comes from the same page map the TOC and `goto({ page })`
+    // use, so "صفحة 4" in the TOC and the footer can never disagree.
+    const map = this.refreshPageMap();
+    const counts = map.counts;
     let pagesBefore = 0;
     for (let i = 0; i < this.currentChapterIdx; i++) {
       pagesBefore += counts[i] ?? 1;
     }
-    const totalPages = Math.max(1, counts.reduce((sum, c) => sum + c, 0));
-    const chapterPageCount = Math.max(1, curr.isComplete ? curr.pageCount : curr.estimatedTotalPages);
+    const totalPages = Math.max(1, map.total);
+    const chapterPageCount = Math.max(1, counts[this.currentChapterIdx] ?? 1);
     // A chapter can be parked on its final spread while a blank pad fills the facing
     // page. Clamp back onto the last real page so no exposed number lands on padding.
     const chapterPageIndex = Math.max(0, Math.min(this.currentChapterPage, chapterPageCount - 1));
-    const globalPage = pagesBefore + chapterPageIndex + 1;
+    const globalPage = Math.max(1, Math.min(totalPages, pagesBefore + chapterPageIndex + 1));
     const bookProgress = totalPages <= 1 ? 1 : (globalPage - 1) / (totalPages - 1);
 
     return {
@@ -724,6 +809,7 @@ export class Paginator {
       chapterPageCount,
       bookProgress: Math.max(0, Math.min(1, Number(bookProgress.toFixed(6)))),
       spread: this.metrics.spread,
+      estimated: map.estimated,
     };
   }
 
@@ -734,16 +820,17 @@ export class Paginator {
    */
   getTocEntries(): TocEntry[] {
     if (!this.book) return [];
-    const counts = this.getChapterPageEstimates();
+    const map = this.refreshPageMap();
     let startPage = 1;
     return this.book.chapters.map((ch, idx) => {
-      const pageCount = Math.max(1, counts[idx] ?? 1);
+      const pageCount = Math.max(1, map.counts[idx] ?? 1);
       const entry: TocEntry = {
         id: ch.id,
         title: ch.title,
         wordCount: ch.wordCount,
         pageCount,
         startPage,
+        estimated: !map.exact[idx],
       };
       startPage += pageCount;
       return entry;
@@ -1097,7 +1184,6 @@ export class Paginator {
       pageCount: 1,
       layoutPageCount: 1,
       padPageCount: 0,
-      estimatedTotalPages: 1,
       mountedBlockCount: count,
       mountedWordCount: wordsMounted,
       isComplete,
@@ -1217,7 +1303,6 @@ export class Paginator {
     entry.pageCount = pages;
     entry.padPageCount = padPages;
     entry.layoutPageCount = pages + padPages;
-    entry.estimatedTotalPages = this.computeEstimatedTotalPages(entry);
   }
 
   /**
@@ -1227,17 +1312,7 @@ export class Paginator {
     const pageW = this.metrics.pageWidth;
     if (pageW <= 0) return 1;
     const sw = el.scrollWidth;
-    if (sw <= pageW) return 1;
-    return Math.max(1, Math.ceil(sw / pageW));
-  }
-
-  private computeEstimatedTotalPages(entry: RenderedChapter): number {
-    if (entry.isComplete) return entry.pageCount;
-    if (entry.mountedWordCount <= 0 || entry.chapter.wordCount <= entry.mountedWordCount) {
-      return entry.pageCount;
-    }
-    const ratio = entry.chapter.wordCount / entry.mountedWordCount;
-    return Math.max(entry.pageCount, Math.ceil(entry.pageCount * ratio));
+    return sw <= pageW ? 1 : Math.max(1, Math.ceil(sw / pageW));
   }
 
   private layoutVirtualizedChapterOffsets(): void {
@@ -1291,16 +1366,20 @@ export class Paginator {
     }
   }
 
-  private cacheKey(chapter: Chapter): string {
+  /**
+   * Everything that changes how text reflows, minus the chapter identity. Two layouts
+   * with the same signature produce the same page counts, so it keys both the per-chapter
+   * measurement cache and the pinned page map.
+   */
+  private layoutSignature(): string {
     const s = this.settings;
     return [
-      chapter.id,
-      chapter.hash,
       this.metrics.width,
       this.metrics.pageWidth,
       this.metrics.height,
       this.metrics.marginH,
       this.metrics.marginV,
+      this.metrics.spread ? 'spread' : 'single',
       this.dir,
       s.fontFamily,
       s.fontSize,
@@ -1313,28 +1392,141 @@ export class Paginator {
     ].join('|');
   }
 
-  private getChapterPageEstimates(): number[] {
-    if (!this.book) return [];
+  private cacheKey(chapter: Chapter): string {
+    return [chapter.id, chapter.hash, this.layoutSignature()].join('|');
+  }
 
-    let measuredWords = 0;
-    let measuredPages = 0;
-    for (const ch of this.book.chapters) {
-      const cached = this.pageCache.get(this.cacheKey(ch));
-      if (cached !== undefined) {
-        measuredWords += ch.wordCount;
-        measuredPages += cached;
+  private invalidatePageMap(): void {
+    this.pageMap = null;
+  }
+
+  /**
+   * Words per real page, frozen per layout. Prefers complete chapters (their word
+   * count is the book's own number, not an approximation of the mounted DOM), then the
+   * exact cache, and only falls back to a partially-mounted slice as a last resort.
+   */
+  private measuredDensity(): number {
+    let words = 0;
+    let pages = 0;
+    for (const entry of this.rendered.values()) {
+      if (entry.isComplete && entry.pageCount > 0 && entry.chapter.wordCount > 0) {
+        words += entry.chapter.wordCount;
+        pages += entry.pageCount;
       }
     }
-    const wordsPerPage =
-      measuredPages > 0 && measuredWords > 0 ? Math.max(40, measuredWords / measuredPages) : 220;
+    if (words > 0 && pages > 0) return words / pages;
 
-    return this.book.chapters.map((ch, idx) => {
-      const cached = this.pageCache.get(this.cacheKey(ch));
-      if (cached !== undefined) return cached;
-      const active = this.rendered.get(idx);
-      if (active) return active.estimatedTotalPages;
-      return Math.max(1, Math.ceil(ch.wordCount / wordsPerPage));
-    });
+    if (this.book) {
+      for (const ch of this.book.chapters) {
+        const cached = this.pageCache.get(this.cacheKey(ch));
+        if (cached !== undefined && cached > 0 && ch.wordCount > 0) {
+          words += ch.wordCount;
+          pages += cached;
+        }
+      }
+    }
+    if (words > 0 && pages > 0) return words / pages;
+
+    for (const entry of this.rendered.values()) {
+      if (entry.pageCount > 0 && entry.mountedWordCount > 0) {
+        words += entry.mountedWordCount;
+        pages += entry.pageCount;
+      }
+    }
+    return words > 0 && pages > 0 ? words / pages : 220;
+  }
+
+  /**
+   * Recompute the page map for the current layout.
+   *
+   * - Measured chapters contribute their exact real page count.
+   * - Unmeasured chapters are estimated from the frozen density, floored by however
+   *   many pages they already occupy in the DOM, so the reader can never turn past the
+   *   end of the chapter its own numbers describe.
+   * - The total is pinned for the layout: pages that a freshly measured chapter gains
+   *   are taken from (or given back to) the still-unmeasured chapters, so turning
+   *   pages or opening a sheet never changes the total on its own.
+   * - Once every chapter is measured the map becomes exact and `estimated` clears.
+   */
+  private refreshPageMap(): PageMap {
+    const book = this.book!;
+    const signature = this.layoutSignature();
+    const previous = this.pageMap?.signature === signature ? this.pageMap : null;
+    const density = previous?.density ?? this.measuredDensity();
+
+    const counts: number[] = [];
+    const exact: boolean[] = [];
+    const floors: number[] = [];
+    let allExact = true;
+
+    for (let idx = 0; idx < book.chapters.length; idx++) {
+      const chapter = book.chapters[idx]!;
+      const cached = this.pageCache.get(this.cacheKey(chapter));
+      if (cached !== undefined && cached > 0) {
+        counts.push(cached);
+        exact.push(true);
+        floors.push(cached);
+        continue;
+      }
+
+      allExact = false;
+      const rendered = this.rendered.get(idx);
+      const estimate = Math.max(1, Math.ceil(chapter.wordCount / Math.max(1, density)));
+      const floor = Math.max(1, rendered?.pageCount ?? 1);
+      counts.push(Math.max(floor, estimate));
+      exact.push(false);
+      floors.push(floor);
+    }
+
+    let map: PageMap;
+    if (allExact) {
+      const total = counts.reduce((sum, c) => sum + c, 0);
+      map = { signature, counts, exact, total, estimated: false, density };
+    } else {
+      // First build for this layout pins the current best total; later measurements
+      // only redistribute pages inside it.
+      const pinned = previous ? previous.total : counts.reduce((sum, c) => sum + c, 0);
+      this.rebalanceToTotal(counts, exact, floors, pinned);
+      const total = counts.reduce((sum, c) => sum + c, 0);
+      map = { signature, counts, exact, total, estimated: true, density };
+    }
+
+    this.pageMap = map;
+    return map;
+  }
+
+  /**
+   * Move the page total back onto `target` by adding pages to (or taking them from)
+   * the chapters whose counts are still estimates. Measured chapters are never touched.
+   */
+  private rebalanceToTotal(
+    counts: number[],
+    exact: boolean[],
+    floors: number[],
+    target: number,
+  ): void {
+    let sum = counts.reduce((acc, c) => acc + c, 0);
+    let delta = target - sum;
+    let guard = 0;
+
+    while (delta !== 0 && guard < 20_000) {
+      guard++;
+      let moved = false;
+      for (let idx = 0; idx < counts.length && delta !== 0; idx++) {
+        if (exact[idx]) continue;
+        const count = counts[idx]!;
+        if (delta > 0) {
+          counts[idx] = count + 1;
+          delta -= 1;
+          moved = true;
+        } else if (count > (floors[idx] ?? 1)) {
+          counts[idx] = count - 1;
+          delta += 1;
+          moved = true;
+        }
+      }
+      if (!moved) break;
+    }
   }
 
   private cancelIdleWork(): void {

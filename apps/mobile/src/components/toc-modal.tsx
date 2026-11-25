@@ -128,7 +128,7 @@ export function TocModal({
                         { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
                       ]}
                     >
-                      {`الفصل ${index + 1} · ${item.pageCount} صفحات`}
+                      {`الفصل ${index + 1} · ${item.estimated ? '~' : ''}${item.pageCount} صفحات`}
                     </Text>
                   </View>
                   <Text

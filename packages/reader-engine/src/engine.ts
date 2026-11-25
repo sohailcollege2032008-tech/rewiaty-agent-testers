@@ -8,6 +8,11 @@ const TAP_MAX_MOVEMENT_PX = 14;
 const SWIPE_MIN_DISTANCE_PX = 40;
 const LEFT_ZONE_RATIO = 0.3;
 const RIGHT_ZONE_RATIO = 0.7;
+/**
+ * Upper bound on waiting for `document.fonts.ready` before the first position is
+ * reported. A face that never resolves must not leave the reader without page numbers.
+ */
+const SETTLE_MAX_WAIT_MS = 400;
 
 export class ReaderEngine {
   private readonly rootEl: HTMLElement;
@@ -24,6 +29,8 @@ export class ReaderEngine {
   private resizeTimer: number | null = null;
   private fontStyleEl: HTMLStyleElement | null = null;
   private appliedFontBaseUrl = '';
+  /** Bumped on every `load`, so a settle pass for an old book can't report over a new one. */
+  private settleToken = 0;
 
   constructor() {
     this.rootEl = document.getElementById('reader-root')!;
@@ -190,8 +197,8 @@ export class ReaderEngine {
         this.closeFootnote();
         this.paginator.setBook(msg.book, merged, msg.anchor);
         postToHost({ type: 'ready' });
-        this.emitPositionAndToc();
         this.paginator.scheduleBackgroundWork();
+        this.emitAfterSettle();
         break;
       }
       case 'fonts': {
@@ -289,6 +296,33 @@ export class ReaderEngine {
     if (chapters.length > 0) {
       postToHost({ type: 'toc', chapters });
     }
+  }
+
+  /**
+   * Report the first position only once the layout has had a frame to settle.
+   *
+   * `setBook` measures against the face available at that instant. If the host paints
+   * a webfont a moment later the text reflows, and the first number the reader saw was
+   * computed from the wrong metrics — the root of "page 3 of 6" becoming "page 3 of 5".
+   * Fonts are awaited (bounded, so a slow face cannot hold the reader on an empty
+   * page), then the mounted chapters are re-measured and only then reported.
+   */
+  private emitAfterSettle(): void {
+    const token = ++this.settleToken;
+    const flush = () => {
+      if (token !== this.settleToken) return;
+      this.paginator.settleLayout();
+      this.emitPositionAndToc();
+    };
+    const fonts = document.fonts;
+    const bounded = new Promise<void>((resolve) => {
+      window.setTimeout(resolve, SETTLE_MAX_WAIT_MS);
+    });
+    const fontsReady: Promise<void> = fonts?.ready ? fonts.ready.then(() => undefined) : Promise.resolve();
+    void Promise.race([fontsReady, bounded]).then(() => {
+      if (token !== this.settleToken) return;
+      window.requestAnimationFrame(flush);
+    });
   }
 
   private openFootnote(fnId: string): void {

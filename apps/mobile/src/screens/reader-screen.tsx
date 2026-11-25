@@ -107,10 +107,13 @@ export function ReaderScreen() {
     chapterId: string;
     page: number;
     pageCount: number;
+    /** The engine is still measuring chapters, so `pageCount` is an estimate. */
+    estimated: boolean;
   }>({
     chapterId: 'ch01',
     page: 1,
     pageCount: 1,
+    estimated: true,
   });
 
   const themeTokens = useMemo(() => getAppThemeTokens(settings.theme), [settings.theme]);
@@ -213,6 +216,8 @@ export function ReaderScreen() {
           chapterId: bundle.state.chapterId ?? bundle.book.chapters[0]?.id ?? 'ch01',
           page: bundle.state.page ?? 1,
           pageCount: bundle.state.pageCount ?? Math.max(1, bundle.book.chapters.length),
+          // A saved position is reported before the engine has measured anything.
+          estimated: true,
         });
       } catch (err) {
         if (cancelled) return;
@@ -338,6 +343,7 @@ export function ReaderScreen() {
             chapterId: parsed.chapterId,
             page: parsed.page,
             pageCount: parsed.pageCount,
+            estimated: parsed.estimated === true,
           });
           if (bookId) {
             const nextState: BookReaderState = {
@@ -674,7 +680,7 @@ export function ReaderScreen() {
                 { color: themeTokens.muted, fontFamily: TYPOGRAPHY.uiFont },
               ]}
             >
-              {`${pageInfo.page} / ${pageInfo.pageCount} · ${pctRead}%`}
+              {`${pageInfo.page} / ${pageInfo.estimated ? '~' : ''}${pageInfo.pageCount} · ${pctRead}%`}
             </Text>
           </View>
         ) : null}
@@ -755,6 +761,7 @@ export function ReaderScreen() {
               chapterTitle={activeChapterTitle}
               page={pageInfo.page}
               pageCount={pageInfo.pageCount}
+              estimated={pageInfo.estimated}
               chapterCount={book.chapters.length}
               isBookmarked={isBookmarked}
               isTablet={layout.isTablet}
