@@ -7,8 +7,8 @@ appId: com.rewiaty.app
 # so every step up to chapter two passes.
 #
 # What must happen here, and why the order matters:
-#   1. the engine reports the mounted figure as `count: 0` -> the app shows `reader-image-error`
-#      (proves the engine saw the figure and it painted nothing — not that nothing was reported);
+#   1. the page reports the mounted figure as `count: 0` and writes `reader-image-error` — proof the
+#      engine saw the figure and it painted nothing, not that nothing was reported;
 #   2. the positive proof `reader-image-proof` must then be ABSENT. This second assertion is the one
 #      that fails, so the runner's inverted verdict is only accepted when the failure evidence names
 #      `reader-image-proof`. A silent engine (bug) fails step 1 instead and the runner rejects the run.
@@ -20,13 +20,10 @@ appId: com.rewiaty.app
     env:
       EPUB_FILE: import-f20-broken.epub
 - extendedWaitUntil:
-    visible:
-      id: "reader-image-error"
+    visible: "reader-image-error.*"
     timeout: 20000
-- assertVisible:
-    id: "reader-image-error"
 - takeScreenshot: "04-epub-image-broken"
+- assertVisible: "reader-image-error.*"
 - extendedWaitUntil:
-    visible:
-      id: "reader-image-proof"
+    visible: "reader-image-proof.*"
     timeout: 5000

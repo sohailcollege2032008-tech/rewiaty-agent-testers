@@ -290,6 +290,9 @@ export class ReaderEngine {
     this.imageProofTries = 0;
     this.imageProofEmptyChecks = 0;
     this.imageProofSignature = '';
+    for (const id of ['reader-image-proof', 'reader-image-error', 'reader-image-probe']) {
+      document.getElementById(id)?.remove();
+    }
   }
 
   /**
@@ -322,7 +325,7 @@ export class ReaderEngine {
     this.imageProofEmptyChecks = 0;
 
     const report = this.paginator.measureImages();
-    this.logImageProofProbe(mounted, report.rendered);
+    this.writeImageProbe(mounted, report.rendered);
 
     // A decoded figure with a real box is the proof. A decoded figure with no box is not: the
     // reader cannot see it, so it keeps counting as "not painted" until the window ends.
@@ -358,18 +361,49 @@ export class ReaderEngine {
   }
 
   /**
-   * One line per measurement, so the page's own account of what it saw reaches the device log
-   * (`onConsoleMessage` in the app forwards `[reader]` lines). Without it a silent proof can only
-   * be guessed at from the outside.
+   * Write the measurement into the page as text.
+   *
+   * Why (tech): a release WebView forwards neither its console to logcat nor a page exception, so a
+   * silent proof could only be guessed at from outside — and a `console.log` bridge produced zero
+   * lines on device (CI run 45701668793). DOM *text* is exposed to the accessibility tree (the
+   * figure's own alt text is, in `hierarchy-import-epub.xml`), so this line is readable both by
+   * Maestro and from an evidence dump.
    */
-  private logImageProofProbe(mounted: HTMLImageElement[], rendered: number): void {
-    const boxes = mounted.map((img) => {
-      const rect = img.getBoundingClientRect();
-      const state = img.complete ? 'c' : 'p';
-      return `${state}/nw${img.naturalWidth}/${Math.round(rect.width)}x${Math.round(rect.height)}`;
-    });
-    console.log(
-      `[reader] image-proof step=${this.imageProofTries} mounted=${mounted.length} rendered=${rendered} ${boxes.join(' ')}`,
+  private writeImageProbe(mounted: HTMLImageElement[], rendered: number): void {
+    const first = mounted[0];
+    const rect = first ? first.getBoundingClientRect() : null;
+    const detail = first
+      ? `complete=${first.complete ? 1 : 0} nw=${first.naturalWidth} box=${Math.round(rect!.width)}x${Math.round(rect!.height)}`
+      : 'none';
+    this.pageMarker(
+      'reader-image-probe',
+      `reader-image-probe step=${this.imageProofTries} mounted=${mounted.length} rendered=${rendered} ${detail}`,
+    );
+  }
+
+  /** TEMP: a bottom-strip text node, transparent so the reader sees nothing. */
+  private pageMarker(id: string, text: string): void {
+    let el = document.getElementById(id);
+    if (!el) {
+      el = document.createElement('div');
+      el.id = id;
+      el.style.cssText =
+        // Mid-page, not on the bottom edge: the app lays its own footer over the bottom of the
+        // WebView, and a marker hidden behind it would look like a failure it is not.
+        'position:fixed;left:0;top:50%;width:100%;height:14px;overflow:hidden;white-space:nowrap;font-size:11px;line-height:14px;color:rgba(0,0,0,0);pointer-events:none;';
+      document.body.appendChild(el);
+    }
+    el.textContent = text;
+  }
+
+  /** TEMP: the outcome the journey asserts, in the page itself. */
+  private writeOutcomeMarker(count: number, width: number, height: number): void {
+    const painted = count > 0 && width > 0 && height > 0;
+    const other = painted ? 'reader-image-error' : 'reader-image-proof';
+    document.getElementById(other)?.remove();
+    this.pageMarker(
+      painted ? 'reader-image-proof' : 'reader-image-error',
+      painted ? `reader-image-proof ${width}x${height}` : 'reader-image-error',
     );
   }
 
@@ -378,6 +412,7 @@ export class ReaderEngine {
     const signature = `${count}:${width}:${height}`;
     if (signature === this.imageProofSignature) return;
     this.imageProofSignature = signature;
+    this.writeOutcomeMarker(count, width, height);
     postToHost({ type: 'image-rendered', count, width, height });
   }
 

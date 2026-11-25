@@ -3,15 +3,21 @@ appId: com.rewiaty.app
 # Positive journey: an imported EPUB whose chapter two holds a real 240x160 figure.
 # The shared steps (import -> TOC in spine order -> chapter two) live in import-epub-steps.yaml.
 - runFlow: import-epub-steps.yaml
-# The figure in chapter two must actually *paint*: the engine measures the mounted figure and posts
-# its box to React Native, which exposes it as `reader-image-proof`. The engine only reports a
-# positive count when an image decoded (naturalWidth > 0) *and* its rendered rect is positive, so the
-# presence of this view is the non-zero-dimension proof. A figure that was mounted but decoded to
-# nothing is reported as `count: 0` and shows `reader-image-error` instead (see import-epub-broken).
+# The figure in chapter two must actually *paint*, and the proof is taken twice over:
+#
+#   1. the reader page writes `reader-image-proof <w>x<h>` as page text once it has measured a
+#      mounted figure with a real box. DOM text is what the accessibility tree exposes (the
+#      figure's own alt text is visible in hierarchy-import-epub.xml), so this proves what the
+#      *page* measured — the surface the reader is actually looking at.
+#   2. the same measurement reaches React Native over the bridge and is exposed as the
+#      `reader-image-proof` view. This one is the app's contract.
+#
+# A figure that was mounted but decoded to nothing reports count 0, and the page writes
+# `reader-image-error` instead — that is what import-epub-broken asserts.
 - extendedWaitUntil:
-    visible:
-      id: "reader-image-proof"
+    visible: "reader-image-proof.*"
     timeout: 20000
+- takeScreenshot: "04-epub-image-rendered"
+- assertVisible: "reader-image-proof.*"
 - assertVisible:
     id: "reader-image-proof"
-- takeScreenshot: "04-epub-image-rendered"

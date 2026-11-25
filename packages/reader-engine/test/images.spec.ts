@@ -222,6 +222,14 @@ test('paints an imported figure and reports its box to the app', async ({ page }
   expect(proof.width).toBe(painted!.width);
   expect(proof.height).toBe(painted!.height);
   expect(painted!.fragmentCount).toBe(1);
+
+  // The same outcome is written into the page as text, which is what the accessibility tree
+  // exposes to the journey. The bridge alone was not enough to see the proof on a device.
+  const marker = await page.evaluate(
+    () => document.getElementById('reader-image-proof')?.textContent ?? null,
+  );
+  expect(marker).toBe(`reader-image-proof ${proof.width}x${proof.height}`);
+  expect(await page.evaluate(() => document.getElementById('reader-image-error'))).toBeNull();
 });
 
 test('a figure taller than the page is shrunk onto one page instead of being cut in two', async ({
@@ -316,6 +324,13 @@ test('a mounted figure that cannot be decoded is reported as count 0, not left s
     expect(proof.count).toBe(0);
     expect(proof.width).toBe(0);
     expect(proof.height).toBe(0);
+
+    // And the page says so in words, which is what the negative control reads.
+    const marker = await page.evaluate(
+      () => document.getElementById('reader-image-error')?.textContent ?? null,
+    );
+    expect(marker).toBe('reader-image-error');
+    expect(await page.evaluate(() => document.getElementById('reader-image-proof'))).toBeNull();
   } finally {
     fs.rmSync(broken, { force: true });
   }
