@@ -11,6 +11,7 @@ import {
   DEFAULT_SETTINGS,
   loadThemePreference,
   resetReaderSettings,
+  resetSection,
   saveReaderSettings,
   selectManualTheme,
 } from '@/storage/settings-store';
@@ -88,6 +89,7 @@ jest.mock('@/storage/settings-store', () => {
     loadReaderSettings: jest.fn(),
     saveReaderSettings: jest.fn(),
     selectManualTheme: jest.fn(),
+    resetSection: jest.fn(),
     resetReaderSettings: jest.fn(),
   };
 });
@@ -119,6 +121,7 @@ describe('ReaderScreen', () => {
     });
     (saveReaderSettings as jest.Mock).mockResolvedValue({ ...DEFAULT_SETTINGS });
     (selectManualTheme as jest.Mock).mockResolvedValue({ ...DEFAULT_SETTINGS });
+    (resetSection as jest.Mock).mockResolvedValue({ ...DEFAULT_SETTINGS });
     (resetReaderSettings as jest.Mock).mockResolvedValue({ ...DEFAULT_SETTINGS });
     (readBookBundle as jest.Mock).mockResolvedValue({
       book: {
@@ -545,7 +548,7 @@ describe('ReaderScreen', () => {
     expect(getByTestId('reader-hud-header').props.pointerEvents).toBe('none');
     expect(getByTestId('reader-settings-sheet-host')).toBeTruthy();
 
-    await fireEvent.press(getByTestId('settings-close-button'));
+    await fireEvent.press(getByTestId('settings-dismiss-backdrop'));
     expect(queryByTestId('reader-settings-sheet-host')).toBeNull();
     expect(getByTestId('reader-hud-header').props.pointerEvents).toBe('auto');
     expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
@@ -603,6 +606,7 @@ describe('ReaderScreen', () => {
     for (const id of [
       'reader-back-button',
       'reader-toc-button',
+      'reader-theme-button',
       'reader-settings-button',
       'reader-bookmark-ribbon',
       'reader-scrubber-track',
@@ -612,6 +616,8 @@ describe('ReaderScreen', () => {
       expect(box.height).toBeGreaterThanOrEqual(48);
     }
 
+    expect(getByTestId('reader-settings-button').props.accessibilityLabel).toBe('الإعدادات');
+
     await fireEvent.press(getByTestId('reader-settings-button'));
 
     for (const id of [
@@ -619,7 +625,6 @@ describe('ReaderScreen', () => {
       'settings-tab-layout',
       'settings-tab-theme',
       'settings-reset-button',
-      'settings-close-button',
       'settings-font-size-dec',
       'settings-font-size-inc',
       'settings-weight-500',
@@ -692,5 +697,103 @@ describe('ReaderScreen', () => {
     expect(
       (ReactNative.StyleSheet.flatten(hudCounter.props.style) as Record<string, unknown>).flexShrink,
     ).toBe(0);
+  });
+
+  it('auto-fades the first-open hint after 5 seconds (A2)', async () => {
+    mockKv.clear();
+    jest.useFakeTimers();
+    const screen = await renderLoadedReader();
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+    });
+
+    await waitFor(() => expect(screen.getByTestId('reader-hud-hint')).toBeTruthy());
+
+    await act(async () => {
+      jest.advanceTimersByTime(5400);
+    });
+
+    expect(screen.queryByTestId('reader-hud-hint')).toBeNull();
+    jest.useRealTimers();
+  });
+
+  it('opens quick theme popover from reader header, applies theme live, and closes popover (A7)', async () => {
+    mockKv.clear();
+    mockKv.set('reader_hud_hint_seen_v1', true);
+    const { getByTestId, queryByTestId } = await renderLoadedReader();
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+
+    expect(queryByTestId('reader-theme-popover')).toBeNull();
+    await fireEvent.press(getByTestId('reader-theme-button'));
+    expect(getByTestId('reader-theme-popover')).toBeTruthy();
+
+    for (const id of ['warraq', 'sepia', 'burnt-paper', 'oled-crimson']) {
+      expect(getByTestId(`theme-quick-${id}`)).toBeTruthy();
+    }
+
+    await fireEvent.press(getByTestId('theme-quick-oled-crimson'));
+    expect(queryByTestId('reader-theme-popover')).toBeNull();
+    expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
+      type: 'settings',
+      partial: { theme: 'oled-crimson' },
+    });
+    expect(selectManualTheme).toHaveBeenCalledWith('oled-crimson');
+  });
+
+  it('removes X close button and closes settings via Android back press and reset resets active tab only (S2, A11)', async () => {
+    mockKv.clear();
+    mockKv.set('reader_hud_hint_seen_v1', true);
+    let backListener: (() => boolean | null | undefined) | undefined;
+    const addListenerSpy = jest
+      .spyOn(ReactNative.BackHandler, 'addEventListener')
+      .mockImplementation((_event, cb) => {
+        backListener = () => cb({} as never);
+        return { remove: jest.fn() };
+      });
+
+    const { getByTestId, queryByTestId } = await renderLoadedReader();
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+
+    await fireEvent.press(getByTestId('reader-settings-button'));
+    expect(queryByTestId('settings-close-button')).toBeNull();
+
+    // Change font size and theme, then reset only font tab
+    await fireEvent.press(getByTestId('settings-font-size-inc'));
+    await fireEvent.press(getByTestId('settings-tab-theme'));
+    await fireEvent.press(getByTestId('theme-option-oled-crimson'));
+    await fireEvent.press(getByTestId('settings-tab-font'));
+    await fireEvent.press(getByTestId('settings-reset-button'));
+
+    expect(resetSection).toHaveBeenCalledWith('font', undefined, 'warraq');
+    expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
+      type: 'settings',
+      partial: expect.objectContaining({ fontSize: 20, fontFamily: 'Noto Naskh Arabic' }),
+    });
+    expect(JSON.parse(postedToWebView.at(-1)!).partial.theme).toBeUndefined();
+
+    // Android hardware back closes the settings sheet
+    expect(backListener).toBeDefined();
+    await act(async () => {
+      const handled = backListener?.();
+      expect(handled).toBe(true);
+    });
+    expect(queryByTestId('reader-settings-sheet-host')).toBeNull();
+
+    addListenerSpy.mockRestore();
+  });
+  it('never shows a raw English error to the reader', () => {
+    const { readerErrorMessage, READER_OPEN_FAILED_MESSAGE } = jest.requireActual('@/screens/reader-screen');
+    expect(readerErrorMessage(new Error("Call to function 'FileSystemFile.text' has been rejected"))).toBe(READER_OPEN_FAILED_MESSAGE);
+    expect(readerErrorMessage(new Error('تعذّر العثور على ملف الكتاب.'))).toBe('تعذّر العثور على ملف الكتاب.');
+    expect(readerErrorMessage(undefined)).toBe(READER_OPEN_FAILED_MESSAGE);
   });
 });

@@ -12,7 +12,26 @@ import {
   upsertBook,
   type DatabaseAdapter,
 } from './database';
+import { indexBookForSearch, removeBookFromSearch } from './search-index';
 import type { BookLibraryRecord, BookManifest, BookReaderState } from '@/types/reader';
+
+/**
+ * Read a file's text while keeping the native handle alive.
+ * Why (tech): Hermes may collect a `File` that is not referenced after `await file.text()`,
+ * and expo-file-system then rejects with "Cannot use shared object that was already released"
+ * (seen on the open-with flow, CI run 45597933250). A module-level set holds a strong reference
+ * until the read settles, so the object cannot be collected mid-call.
+ */
+const filesInFlight = new Set<File>();
+async function readFileText(file: File): Promise<string> {
+  filesInFlight.add(file);
+  try {
+    return await file.text();
+  } finally {
+    filesInFlight.delete(file);
+  }
+}
+
 
 export const PARSER_VERSION = 1;
 const SAMPLE_SEEDED_KV_KEY = 'sample_seeded_v1';
@@ -79,7 +98,7 @@ export async function importBookContent(
   let initialProgress = 0;
   if (stateFile.exists) {
     try {
-      const existingState = JSON.parse(await stateFile.text()) as Partial<BookReaderState>;
+      const existingState = JSON.parse(await readFileText(stateFile)) as Partial<BookReaderState>;
       if (typeof existingState.progress === 'number' && Number.isFinite(existingState.progress)) {
         initialProgress = Math.max(0, Math.min(1, existingState.progress));
       }
@@ -107,7 +126,9 @@ export async function importBookContent(
     addedAt: now,
   };
 
-  return upsertBook(record, db);
+  const savedRecord = await upsertBook(record, db);
+  await indexBookForSearch(book, db);
+  return savedRecord;
 }
 
 export async function readBookBundle(bookId: string): Promise<{
@@ -121,12 +142,12 @@ export async function readBookBundle(bookId: string): Promise<{
     throw new Error('تعذّر العثور على ملف الكتاب.');
   }
 
-  const rawText = await bookFile.text();
+  const rawText = await readFileText(bookFile);
   const manifestFile = new File(bookDir, 'manifest.json');
   let manifest: StoredManifest | null = null;
   if (manifestFile.exists) {
     try {
-      manifest = JSON.parse(await manifestFile.text()) as StoredManifest;
+      manifest = JSON.parse(await readFileText(manifestFile)) as StoredManifest;
     } catch {
       manifest = null;
     }
@@ -160,7 +181,7 @@ export async function readBookBundle(bookId: string): Promise<{
 
   if (stateFile.exists) {
     try {
-      const parsedState = JSON.parse(await stateFile.text()) as Partial<BookReaderState>;
+      const parsedState = JSON.parse(await readFileText(stateFile)) as Partial<BookReaderState>;
       state = {
         anchor: parsedState.anchor ?? null,
         progress:
@@ -203,6 +224,7 @@ export async function deleteBookBundle(bookId: string, db?: DatabaseAdapter): Pr
   if (bookDir.exists) {
     bookDir.delete();
   }
+  await removeBookFromSearch(bookId, db);
   await deleteBookRecord(bookId, db);
 }
 
@@ -213,7 +235,7 @@ export async function readAssetText(assetModule: number): Promise<string> {
   if (!uri) {
     throw new Error('تعذّر تحميل الملف المدمج.');
   }
-  return new File(uri).text();
+  return readFileText(new File(uri));
 }
 
 export async function ensureSampleBookSeeded(db?: DatabaseAdapter): Promise<boolean> {

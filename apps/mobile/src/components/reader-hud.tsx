@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import Animated, {
   Easing,
@@ -8,10 +8,10 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Circle, Path } from 'react-native-svg';
 
 import { TYPOGRAPHY } from '@/theme/layout';
-import { getAppThemeTokens } from '@/theme/reader-theme';
+import { getAppThemeTokens, THEME_OPTIONS } from '@/theme/reader-theme';
 import type { ThemeId } from '@/types/reader';
 import { PageScrubber } from './page-scrubber';
 
@@ -34,6 +34,7 @@ export type ReaderHudProps = {
   onBack: () => void;
   onOpenToc: () => void;
   onOpenSettings: () => void;
+  onSelectTheme?: (theme: ThemeId) => void;
   onSeekPage: (page: number) => void;
   onBarsLayout?: (heights: { headerHeight: number; footerHeight: number }) => void;
 };
@@ -54,6 +55,7 @@ export function ReaderHud({
   onBack,
   onOpenToc,
   onOpenSettings,
+  onSelectTheme,
   onSeekPage,
   onBarsLayout,
 }: ReaderHudProps) {
@@ -61,6 +63,8 @@ export function ReaderHud({
   const palette = getAppThemeTokens(theme);
   const reducedMotion = useReducedMotion();
   const progress = useSharedValue(visible ? 1 : 0);
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+  const [measuredHeaderHeight, setMeasuredHeaderHeight] = useState(0);
   const measuredBarsRef = useRef<{ headerHeight: number; footerHeight: number }>({
     headerHeight: 0,
     footerHeight: 0,
@@ -70,6 +74,7 @@ export function ReaderHud({
     const h = Math.round(event.nativeEvent.layout.height);
     if (h > 0 && h !== measuredBarsRef.current.headerHeight) {
       measuredBarsRef.current.headerHeight = h;
+      setMeasuredHeaderHeight(h);
       if (measuredBarsRef.current.footerHeight > 0) {
         onBarsLayout?.({ ...measuredBarsRef.current });
       }
@@ -87,6 +92,9 @@ export function ReaderHud({
   };
 
   useEffect(() => {
+    if (!visible) {
+      setThemeMenuOpen(false);
+    }
     progress.set(
       withTiming(visible ? 1 : 0, {
         duration: reducedMotion ? 120 : 220,
@@ -164,7 +172,7 @@ export function ReaderHud({
             style={[
               styles.bookTitle,
               {
-                color: palette.text,
+                color: palette.heading ?? palette.text,
                 fontFamily: TYPOGRAPHY.displayFont,
                 fontSize: isTablet ? 21 : 18,
               },
@@ -198,7 +206,10 @@ export function ReaderHud({
         <View style={styles.actionsRow}>
           <Pressable
             testID="reader-toc-button"
-            onPress={onOpenToc}
+            onPress={() => {
+              setThemeMenuOpen(false);
+              onOpenToc();
+            }}
             hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
             style={({ pressed }) => [
               styles.iconBtn,
@@ -224,8 +235,50 @@ export function ReaderHud({
           </Pressable>
 
           <Pressable
+            testID="reader-theme-button"
+            onPress={() => setThemeMenuOpen((prev) => !prev)}
+            hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+            style={({ pressed }) => [
+              styles.iconBtn,
+              isTablet && styles.iconBtnTablet,
+              (pressed || themeMenuOpen) && { backgroundColor: palette.accentSoft },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="المظهر"
+            accessibilityState={{ expanded: themeMenuOpen }}
+          >
+            <View
+              style={[
+                styles.themeBtnSwatch,
+                {
+                  backgroundColor: palette.bg,
+                  borderColor: themeMenuOpen ? palette.accent : palette.text,
+                },
+              ]}
+            >
+              <View style={[styles.themeBtnDot, { backgroundColor: palette.accent }]} />
+            </View>
+            {isTablet ? (
+              <Text
+                style={[
+                  styles.btnText,
+                  {
+                    color: themeMenuOpen ? palette.accent : palette.text,
+                    fontFamily: TYPOGRAPHY.uiFont,
+                  },
+                ]}
+              >
+                المظهر
+              </Text>
+            ) : null}
+          </Pressable>
+
+          <Pressable
             testID="reader-settings-button"
-            onPress={onOpenSettings}
+            onPress={() => {
+              setThemeMenuOpen(false);
+              onOpenSettings();
+            }}
             hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
             style={({ pressed }) => [
               styles.iconBtn,
@@ -233,27 +286,107 @@ export function ReaderHud({
               pressed && { backgroundColor: palette.accentSoft },
             ]}
             accessibilityRole="button"
-            accessibilityLabel="إعدادات القراءة"
+            accessibilityLabel="الإعدادات"
           >
             <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
               <Path
-                d="M4 20h16M6 16l4-12 4 12M7.5 12h5"
+                d="M4 6h4M13 6h7M4 12h9M18 12h2M4 18h6M15 18h5"
                 stroke={palette.accent}
                 strokeWidth={1.8}
                 strokeLinecap="round"
-                strokeLinejoin="round"
               />
+              <Circle cx={10.5} cy={6} r={2.2} stroke={palette.accent} strokeWidth={1.8} />
+              <Circle cx={15.5} cy={12} r={2.2} stroke={palette.accent} strokeWidth={1.8} />
+              <Circle cx={12.5} cy={18} r={2.2} stroke={palette.accent} strokeWidth={1.8} />
             </Svg>
             {isTablet ? (
               <Text
                 style={[styles.btnText, { color: palette.accent, fontFamily: TYPOGRAPHY.uiFont }]}
               >
-                المظهر والخط
+                الإعدادات
               </Text>
             ) : null}
           </Pressable>
         </View>
       </Animated.View>
+
+      {visible && themeMenuOpen ? (
+        <View style={styles.themePopoverLayer} pointerEvents="box-none">
+          <Pressable
+            testID="reader-theme-backdrop"
+            style={StyleSheet.absoluteFill}
+            onPress={() => setThemeMenuOpen(false)}
+            accessibilityLabel="إغلاق قائمة المظهر"
+          />
+          <View
+            testID="reader-theme-popover"
+            style={[
+              styles.themePopover,
+              {
+                marginTop:
+                  (measuredHeaderHeight > 0
+                    ? measuredHeaderHeight
+                    : Math.max(insets.top, isTablet ? 14 : 12) + 52) + 6,
+                marginEnd: isTablet ? 28 : 16,
+                backgroundColor: palette.popoverBg,
+                borderColor: palette.popoverBorder,
+              },
+            ]}
+          >
+            {THEME_OPTIONS.map((opt) => {
+              const active = palette.id === opt.id;
+              return (
+                <Pressable
+                  key={opt.id}
+                  testID={`theme-quick-${opt.id}`}
+                  onPress={() => {
+                    onSelectTheme?.(opt.id);
+                    setThemeMenuOpen(false);
+                  }}
+                  style={({ pressed }) => [
+                    styles.themePopoverItem,
+                    active && { backgroundColor: palette.accentSoft },
+                    pressed && { opacity: 0.78 },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={opt.labelAr}
+                  accessibilityState={{ selected: active }}
+                >
+                  <View
+                    style={[
+                      styles.themePopoverCircle,
+                      {
+                        backgroundColor: opt.bg,
+                        borderColor: active ? palette.accent : palette.border,
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.themePopoverInnerDot,
+                        { backgroundColor: active ? opt.accent : opt.text },
+                      ]}
+                    />
+                  </View>
+                  <Text
+                    style={[
+                      styles.themePopoverLabel,
+                      {
+                        color: active ? palette.accent : palette.text,
+                        fontWeight: active ? '700' : '500',
+                        fontFamily: TYPOGRAPHY.uiFont,
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {opt.labelAr}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
 
       <Animated.View
         testID="reader-hud-footer"
@@ -430,5 +563,57 @@ const styles = StyleSheet.create({
   },
   subText: {
     fontSize: 11,
+  },
+  themeBtnSwatch: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  themeBtnDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  themePopoverLayer: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'flex-end',
+    zIndex: 30,
+  },
+  themePopover: {
+    minWidth: 184,
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 6,
+    gap: 2,
+    boxShadow: '0 12px 32px rgba(0, 0, 0, 0.24)',
+  },
+  themePopoverItem: {
+    minHeight: 42,
+    borderRadius: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  themePopoverCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  themePopoverInnerDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  themePopoverLabel: {
+    fontSize: 13.5,
+    textAlign: 'right',
   },
 });

@@ -8,7 +8,7 @@
   --popover-bg: #FFFDF8;
   --popover-border: #E3DACB;
 
-  --font-family: 'Amiri', 'Noto Naskh Arabic', 'Geeza Pro', 'Traditional Arabic', serif;
+  --font-family: 'Noto Naskh Arabic', 'Amiri', 'Geeza Pro', 'Traditional Arabic', serif;
   --font-size: 20px;
   --line-height: 1.95;
   --word-spacing: 0px;
@@ -203,7 +203,7 @@ body {
   font-size: 1.55em;
   line-height: 1.5;
   font-weight: 700;
-  color: var(--text-color);
+  color: var(--heading-color, var(--text-color));
 }
 
 .chapter-ornament {
@@ -230,7 +230,7 @@ body {
   font-size: 1.2em;
   line-height: 1.6;
   font-weight: 700;
-  color: var(--accent-color);
+  color: var(--subheading-color, var(--accent-color));
   break-inside: avoid;
   break-after: avoid;
   text-align: start;
