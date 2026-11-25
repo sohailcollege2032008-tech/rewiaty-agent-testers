@@ -1,22 +1,46 @@
 import type { Anchor, Block, Book, Chapter } from '@rewiaty/book-format';
 import { escapeHtml } from '@rewiaty/book-format';
+import {
+  SPREAD_GUTTER_PX,
+  SPREAD_MIN_VIEWPORT_PX,
+  measureChToPx,
+  spineTokensFor,
+} from './spread.js';
 import { THEMES, type ReaderSettings, type TocEntry } from './types.js';
 
 const INITIAL_WORD_BUDGET = 2500;
 const BATCH_WORD_BUDGET = 2000;
 
+/** Element that pads a chapter to an even page count so every chapter starts on the same side. */
+const CHAPTER_PAD_CLASS = 'chapter-pad';
+
 export type ViewportMetrics = {
-  width: number;
+  width: number; // stage width (the physical width of the open book)
   height: number;
+  /** Advance of a single page. Half of `width` in two-page spread mode. */
+  pageWidth: number;
   marginH: number;
   marginV: number;
+  spread: boolean;
 };
 
 export type RenderedChapter = {
   index: number;
   chapter: Chapter;
   el: HTMLElement;
-  pageCount: number; // measured pages for mounted prefix
+  /**
+   * Real (content) pages of the mounted prefix — never includes the blank chapter pad.
+   * This is the only count exposed to RN (position + TOC), so the reader's page
+   * numbers always point at a page the user can actually see.
+   */
+  pageCount: number;
+  /**
+   * Real pages + blank pad pages. Track geometry only (offset of the next chapter,
+   * how many page turns the chapter owns). Never exposed.
+   */
+  layoutPageCount: number;
+  /** Blank pad pages appended at the end of this chapter (0 or 1, spread mode only). */
+  padPageCount: number;
   estimatedTotalPages: number; // extrapolated total pages until mountedBlockCount === chapter.blocks.length
   mountedBlockCount: number;
   mountedWordCount: number;
@@ -33,6 +57,7 @@ export type PositionSnapshot = {
   chapterPage: number; // 1-based page in current chapter
   chapterPageCount: number;
   bookProgress: number; // 0..1
+  spread: boolean;
 };
 
 export type PaginatorCallbacks = {
@@ -177,7 +202,14 @@ export class Paginator {
   private book: Book | null = null;
   private settings: ReaderSettings;
   private dir: 'rtl' | 'ltr' = 'rtl';
-  private metrics: ViewportMetrics = { width: 390, height: 844, marginH: 24, marginV: 24 };
+  private metrics: ViewportMetrics = {
+    width: 390,
+    height: 844,
+    pageWidth: 390,
+    marginH: 24,
+    marginV: 24,
+    spread: false,
+  };
 
   private currentChapterIdx = 0;
   private currentChapterPage = 0;
@@ -211,6 +243,11 @@ export class Paginator {
 
   getMetrics(): ViewportMetrics {
     return this.metrics;
+  }
+
+  /** true when the current layout is a two-page open-book spread. */
+  isSpreadActive(): boolean {
+    return this.metrics.spread;
   }
 
   getCurrentChapterIndex(): number {
@@ -274,10 +311,12 @@ export class Paginator {
     }
 
     if (targetBlockId) {
-      this.currentChapterPage = this.resolveAnchorPageInCurrentChapter({
-        blockId: targetBlockId,
-        charOffset: targetOffset,
-      });
+      this.currentChapterPage = this.alignToSpread(
+        this.resolveAnchorPageInCurrentChapter({
+          blockId: targetBlockId,
+          charOffset: targetOffset,
+        }),
+      );
     }
 
     this.applyTrackTransform(false);
@@ -382,20 +421,16 @@ export class Paginator {
 
     // Ensure anchor's chapter is mounted enough to cover anchor, then re-measure mounted chapters
     for (const entry of this.rendered.values()) {
-      entry.pageCount = this.measureChapterScrollPages(entry.el);
-      entry.estimatedTotalPages = this.computeEstimatedTotalPages(entry);
-      if (entry.isComplete) {
-        this.pageCache.set(this.cacheKey(entry.chapter), entry.pageCount);
-      }
+      this.remeasureChapter(entry);
     }
 
     this.layoutVirtualizedChapterOffsets();
 
     if (anchorBefore) {
-      this.currentChapterPage = this.resolveAnchorPageInCurrentChapter(anchorBefore);
+      this.currentChapterPage = this.alignToSpread(this.resolveAnchorPageInCurrentChapter(anchorBefore));
     } else {
       const curr = this.rendered.get(this.currentChapterIdx);
-      const maxPage = curr ? curr.pageCount - 1 : 0;
+      const maxPage = curr ? curr.layoutPageCount - 1 : 0;
       this.currentChapterPage = Math.max(0, Math.min(this.currentChapterPage, maxPage));
     }
 
@@ -418,16 +453,12 @@ export class Paginator {
     this.layoutGeneration++;
 
     for (const entry of this.rendered.values()) {
-      entry.pageCount = this.measureChapterScrollPages(entry.el);
-      entry.estimatedTotalPages = this.computeEstimatedTotalPages(entry);
-      if (entry.isComplete) {
-        this.pageCache.set(this.cacheKey(entry.chapter), entry.pageCount);
-      }
+      this.remeasureChapter(entry);
     }
     this.layoutVirtualizedChapterOffsets();
 
     if (anchorBefore) {
-      this.currentChapterPage = this.resolveAnchorPageInCurrentChapter(anchorBefore);
+      this.currentChapterPage = this.alignToSpread(this.resolveAnchorPageInCurrentChapter(anchorBefore));
     }
     this.applyTrackTransform(false);
     this.scheduleBackgroundWork();
@@ -440,21 +471,17 @@ export class Paginator {
     let changed = false;
 
     for (const entry of this.rendered.values()) {
-      const nextCount = this.measureChapterScrollPages(entry.el);
-      if (nextCount !== entry.pageCount) {
+      const before = entry.pageCount;
+      this.remeasureChapter(entry);
+      if (entry.pageCount !== before) {
         changed = true;
-      }
-      entry.pageCount = nextCount;
-      entry.estimatedTotalPages = this.computeEstimatedTotalPages(entry);
-      if (entry.isComplete) {
-        this.pageCache.set(this.cacheKey(entry.chapter), entry.pageCount);
       }
     }
 
     if (!changed) return false;
 
     this.layoutVirtualizedChapterOffsets();
-    this.currentChapterPage = this.resolveAnchorPageInCurrentChapter(anchorBefore);
+    this.currentChapterPage = this.alignToSpread(this.resolveAnchorPageInCurrentChapter(anchorBefore));
     this.applyTrackTransform(false);
     return true;
   }
@@ -463,18 +490,26 @@ export class Paginator {
     if (!this.book) return false;
     const curr = this.rendered.get(this.currentChapterIdx);
     if (!curr) return false;
+    const step = this.pageStep();
 
-    // If approaching the end of a partially mounted chapter, mount the next batch synchronously
-    if (!curr.isComplete && this.currentChapterPage + 2 >= curr.pageCount) {
+    // If approaching the end of a partially mounted chapter, mount the next batch
+    // synchronously — in spread mode a turn consumes two pages at once.
+    let mounted = false;
+    let guard = 0;
+    while (!curr.isComplete && this.currentChapterPage + step >= curr.pageCount && guard < 8) {
+      guard++;
       this.appendNextBatch(curr, BATCH_WORD_BUDGET);
+      mounted = true;
+    }
+    if (mounted) {
       this.layoutVirtualizedChapterOffsets();
       if (curr.isComplete) {
         this.callbacks.onChapterLayoutComplete?.(curr.chapter.id);
       }
     }
 
-    if (this.currentChapterPage + 1 < curr.pageCount) {
-      this.currentChapterPage += 1;
+    if (this.currentChapterPage + step < curr.layoutPageCount) {
+      this.currentChapterPage = this.alignToSpread(this.currentChapterPage + step);
       this.applyTrackTransform(!this.settings.disableAnimation);
       return true;
     }
@@ -493,9 +528,10 @@ export class Paginator {
 
   prevPage(): boolean {
     if (!this.book) return false;
+    const step = this.pageStep();
 
     if (this.currentChapterPage > 0) {
-      this.currentChapterPage -= 1;
+      this.currentChapterPage = this.alignToSpread(Math.max(0, this.currentChapterPage - step));
       this.applyTrackTransform(!this.settings.disableAnimation);
       return true;
     }
@@ -506,13 +542,30 @@ export class Paginator {
       // Going backwards to the end of the previous chapter requires all its blocks mounted
       this.syncActiveAndEvict(targetChapter.blocks.length);
       const curr = this.rendered.get(this.currentChapterIdx);
-      this.currentChapterPage = curr ? Math.max(0, curr.pageCount - 1) : 0;
+      this.currentChapterPage = curr ? this.lastSpreadStart(curr.layoutPageCount) : 0;
       this.applyTrackTransform(false);
       this.scheduleBackgroundWork();
       return true;
     }
 
     return false;
+  }
+
+  /** Pages consumed by one turn: 1 normally, 2 while an open-book spread is shown. */
+  private pageStep(): number {
+    return this.metrics.spread ? 2 : 1;
+  }
+
+  /** A spread always starts on an even page index so turning never skips or repeats a page. */
+  private alignToSpread(page: number): number {
+    if (!this.metrics.spread) return Math.max(0, page);
+    return Math.max(0, page - (page % 2));
+  }
+
+  /** First page of the final spread of a chapter. */
+  private lastSpreadStart(pageCount: number): number {
+    if (!this.metrics.spread) return Math.max(0, pageCount - 1);
+    return this.alignToSpread(Math.max(0, pageCount - 1));
   }
 
   goto(target: { anchor?: Anchor; chapterId?: string; page?: number }): boolean {
@@ -542,7 +595,7 @@ export class Paginator {
         }
       }
 
-      this.currentChapterPage = this.resolveAnchorPageInCurrentChapter(target.anchor);
+      this.currentChapterPage = this.alignToSpread(this.resolveAnchorPageInCurrentChapter(target.anchor));
       this.applyTrackTransform(false);
       this.scheduleBackgroundWork();
       return true;
@@ -566,8 +619,8 @@ export class Paginator {
         this.layoutVirtualizedChapterOffsets();
       }
 
-      const maxPage = curr ? curr.pageCount - 1 : 0;
-      this.currentChapterPage = Math.min(maxPage, requestedZeroBased);
+      const maxPage = curr ? curr.layoutPageCount - 1 : 0;
+      this.currentChapterPage = this.alignToSpread(Math.min(maxPage, requestedZeroBased));
       this.applyTrackTransform(false);
       this.scheduleBackgroundWork();
       return true;
@@ -603,8 +656,8 @@ export class Paginator {
         this.layoutVirtualizedChapterOffsets();
       }
 
-      const maxPage = curr ? curr.pageCount - 1 : 0;
-      this.currentChapterPage = Math.min(maxPage, pageInChapter);
+      const maxPage = curr ? curr.layoutPageCount - 1 : 0;
+      this.currentChapterPage = this.alignToSpread(Math.min(maxPage, pageInChapter));
       this.applyTrackTransform(false);
       this.scheduleBackgroundWork();
       return true;
@@ -619,33 +672,44 @@ export class Paginator {
     const curr = this.rendered.get(this.currentChapterIdx);
     if (!chapter || !curr) return null;
 
+    // Real pages only: `getChapterPageEstimates()` never returns pad pages, so the
+    // reported `page` / `pageCount` / `bookProgress` line up with what the reader sees.
     const counts = this.getChapterPageEstimates();
     let pagesBefore = 0;
     for (let i = 0; i < this.currentChapterIdx; i++) {
       pagesBefore += counts[i] ?? 1;
     }
-    const totalPages = counts.reduce((sum, c) => sum + c, 0);
-    const chapterPageCount = curr.isComplete ? curr.pageCount : curr.estimatedTotalPages;
-    const globalPage = pagesBefore + this.currentChapterPage + 1;
+    const totalPages = Math.max(1, counts.reduce((sum, c) => sum + c, 0));
+    const chapterPageCount = Math.max(1, curr.isComplete ? curr.pageCount : curr.estimatedTotalPages);
+    // A chapter can be parked on its final spread while a blank pad fills the facing
+    // page. Clamp back onto the last real page so no exposed number lands on padding.
+    const chapterPageIndex = Math.max(0, Math.min(this.currentChapterPage, chapterPageCount - 1));
+    const globalPage = pagesBefore + chapterPageIndex + 1;
     const bookProgress = totalPages <= 1 ? 1 : (globalPage - 1) / (totalPages - 1);
 
     return {
       anchor: this.captureCurrentAnchor(),
       chapterId: chapter.id,
       page: globalPage,
-      pageCount: Math.max(1, totalPages),
-      chapterPage: this.currentChapterPage + 1,
+      pageCount: totalPages,
+      chapterPage: chapterPageIndex + 1,
       chapterPageCount,
       bookProgress: Math.max(0, Math.min(1, Number(bookProgress.toFixed(6)))),
+      spread: this.metrics.spread,
     };
   }
 
+  /**
+   * TOC entries in real page numbers. `startPage` is the 1-based real page the chapter
+   * begins on, so it can be sent back through `goto({ page })` and matches `position.page`.
+   * Blank spread pads are intentionally excluded.
+   */
   getTocEntries(): TocEntry[] {
     if (!this.book) return [];
     const counts = this.getChapterPageEstimates();
     let startPage = 1;
     return this.book.chapters.map((ch, idx) => {
-      const pageCount = counts[idx] ?? 1;
+      const pageCount = Math.max(1, counts[idx] ?? 1);
       const entry: TocEntry = {
         id: ch.id,
         title: ch.title,
@@ -666,7 +730,7 @@ export class Paginator {
     }
 
     const chRect = curr.el.getBoundingClientRect();
-    const pageW = this.metrics.width;
+    const pageW = this.metrics.pageWidth;
     const targetPage = this.currentChapterPage;
     const els = curr.blockEls;
 
@@ -745,8 +809,8 @@ export class Paginator {
         : this.getFirstContentRect(blockEl);
 
     if (!rect) return 0;
-    const col = getColumnForRect(rect, chRect, this.dir, this.metrics.width, 'start');
-    return Math.max(0, Math.min(curr.pageCount - 1, col));
+    const col = getColumnForRect(rect, chRect, this.dir, this.metrics.pageWidth, 'start');
+    return Math.max(0, Math.min(curr.layoutPageCount - 1, col));
   }
 
   private getFirstContentRect(el: HTMLElement): DOMRect | null {
@@ -772,28 +836,58 @@ export class Paginator {
 
   private applyStylesAndMeasureViewport(): void {
     const theme = THEMES[this.settings.theme] ?? THEMES.warraq;
+    const spine = spineTokensFor(this.settings.theme);
     const rootStyle = document.documentElement.style;
 
     const maxCh = Math.max(45, Math.min(85, Math.round(this.settings.maxReadingWidth)));
-    rootStyle.setProperty('--max-width', `${maxCh}ch`);
-
-    const rawW = Math.floor(this.stageEl.clientWidth) || window.innerWidth || 390;
-    const rawH = Math.floor(this.stageEl.clientHeight) || window.innerHeight || 844;
-    const marginH = Math.max(8, Math.min(Math.floor(rawW / 4), Math.round(this.settings.marginHorizontal)));
-    const marginV = Math.max(16, Math.min(Math.floor(rawH / 4), Math.round(this.settings.marginVertical)));
-
-    this.metrics = { width: rawW, height: rawH, marginH, marginV };
-
-    const colWidth = Math.max(80, rawW - 2 * marginH);
-    const colGap = 2 * marginH;
-
     const rawLineHeight = Math.max(1.5, Math.min(2.6, this.settings.lineHeight));
     const fontSize = Math.max(14, Math.min(36, this.settings.fontSize));
     const fontWeight = Math.max(300, Math.min(600, Math.round(this.settings.fontWeight)));
 
+    // The spread decision comes from the *viewport*, because the stage width is
+    // already capped by --max-width and would feedback-loop on itself.
+    const viewportW = Math.floor(this.rootEl.clientWidth) || window.innerWidth || 390;
+    const viewportH = Math.floor(this.rootEl.clientHeight) || window.innerHeight || 844;
+    const spread =
+      this.settings.spread !== 'single' && viewportW >= SPREAD_MIN_VIEWPORT_PX && viewportW > viewportH;
+
+    // Cap the open book so one column never exceeds the design's line measure (54ch).
+    const bookMaxPx = measureChToPx(maxCh, fontSize) * 2 + SPREAD_GUTTER_PX;
+    if (spread) {
+      rootStyle.setProperty('--max-width', `${bookMaxPx}px`);
+    } else {
+      rootStyle.setProperty('--max-width', `${maxCh}ch`);
+    }
+
+    // Read the stage after the width cap so the measurement is final.
+    const stageW = Math.floor(this.stageEl.clientWidth) || viewportW;
+    const stageH = Math.floor(this.stageEl.clientHeight) || viewportH;
+
+    const pageWidth = spread ? Math.floor(stageW / 2) : stageW;
+    // In spread mode the centre gutter is the column gap, so each column keeps
+    // the same half-gutter of breathing room on its outer edge and the crease
+    // lands exactly on the middle of the book.
+    const marginH = spread
+      ? Math.round(SPREAD_GUTTER_PX / 2)
+      : Math.max(8, Math.min(Math.floor(stageW / 4), Math.round(this.settings.marginHorizontal)));
+    const marginV = Math.max(16, Math.min(Math.floor(stageH / 4), Math.round(this.settings.marginVertical)));
+
+    this.metrics = {
+      width: spread ? pageWidth * 2 : stageW,
+      height: stageH,
+      pageWidth,
+      marginH,
+      marginV,
+      spread,
+    };
+
+    const colWidth = Math.max(80, pageWidth - 2 * marginH);
+    const colGap = 2 * marginH;
+
     document.documentElement.setAttribute('dir', this.dir);
     document.documentElement.setAttribute('lang', this.book?.meta.lang ?? (this.dir === 'rtl' ? 'ar' : 'en'));
     this.rootEl.setAttribute('dir', this.dir);
+    this.rootEl.classList.toggle('spread-mode', spread);
 
     rootStyle.setProperty('--bg-color', theme.bg);
     rootStyle.setProperty('--text-color', theme.text);
@@ -803,6 +897,15 @@ export class Paginator {
     rootStyle.setProperty('--accent-color', theme.accent);
     rootStyle.setProperty('--popover-bg', theme.popoverBg);
     rootStyle.setProperty('--popover-border', theme.popoverBorder);
+
+    // Design tokens (Warraq tablet / open-book spread) exposed as CSS variables.
+    rootStyle.setProperty('--spread-gutter', `${SPREAD_GUTTER_PX}px`);
+    rootStyle.setProperty('--spread-measure-ch', String(Math.min(54, maxCh)));
+    rootStyle.setProperty('--spine-crease', spine.crease);
+    rootStyle.setProperty('--spine-inner', spine.inner);
+    rootStyle.setProperty('--spine-mid', spine.mid);
+    rootStyle.setProperty('--spine-sheen', spine.sheen);
+    rootStyle.setProperty('--page-edge', spine.pageEdge);
 
     rootStyle.setProperty('--font-family', resolveFontStack(this.settings.fontFamily));
     rootStyle.setProperty('--font-size', `${fontSize}px`);
@@ -819,8 +922,9 @@ export class Paginator {
       rootStyle.setProperty('--paragraph-spacing', `${this.settings.paragraphSpacing}px`);
     }
 
-    rootStyle.setProperty('--page-width', `${rawW}px`);
-    rootStyle.setProperty('--page-height', `${rawH}px`);
+    rootStyle.setProperty('--page-width', `${pageWidth}px`);
+    rootStyle.setProperty('--page-height', `${stageH}px`);
+    rootStyle.setProperty('--book-width', `${this.metrics.width}px`);
     rootStyle.setProperty('--col-width', `${colWidth}px`);
     rootStyle.setProperty('--col-gap', `${colGap}px`);
     rootStyle.setProperty('--margin-h', `${marginH}px`);
@@ -925,22 +1029,25 @@ export class Paginator {
       child = child.nextElementSibling as HTMLElement | null;
     }
 
-    const pageCount = this.measureChapterScrollPages(el);
+    // No draft measurement here: `applyChapterMeasurements` below reads the real
+    // (pad-aware) page counts in a single pass, which is what `ready` is timed on.
     const isComplete = count >= totalBlocks;
 
     const entry: RenderedChapter = {
       index,
       chapter,
       el,
-      pageCount,
-      estimatedTotalPages: pageCount,
+      pageCount: 1,
+      layoutPageCount: 1,
+      padPageCount: 0,
+      estimatedTotalPages: 1,
       mountedBlockCount: count,
       mountedWordCount: wordsMounted,
       isComplete,
       blockEls,
       blockById,
     };
-    entry.estimatedTotalPages = this.computeEstimatedTotalPages(entry);
+    this.applyChapterMeasurements(entry);
     return entry;
   }
 
@@ -978,12 +1085,7 @@ export class Paginator {
     entry.mountedBlockCount = endIdx;
     entry.mountedWordCount += batchWords;
     entry.isComplete = endIdx >= blocks.length;
-    entry.pageCount = this.measureChapterScrollPages(entry.el);
-    entry.estimatedTotalPages = this.computeEstimatedTotalPages(entry);
-
-    if (entry.isComplete) {
-      this.pageCache.set(this.cacheKey(entry.chapter), entry.pageCount);
-    }
+    this.remeasureChapter(entry);
   }
 
   private mountThroughBlockIndex(entry: RenderedChapter, targetBlockIdx: number): void {
@@ -1013,19 +1115,59 @@ export class Paginator {
     entry.mountedBlockCount = endIdx;
     entry.mountedWordCount += addedWords;
     entry.isComplete = endIdx >= blocks.length;
-    entry.pageCount = this.measureChapterScrollPages(entry.el);
-    entry.estimatedTotalPages = this.computeEstimatedTotalPages(entry);
+    this.remeasureChapter(entry);
+  }
 
+  private remeasureChapter(entry: RenderedChapter): void {
+    this.applyChapterMeasurements(entry);
     if (entry.isComplete) {
       this.pageCache.set(this.cacheKey(entry.chapter), entry.pageCount);
     }
   }
 
   /**
+   * Split a chapter's measured pages into real content pages and blank pad pages.
+   *
+   * In spread mode a chapter that would end on a recto in RTL (odd page count) gets
+   * one blank page so the *next* chapter also opens on the right-hand page. That pad
+   * is pure layout: it is counted here for track geometry but never for `pageCount`,
+   * `page`, TOC `startPage` or progress — those stay on real pages.
+   */
+  private measureChapterPages(entry: RenderedChapter): { pages: number; padPages: number } {
+    const existingPad = entry.el.querySelector<HTMLElement>(`.${CHAPTER_PAD_CLASS}`);
+    if (existingPad) existingPad.remove();
+
+    const pages = this.measureChapterScrollPages(entry.el);
+    if (!this.metrics.spread || !entry.isComplete || pages % 2 === 0) {
+      return { pages, padPages: 0 };
+    }
+
+    const pad = document.createElement('div');
+    pad.className = CHAPTER_PAD_CLASS;
+    pad.setAttribute('aria-hidden', 'true');
+    entry.el.appendChild(pad);
+
+    const padded = this.measureChapterScrollPages(entry.el);
+    if (padded > pages) {
+      return { pages, padPages: padded - pages };
+    }
+    pad.remove();
+    return { pages, padPages: 0 };
+  }
+
+  private applyChapterMeasurements(entry: RenderedChapter): void {
+    const { pages, padPages } = this.measureChapterPages(entry);
+    entry.pageCount = pages;
+    entry.padPageCount = padPages;
+    entry.layoutPageCount = pages + padPages;
+    entry.estimatedTotalPages = this.computeEstimatedTotalPages(entry);
+  }
+
+  /**
    * Single O(1) measurement using scrollWidth / pageWidth (no line-box loops).
    */
   private measureChapterScrollPages(el: HTMLElement): number {
-    const pageW = this.metrics.width;
+    const pageW = this.metrics.pageWidth;
     if (pageW <= 0) return 1;
     const sw = el.scrollWidth;
     if (sw <= pageW) return 1;
@@ -1042,7 +1184,7 @@ export class Paginator {
   }
 
   private layoutVirtualizedChapterOffsets(): void {
-    const pageW = this.metrics.width;
+    const pageW = this.metrics.pageWidth;
     const curr = this.rendered.get(this.currentChapterIdx);
     const prev = this.rendered.get(this.currentChapterIdx - 1);
     const next = this.rendered.get(this.currentChapterIdx + 1);
@@ -1053,13 +1195,13 @@ export class Paginator {
     }
 
     if (prev) {
-      const offsetPx = this.dir === 'rtl' ? prev.pageCount * pageW : -(prev.pageCount * pageW);
+      const offsetPx = this.dir === 'rtl' ? prev.layoutPageCount * pageW : -(prev.layoutPageCount * pageW);
       prev.el.style.transform = `translate3d(${offsetPx}px, 0, 0)`;
       prev.el.setAttribute('aria-hidden', 'true');
     }
 
     if (next && curr) {
-      const offsetPx = this.dir === 'rtl' ? -(curr.pageCount * pageW) : curr.pageCount * pageW;
+      const offsetPx = this.dir === 'rtl' ? -(curr.layoutPageCount * pageW) : curr.layoutPageCount * pageW;
       next.el.style.transform = `translate3d(${offsetPx}px, 0, 0)`;
       next.el.setAttribute('aria-hidden', 'true');
     }
@@ -1079,8 +1221,8 @@ export class Paginator {
 
     const offsetPx =
       this.dir === 'rtl'
-        ? this.currentChapterPage * this.metrics.width
-        : -(this.currentChapterPage * this.metrics.width);
+        ? this.currentChapterPage * this.metrics.pageWidth
+        : -(this.currentChapterPage * this.metrics.pageWidth);
 
     this.trackEl.style.transform = `translate3d(${offsetPx}px, 0, 0)`;
 
@@ -1098,6 +1240,7 @@ export class Paginator {
       chapter.id,
       chapter.hash,
       this.metrics.width,
+      this.metrics.pageWidth,
       this.metrics.height,
       this.metrics.marginH,
       this.metrics.marginV,

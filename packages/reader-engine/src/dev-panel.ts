@@ -28,6 +28,7 @@ const controls = {
   fontWeight: document.getElementById('setting-weight') as HTMLSelectElement,
   textAlign: document.getElementById('setting-align') as HTMLSelectElement,
   indentMode: document.getElementById('setting-indent') as HTMLSelectElement,
+  spread: document.getElementById('setting-spread') as HTMLSelectElement,
   theme: document.getElementById('setting-theme') as HTMLSelectElement,
   disableAnimation: document.getElementById('setting-noanim') as HTMLInputElement,
 };
@@ -55,6 +56,7 @@ function syncControlsFromSettings(): void {
   controls.fontWeight.value = String(currentSettings.fontWeight);
   controls.textAlign.value = currentSettings.textAlign;
   controls.indentMode.value = currentSettings.indentMode;
+  controls.spread.value = currentSettings.spread ?? 'auto';
   controls.theme.value = currentSettings.theme;
   controls.disableAnimation.checked = currentSettings.disableAnimation;
 }
@@ -111,7 +113,7 @@ window.addEventListener('message', (event) => {
   if (msg.type === 'position') {
     tocSelect.value = msg.chapterId;
     const pct = Math.round(msg.bookProgress * 100);
-    statusEl.textContent = `Chapter ${msg.chapterId} · Ch Page ${msg.chapterPage}/${msg.chapterPageCount} · Book ${msg.page}/${msg.pageCount} (${pct}%) · Anchor: ${msg.anchor.blockId}:${msg.anchor.charOffset}`;
+    statusEl.textContent = `Chapter ${msg.chapterId} · Ch Page ${msg.chapterPage}/${msg.chapterPageCount} · Book ${msg.page}/${msg.pageCount} (${pct}%) · ${msg.spread ? 'spread' : 'single'} · Anchor: ${msg.anchor.blockId}:${msg.anchor.charOffset}`;
   } else if (msg.type === 'toc') {
     populateToc(msg.chapters);
   } else if (msg.type === 'tap') {
@@ -165,6 +167,9 @@ controls.textAlign.addEventListener('change', () =>
 );
 controls.indentMode.addEventListener('change', () =>
   updateSetting({ indentMode: controls.indentMode.value as ReaderSettings['indentMode'] }),
+);
+controls.spread.addEventListener('change', () =>
+  updateSetting({ spread: controls.spread.value === 'single' ? 'single' : 'auto' }),
 );
 controls.theme.addEventListener('change', () =>
   updateSetting({ theme: controls.theme.value as ReaderSettings['theme'] }),
