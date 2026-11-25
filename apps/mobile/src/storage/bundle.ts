@@ -12,6 +12,7 @@ import {
   upsertBook,
   type DatabaseAdapter,
 } from './database';
+import { indexBookForSearch, removeBookFromSearch } from './search-index';
 import type { BookLibraryRecord, BookManifest, BookReaderState } from '@/types/reader';
 
 export const PARSER_VERSION = 1;
@@ -107,7 +108,9 @@ export async function importBookContent(
     addedAt: now,
   };
 
-  return upsertBook(record, db);
+  const savedRecord = await upsertBook(record, db);
+  await indexBookForSearch(book, db);
+  return savedRecord;
 }
 
 export async function readBookBundle(bookId: string): Promise<{
@@ -203,6 +206,7 @@ export async function deleteBookBundle(bookId: string, db?: DatabaseAdapter): Pr
   if (bookDir.exists) {
     bookDir.delete();
   }
+  await removeBookFromSearch(bookId, db);
   await deleteBookRecord(bookId, db);
 }
 
