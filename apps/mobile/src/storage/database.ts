@@ -1,4 +1,5 @@
 import * as SQLite from 'expo-sqlite';
+import { initSearchSchema } from './search-index';
 import type { BookLibraryRecord } from '@/types/reader';
 
 export type DatabaseAdapter = {
@@ -36,6 +37,8 @@ export async function initDatabase(db: DatabaseAdapter): Promise<void> {
   if (!columns.some((col) => col.name === 'coverColor')) {
     await db.execAsync('ALTER TABLE books ADD COLUMN coverColor TEXT');
   }
+
+  await initSearchSchema(db);
 }
 
 export async function getDatabase(): Promise<DatabaseAdapter> {

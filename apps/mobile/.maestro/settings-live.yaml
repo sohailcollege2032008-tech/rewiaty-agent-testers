@@ -58,7 +58,8 @@ appId: com.rewiaty.app
     id: "settings-font-size-value"
     text: "24"
 - takeScreenshot: "01-settings-sheet-oled-amiri"
+# S2: close settings sheet by tapping outside (above the sheet)
 - tapOn:
-    id: "settings-close-button"
+    point: "50%,15%"
 - waitForAnimationToEnd
 - takeScreenshot: "02-reader-oled-amiri-live"

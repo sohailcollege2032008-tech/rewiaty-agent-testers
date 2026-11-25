@@ -15,6 +15,7 @@ import type { Anchor, Book } from '@rewiaty/book-format';
 import { useKeepAwake } from 'expo-keep-awake';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import WebView, { type WebViewMessageEvent, type WebViewNavigation } from 'react-native-webview';
@@ -22,21 +23,41 @@ import WebView, { type WebViewMessageEvent, type WebViewNavigation } from 'react
 import { ReaderHud } from '@/components/reader-hud';
 import { ReaderSettingsSheet } from '@/components/reader-settings-sheet';
 import { TocModal } from '@/components/toc-modal';
+import {
+  extractBookmarkContext,
+  isPositionBookmarked,
+  normalizeBookmarkItems,
+  removeBookmarkById,
+  toggleBookmarkAtPosition,
+} from '@/storage/bookmarks';
 import { readAssetText, readBookBundle, saveBookReaderState } from '@/storage/bundle';
 import { getKv, setKv, touchBookOpened } from '@/storage/database';
 import { ensureOfflineFontsDir } from '@/storage/font-assets';
 import {
+  applyPendingDailyReading,
+  emptyReadingStats,
+  formatDurationArabic,
+  loadReadingStats,
+  ReadingSessionTracker,
+  saveReadingStats,
+  type ReadingSnapshot,
+  type ReadingStats,
+} from '@/storage/reading-stats';
+import {
   DEFAULT_SETTINGS,
+  getSectionResetPartial,
   loadThemePreference,
   mergeReaderSettings,
-  resetReaderSettings,
+  resetSection,
   saveReaderSettings,
   selectManualTheme,
+  type SettingsTabId,
 } from '@/storage/settings-store';
 import { RADIUS, TYPOGRAPHY, useResponsiveLayout } from '@/theme/layout';
 import { getAppThemeTokens, resolveAppTheme, resolveSystemTheme } from '@/theme/reader-theme';
 import { notifyThemeListeners } from '@/theme/use-app-theme';
 import type {
+  BookmarkItem,
   BookReaderState,
   ReaderInsets,
   ReaderSettings,
@@ -53,6 +74,17 @@ const SETTINGS_CLOSE_TAP_COOLDOWN_MS = 300;
 const READER_ORIGIN_WHITELIST: string[] = ['file://*', 'about:blank'];
 /** Used when the offline fonts folder is unavailable; needs no whitelist entry. */
 const READER_FALLBACK_BASE_URL = 'about:blank';
+// Why (product): native/engine errors are English and technical (CI run 45597933250 showed
+// "Call to function 'FileSystemFile.text' has been rejected…" to the reader). Readers only see Arabic.
+const ARABIC_RE = /[\u0600-\u06FF]/;
+export const READER_OPEN_FAILED_MESSAGE = 'تعذّر فتح الكتاب. ارجع للمكتبة وجرّب تفتحه تاني.';
+export function readerErrorMessage(err: unknown): string {
+  const message = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+  if (message && ARABIC_RE.test(message)) return message;
+  if (message) console.warn('[reader] open failed:', message);
+  return READER_OPEN_FAILED_MESSAGE;
+}
+
 export const HUD_HINT_KV_KEY = 'reader_hud_hint_seen_v1';
 export const HUD_HINT_TEXT = 'اضغط في نص الصفحة عشان تظهر الإعدادات والفهرس، وعلى الأطراف عشان تقلّب.';
 
@@ -74,8 +106,25 @@ export function ReaderScreen() {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const layout = useResponsiveLayout();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, blockId, charOffset } = useLocalSearchParams<{
+    id: string;
+    blockId?: string;
+    charOffset?: string;
+  }>();
   const bookId = Array.isArray(id) ? id[0] : id;
+  const targetBlockId = Array.isArray(blockId) ? blockId[0] : blockId;
+  const targetCharOffset = Array.isArray(charOffset) ? charOffset[0] : charOffset;
+  const searchAnchor = useMemo<Anchor | undefined>(() => {
+    if (!targetBlockId || !targetBlockId.trim()) return undefined;
+    const parsedOffset = targetCharOffset !== undefined ? Number(targetCharOffset) : 0;
+    return {
+      blockId: targetBlockId.trim(),
+      charOffset: Number.isFinite(parsedOffset) && parsedOffset >= 0 ? Math.floor(parsedOffset) : 0,
+    };
+  }, [targetBlockId, targetCharOffset]);
+  const searchAnchorRef = useRef<Anchor | undefined>(searchAnchor);
+  searchAnchorRef.current = searchAnchor;
+  const appliedSearchKeyRef = useRef<string | null>(null);
 
   const webViewRef = useRef<WebView<Record<string, unknown>> | null>(null);
   const hasSentLoadRef = useRef(false);
@@ -87,12 +136,19 @@ export function ReaderScreen() {
   // 'ready' can arrive again (WebView reload); the first-open hint is checked once per screen.
   const hintCheckedRef = useRef(false);
   const lastPageKeyRef = useRef<string | null>(null);
+  const currentAnchorRef = useRef<Anchor | null>(null);
+  const bookmarkItemsRef = useRef<BookmarkItem[]>([]);
+  const bookRef = useRef<Book | null>(null);
+  const readingStatsRef = useRef<ReadingStats | null>(null);
+  const readingTrackerRef = useRef<ReadingSessionTracker | null>(null);
 
   const [readerHtml, setReaderHtml] = useState<string | null>(null);
   const [fontBaseUrl, setFontBaseUrl] = useState<string | null>(null);
   const [book, setBook] = useState<Book | null>(null);
   const [settings, setSettings] = useState<ReaderSettings>(DEFAULT_SETTINGS);
-  const [bookmarks, setBookmarks] = useState<number[]>([]);
+  const [bookmarkItems, setBookmarkItems] = useState<BookmarkItem[]>([]);
+  const [readingStats, setReadingStats] = useState<ReadingStats | null>(null);
+  const [readingSnapshot, setReadingSnapshot] = useState<ReadingSnapshot | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [webLoaded, setWebLoaded] = useState(false);
   const [engineReady, setEngineReady] = useState(false);
@@ -103,6 +159,8 @@ export function ReaderScreen() {
 
   const [hudVisible, setHudVisible] = useState(false);
   const [showHudHint, setShowHudHint] = useState(false);
+  const hintOpacity = useSharedValue(1);
+  const hintAnimatedStyle = useAnimatedStyle(() => ({ opacity: hintOpacity.get() }));
   const [tocVisible, setTocVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const settingsVisibleRef = useRef(false);
@@ -131,6 +189,9 @@ export function ReaderScreen() {
   });
 
   const themeTokens = useMemo(() => getAppThemeTokens(settings.theme), [settings.theme]);
+
+  bookRef.current = book;
+  bookmarkItemsRef.current = bookmarkItems;
 
   const webviewMarginTop = layout.isTabletLandscape ? 12 : Math.max(insets.top, 8);
   const defaultHeaderHeight =
@@ -173,17 +234,38 @@ export function ReaderScreen() {
     [],
   );
 
+  const flushReadingStats = useCallback(() => {
+    const tracker = readingTrackerRef.current;
+    if (!tracker) return;
+
+    const pending = tracker.consumePendingDaily();
+    if (Object.keys(pending).length === 0) return;
+
+    const next = applyPendingDailyReading(
+      readingStatsRef.current ?? emptyReadingStats(),
+      pending,
+      tracker.getEffectiveWpm(),
+    );
+    readingStatsRef.current = next;
+    setReadingStats(next);
+    void saveReadingStats(next).catch(() => undefined);
+  }, []);
+
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState !== 'active') {
         debouncedSave.flush();
+        // Backgrounding ends the current reading stretch: the idle gap is never counted.
+        readingTrackerRef.current?.pause();
+        flushReadingStats();
       }
     });
     return () => {
       subscription.remove();
       debouncedSave.flush();
+      flushReadingStats();
     };
-  }, [debouncedSave]);
+  }, [debouncedSave, flushReadingStats]);
 
   const colorSchemeRef = useRef(colorScheme);
   colorSchemeRef.current = colorScheme;
@@ -205,7 +287,7 @@ export function ReaderScreen() {
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const readerAsset = require('@/assets/reader.html') as number;
-        const [html, bundle, pref, resolvedFontsUrl] = await Promise.all([
+        const [html, bundle, pref, resolvedFontsUrl, storedStats] = await Promise.all([
           readAssetText(readerAsset),
           readBookBundle(bookId),
           loadThemePreference().catch(() => ({
@@ -213,6 +295,7 @@ export function ReaderScreen() {
             hasManualTheme: false,
           })),
           ensureOfflineFontsDir().catch(() => null),
+          loadReadingStats().catch(() => null),
         ]);
         if (cancelled) return;
 
@@ -230,13 +313,37 @@ export function ReaderScreen() {
         };
 
         hasManualThemeRef.current = pref.hasManualTheme;
-        initialAnchorRef.current = bundle.state.anchor ?? undefined;
+        const activeSearchAnchor = searchAnchorRef.current;
+        appliedSearchKeyRef.current = activeSearchAnchor
+          ? `${bookId}:${activeSearchAnchor.blockId}:${activeSearchAnchor.charOffset}`
+          : null;
+        initialAnchorRef.current = activeSearchAnchor ?? bundle.state.anchor ?? undefined;
         initialSettingsRef.current = resolvedSettings;
         fontBaseUrlRef.current = resolvedFontsUrl;
         latestStateRef.current = bundle.state;
+        currentAnchorRef.current = bundle.state.anchor ?? null;
+
+        const initialBookmarks = normalizeBookmarkItems(
+          bundle.state.bookmarkItems,
+          bundle.state.bookmarks,
+          bundle.book,
+        );
+        bookmarkItemsRef.current = initialBookmarks;
+        readingTrackerRef.current = new ReadingSessionTracker({
+          chapters: bundle.book.chapters.map((chapter) => ({
+            id: chapter.id,
+            wordCount: chapter.wordCount,
+          })),
+          totalWords: bundle.book.wordCount,
+          stats: storedStats,
+        });
+        if (storedStats) {
+          readingStatsRef.current = storedStats;
+          setReadingStats(storedStats);
+        }
 
         setSettings(resolvedSettings);
-        setBookmarks(bundle.state.bookmarks ?? []);
+        setBookmarkItems(initialBookmarks);
         setFontBaseUrl(resolvedFontsUrl);
         setReaderHtml(html);
         setBook(bundle.book);
@@ -259,7 +366,7 @@ export function ReaderScreen() {
         });
       } catch (err) {
         if (cancelled) return;
-        setLoadError(err instanceof Error ? err.message : 'تعذّر فتح الكتاب.');
+        setLoadError(readerErrorMessage(err));
       }
     })();
 
@@ -271,6 +378,14 @@ export function ReaderScreen() {
   const postToEngine = useCallback((msg: RNToWebMessage) => {
     webViewRef.current?.postMessage(JSON.stringify(msg));
   }, []);
+
+  useEffect(() => {
+    if (!bookId || !engineReady || !hasSentLoadRef.current || !searchAnchor) return;
+    const key = `${bookId}:${searchAnchor.blockId}:${searchAnchor.charOffset}`;
+    if (appliedSearchKeyRef.current === key) return;
+    appliedSearchKeyRef.current = key;
+    postToEngine({ type: 'goto', anchor: searchAnchor });
+  }, [bookId, engineReady, searchAnchor, postToEngine]);
 
   useEffect(() => {
     if (!webLoaded || !book || hasSentLoadRef.current) return;
@@ -412,6 +527,7 @@ export function ReaderScreen() {
           const pageKey = `${parsed.chapterId}:${parsed.page}`;
           if (lastPageKeyRef.current !== null && lastPageKeyRef.current !== pageKey) setShowHudHint(false);
           lastPageKeyRef.current = pageKey;
+          currentAnchorRef.current = parsed.anchor ?? null;
           setPageInfo({
             chapterId: parsed.chapterId,
             page: parsed.page,
@@ -430,15 +546,31 @@ export function ReaderScreen() {
               page: parsed.page,
               pageCount: parsed.pageCount,
               bookmarks: latestStateRef.current?.bookmarks,
+              bookmarkItems: bookmarkItemsRef.current,
               updatedAt: Date.now(),
             };
             latestStateRef.current = nextState;
             debouncedSave(bookId, nextState);
           }
+
+          // F23: feed the tracker from real page turns only (never from a timer).
+          const tracker = readingTrackerRef.current;
+          if (tracker) {
+            const chapter = bookRef.current?.chapters.find((c) => c.id === parsed.chapterId);
+            const chapterPageCount = Math.max(1, parsed.chapterPageCount ?? parsed.pageCount);
+            tracker.recordProgress({
+              chapterId: parsed.chapterId,
+              page: parsed.page,
+              pageCount: chapterPageCount,
+              wordsPerPageEstimate: chapter ? chapter.wordCount / chapterPageCount : 0,
+              timestamp: Date.now(),
+            });
+            setReadingSnapshot(tracker.snapshot());
+          }
           break;
         }
         case 'error':
-          setLoadError(parsed.message);
+          setLoadError(readerErrorMessage(parsed.message));
           break;
       }
     },
@@ -494,45 +626,46 @@ export function ReaderScreen() {
     [postToEngine],
   );
 
-  const handleResetSettings = useCallback(() => {
-    hasManualThemeRef.current = false;
-    const systemTheme = resolveSystemTheme(colorSchemeRef.current);
-    const defaults: ReaderSettings = { ...DEFAULT_SETTINGS, theme: systemTheme };
-    postToEngine({ type: 'settings', partial: defaults });
-    initialSettingsRef.current = defaults;
-    setSettings(defaults);
-    notifyThemeListeners({ theme: systemTheme, hasManualTheme: false });
-    void resetReaderSettings();
-  }, [postToEngine]);
+  useEffect(() => {
+    if (!showHudHint || !hudVisible) {
+      hintOpacity.set(1);
+      return;
+    }
+    hintOpacity.set(1);
+    const fadeTimer = setTimeout(() => {
+      hintOpacity.set(withTiming(0, { duration: 350 }));
+    }, 5000);
+    const hideTimer = setTimeout(() => {
+      setShowHudHint(false);
+    }, 5350);
+    return () => {
+      clearTimeout(fadeTimer);
+      clearTimeout(hideTimer);
+    };
+  }, [showHudHint, hudVisible, hintOpacity]);
 
-  const handleToggleBookmark = useCallback(() => {
-    setBookmarks((prev) => {
-      const currentPage = pageInfo.page;
-      const exists = prev.includes(currentPage);
-      const next = exists
-        ? prev.filter((p) => p !== currentPage)
-        : [...prev, currentPage].sort((a, b) => a - b);
-
-      if (bookId) {
-        const base = latestStateRef.current ?? {
-          anchor: null,
-          progress: 0,
-          chapterId: pageInfo.chapterId,
-          page: pageInfo.page,
-          pageCount: pageInfo.pageCount,
-          updatedAt: Date.now(),
-        };
-        const updatedState: BookReaderState = {
-          ...base,
-          bookmarks: next,
-          updatedAt: Date.now(),
-        };
-        latestStateRef.current = updatedState;
-        void saveBookReaderState(bookId, updatedState);
-      }
-      return next;
-    });
-  }, [bookId, pageInfo.chapterId, pageInfo.page, pageInfo.pageCount]);
+  const handleResetSettings = useCallback(
+    (tab: SettingsTabId) => {
+      const systemTheme = resolveSystemTheme(colorSchemeRef.current);
+      const sectionPartial = getSectionResetPartial(tab, systemTheme);
+      const enginePartial: EngineSettingsPayload =
+        tab === 'layout' && layout.readerMaxReadingWidthCh !== null
+          ? { ...sectionPartial, maxReadingWidth: layout.readerMaxReadingWidthCh }
+          : sectionPartial;
+      postToEngine({ type: 'settings', partial: enginePartial });
+      setSettings((prev) => {
+        const next = mergeReaderSettings(prev, sectionPartial);
+        initialSettingsRef.current = next;
+        void resetSection(tab, undefined, systemTheme);
+        if (tab === 'theme') {
+          hasManualThemeRef.current = false;
+          notifyThemeListeners({ theme: systemTheme, hasManualTheme: false });
+        }
+        return next;
+      });
+    },
+    [layout.readerMaxReadingWidthCh, postToEngine],
+  );
 
   const activeChapterTitle = useMemo(() => {
     const fromToc = tocEntries.find((c) => c.id === pageInfo.chapterId)?.title;
@@ -540,12 +673,80 @@ export function ReaderScreen() {
     return book?.chapters.find((c) => c.id === pageInfo.chapterId)?.title ?? book?.meta.title ?? '';
   }, [tocEntries, book, pageInfo.chapterId]);
 
+  const persistBookmarks = useCallback(
+    (nextItems: BookmarkItem[]) => {
+      bookmarkItemsRef.current = nextItems;
+      setBookmarkItems(nextItems);
+
+      // Why: once bookmarks live in bookmarkItems the legacy page list is retired; keeping it
+      // would resurrect deleted legacy bookmarks on the next load (Codex #19 P2).
+      const nextPages: number[] = [];
+
+      if (!bookId) return;
+      const base = latestStateRef.current ?? {
+        anchor: null,
+        progress: 0,
+        chapterId: pageInfo.chapterId,
+        page: pageInfo.page,
+        pageCount: pageInfo.pageCount,
+        updatedAt: Date.now(),
+      };
+      const updatedState: BookReaderState = {
+        ...base,
+        bookmarks: nextPages,
+        bookmarkItems: nextItems,
+        updatedAt: Date.now(),
+      };
+      latestStateRef.current = updatedState;
+      void saveBookReaderState(bookId, updatedState);
+    },
+    [bookId, pageInfo.chapterId, pageInfo.page, pageInfo.pageCount],
+  );
+
+  const handleToggleBookmark = useCallback(() => {
+    const currentBook = bookRef.current;
+    const anchor = currentAnchorRef.current;
+    const context =
+      currentBook && anchor ? extractBookmarkContext(currentBook, anchor) : null;
+
+    const result = toggleBookmarkAtPosition(bookmarkItemsRef.current, {
+      anchor,
+      page: pageInfo.page,
+      chapterId: context?.chapterId || pageInfo.chapterId,
+      chapterTitle: context?.chapterTitle || activeChapterTitle,
+      quote: context?.quote ?? '',
+      contextBefore: context?.contextBefore ?? '',
+      contextAfter: context?.contextAfter ?? '',
+      now: Date.now(),
+    });
+    persistBookmarks(result.items);
+  }, [activeChapterTitle, pageInfo.chapterId, pageInfo.page, persistBookmarks]);
+
+  const handleDeleteBookmark = useCallback(
+    (id: string) => {
+      persistBookmarks(removeBookmarkById(bookmarkItemsRef.current, id));
+    },
+    [persistBookmarks],
+  );
+
+  const handleOpenBookmark = useCallback(
+    (item: BookmarkItem, anchor: Anchor | null) => {
+      if (anchor) {
+        postToEngine({ type: 'goto', anchor });
+      } else if (item.page !== undefined) {
+        postToEngine({ type: 'goto', page: item.page });
+      }
+    },
+    [postToEngine],
+  );
+
   const effectiveDir: 'rtl' | 'ltr' =
     settings.dirOverride && settings.dirOverride !== 'auto'
       ? settings.dirOverride
       : book?.meta.dir ?? 'rtl';
 
-  const isBookmarked = bookmarks.includes(pageInfo.page);
+  const isBookmarked =
+    isPositionBookmarked(bookmarkItems, currentAnchorRef.current, pageInfo.page);
   const progressRatio =
     pageInfo.pageCount > 1 ? Math.max(0, Math.min(1, (pageInfo.page - 1) / (pageInfo.pageCount - 1))) : 0;
   const pctRead = progressToPercent(pageInfo.bookProgress);
@@ -757,6 +958,18 @@ export function ReaderScreen() {
             >
               {activeChapterTitle}
             </Text>
+            {readingSnapshot && readingSnapshot.bookRemainingMinutes > 0 ? (
+              <Text
+                testID="reader-remaining-time"
+                numberOfLines={1}
+                style={[
+                  styles.runningFootRemaining,
+                  { color: themeTokens.muted, fontFamily: TYPOGRAPHY.uiFont },
+                ]}
+              >
+                {`يتبقّى ${formatDurationArabic(readingSnapshot.bookRemainingMinutes)}`}
+              </Text>
+            ) : null}
             <Text
               numberOfLines={1}
               style={[
@@ -834,15 +1047,19 @@ export function ReaderScreen() {
         {book ? (
           <>
             {showHudHint && hudVisible ? (
-              <View
+              <Animated.View
                 testID="reader-hud-hint"
                 pointerEvents="none"
-                style={[styles.hudHint, { backgroundColor: themeTokens.surface, borderColor: themeTokens.border }]}
+                style={[
+                  styles.hudHint,
+                  { backgroundColor: themeTokens.surface, borderColor: themeTokens.border },
+                  hintAnimatedStyle,
+                ]}
               >
                 <Text style={[styles.hudHintText, { color: themeTokens.text, fontFamily: TYPOGRAPHY.uiFont }]}>
                   {HUD_HINT_TEXT}
                 </Text>
-              </View>
+              </Animated.View>
             ) : null}
             <ReaderHud
               visible={hudVisible}
@@ -860,6 +1077,7 @@ export function ReaderScreen() {
               onBack={handleBack}
               onOpenToc={() => setTocVisible(true)}
               onOpenSettings={handleOpenSettings}
+              onSelectTheme={(theme) => handleSettingsChange({ theme })}
               onSeekPage={handleSeekPage}
               onBarsLayout={setMeasuredHudHeights}
             />
@@ -870,6 +1088,12 @@ export function ReaderScreen() {
               activeChapterId={pageInfo.chapterId}
               dir={effectiveDir}
               theme={settings.theme}
+              bookmarks={bookmarkItems}
+              book={book}
+              onOpenBookmark={handleOpenBookmark}
+              onDeleteBookmark={handleDeleteBookmark}
+              readingStats={readingStats}
+              readingSnapshot={readingSnapshot}
               onSelectChapter={handleSelectChapter}
               onClose={() => setTocVisible(false)}
             />
@@ -972,6 +1196,12 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   runningFootNumbers: {
+    flexShrink: 0,
+    fontSize: 10.5,
+    opacity: 0.6,
+    fontVariant: ['tabular-nums'],
+  },
+  runningFootRemaining: {
     flexShrink: 0,
     fontSize: 10.5,
     opacity: 0.6,

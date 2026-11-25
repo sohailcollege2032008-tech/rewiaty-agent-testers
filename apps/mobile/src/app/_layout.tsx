@@ -26,6 +26,7 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false, animation: 'default' }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="reader/[id]" />
+        <Stack.Screen name="search" />
       </Stack>
       <ToastOverlay />
     </GestureHandlerRootView>

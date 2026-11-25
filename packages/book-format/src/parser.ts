@@ -1,21 +1,36 @@
+import { cleanArabicText } from './cleaner.js';
 import { hashString } from './hash.js';
 import {
   countWordsInHtml,
   escapeHtml,
+  hasSafeRasterExtension,
   isSafeImageSrc,
   renderInlineHtml,
   stripInlineMarkdown,
 } from './sanitize.js';
+import { detectTxtChapterHeading } from './txt-chapters.js';
 import type { Block, Book, BookMeta, Chapter } from './types.js';
 
 const RTL_LANGS = new Set(['ar', 'fa', 'ur', 'he', 'ps', 'sd']);
 const SCENE_BREAK_RE = /^(?:\*\s*\*\s*\*+|-\s*-\s*-+|_\s*_\s*_+)\s*$/;
 const IMAGE_LINE_RE = /^!\[([^\]]*)\]\(([^)\n]+)\)\s*$/;
+const OBSIDIAN_IMAGE_LINE_RE = /^!\[\[([^[\]\n]+)\]\]$/;
 const FOOTNOTE_DEF_RE = /^\[\^([a-zA-Z0-9_-]+)\]:\s*(.*)$/;
 const H1_RE = /^#\s+(.+)$/;
 const H2_RE = /^##\s+(.+)$/;
 const QUOTE_RE = /^>\s?(.*)$/;
 const YAML_LINE_RE = /^([a-zA-Z0-9_-]+)\s*:\s*(.*)$/;
+
+/**
+ * Optional parse-time transform. Both flags default to the historical behaviour so existing
+ * books keep byte-identical hashes unless cleaning is explicitly requested.
+ */
+export type ParseOptions = {
+  /** Run the non-destructive Arabic cleaner over the body before parsing. Default: false. */
+  cleanArabic?: boolean;
+  /** In `parseTxt`: split the file on detected chapter headings. Default: true. */
+  detectChapters?: boolean;
+};
 
 function normalizeLineEndings(text: string): string {
   const noBom = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
@@ -272,14 +287,56 @@ function parseImageBlock(altRaw: string, srcRaw: string): Omit<Block, 'id'> {
 }
 
 /**
+ * Parse an Obsidian image embed line: `![[name.webp]]`, `![[images/map.png]]`,
+ * `![[name.webp|alt text]]`, `![[name.webp|300]]`, `![[name.webp|300x200]]`.
+ * Anything that is not a safe raster path inside the bundle degrades to escaped text.
+ */
+function parseObsidianImageBlock(innerRaw: string): Omit<Block, 'id'> {
+  const fallback: Omit<Block, 'id'> = {
+    kind: 'p',
+    html: escapeHtml(`![[${innerRaw}]]`),
+  };
+
+  const parts = innerRaw.split('|');
+  const targetRaw = (parts[0] ?? '').trim();
+  if (!targetRaw) return fallback;
+
+  let alt = '';
+  for (const rawPart of parts.slice(1)) {
+    const value = rawPart.trim();
+    if (!value) continue;
+    // Obsidian size syntax (`|300`, `|300x200`) is not alt text.
+    if (/^\d+(?:\s*[xX×]\s*\d+)?$/.test(value)) continue;
+    alt = value;
+    break;
+  }
+
+  // Only safe raster images are embeddable; svg/html/scripts degrade to text.
+  if (!hasSafeRasterExtension(targetRaw)) return fallback;
+
+  // A bare file name lives in the book's assets folder; a path keeps its relative form.
+  const resolved = targetRaw.includes('/') ? targetRaw : `assets/${targetRaw}`;
+  if (!isSafeImageSrc(resolved)) return fallback;
+
+  return {
+    kind: 'image',
+    html: `<img src="${escapeHtml(resolved)}" alt="${escapeHtml(alt)}">`,
+  };
+}
+
+/**
  * Parse a Markdown novel file into the canonical BookModel.
  */
-export function parseBook(text: string, fileName: string): Book {
+export function parseBook(text: string, fileName: string, options?: ParseOptions): Book {
   const normalized = normalizeLineEndings(text);
   const lines = normalized.split('\n');
 
   const { fields, bodyStartLine } = extractFrontmatter(lines);
-  const bodySlice = lines.slice(bodyStartLine);
+  // Why (tech): cleaning runs on the body only, so frontmatter metadata is never rewritten and the
+  // caller's string is left untouched (the cleaner is pure).
+  const bodyText = lines.slice(bodyStartLine).join('\n');
+  const cleanedBodyText = options?.cleanArabic ? cleanArabicText(bodyText) : bodyText;
+  const bodySlice = cleanedBodyText.split('\n');
   const { bodyLines, rawFootnotes } = extractFootnotes(bodySlice);
 
   const knownFootnotes = new Set(rawFootnotes.keys());
@@ -433,6 +490,15 @@ export function parseBook(text: string, fileName: string): Book {
       continue;
     }
 
+    const obsidianMatch = OBSIDIAN_IMAGE_LINE_RE.exec(trimmed);
+    if (obsidianMatch) {
+      flushParagraph();
+      flushQuote();
+      currentChapter.blocks.push(parseObsidianImageBlock(obsidianMatch[1] ?? ''));
+      nextParagraphNoIndent = false;
+      continue;
+    }
+
     // Normal prose line
     flushQuote();
     paragraphLines.push(trimmed);
@@ -468,12 +534,18 @@ export function parseBook(text: string, fileName: string): Book {
 /**
  * Parse a plain-text (.txt) novel file into the canonical BookModel.
  * Escapes raw HTML, preserves Arabic Tashkeel, and splits non-empty lines into paragraphs.
+ *
+ * When `detectChapters` is on (the default) detected chapter headings become chapter titles and
+ * any text before the first heading stays as the first chapter. Files with no detectable heading
+ * keep the historical single-chapter result, byte for byte.
  */
-export function parseTxt(text: string, fileName: string): Book {
+export function parseTxt(text: string, fileName: string, options?: ParseOptions): Book {
   const normalized = normalizeLineEndings(text);
-  const lines = normalized.split('\n');
+  const cleaned = options?.cleanArabic ? cleanArabicText(normalized) : normalized;
+  const lines = cleaned.split('\n');
   const title = titleFromFileName(fileName);
   const { lang, dir } = detectLanguageAndDir(lines.slice(0, 80).join('\n'));
+  const detectChapters = options?.detectChapters !== false;
 
   const meta: BookMeta = {
     title,
@@ -481,32 +553,67 @@ export function parseTxt(text: string, fileName: string): Book {
     dir,
   };
 
-  const rawBlocks: Omit<Block, 'id'>[] = [];
-  let isFirstBlock = true;
+  type DraftChapter = {
+    title: string;
+    blocks: Omit<Block, 'id'>[];
+  };
 
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
+  const drafts: DraftChapter[] = [];
+  let current: DraftChapter = { title, blocks: [] };
+  let isFirstBlockInChapter = true;
 
+  const commitCurrent = () => {
+    if (current.blocks.length > 0) drafts.push(current);
+  };
+
+  const appendParagraph = (plain: string) => {
     const block: Omit<Block, 'id'> = {
       kind: 'p',
-      html: escapeHtml(trimmed),
+      html: escapeHtml(plain),
     };
-    if (isFirstBlock) {
+    if (isFirstBlockInChapter) {
       block.noIndent = true;
-      isFirstBlock = false;
+      isFirstBlockInChapter = false;
     }
-    rawBlocks.push(block);
+    current.blocks.push(block);
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = (lines[i] ?? '').trim();
+    if (!trimmed) continue;
+
+    if (detectChapters) {
+      const prevBlank = i === 0 || (lines[i - 1] ?? '').trim() === '';
+      const nextBlank = i === lines.length - 1 || (lines[i + 1] ?? '').trim() === '';
+      const heading = detectTxtChapterHeading(trimmed, { prevBlank, nextBlank });
+      if (heading) {
+        commitCurrent();
+        current = { title: heading, blocks: [] };
+        isFirstBlockInChapter = true;
+        continue;
+      }
+    }
+
+    appendParagraph(trimmed);
   }
 
-  const chapter = finalizeChapter(1, title, rawBlocks);
-  const id = `book_${hashString(`${fileName}\n${meta.title}\n${chapter.hash}`)}`;
+  commitCurrent();
+  if (drafts.length === 0) {
+    drafts.push(current);
+  }
+
+  const chapters: Chapter[] = drafts.map((draft, idx) =>
+    finalizeChapter(idx + 1, draft.title, draft.blocks),
+  );
+
+  const wordCount = chapters.reduce((sum, ch) => sum + ch.wordCount, 0);
+  const id = `book_${hashString(`${fileName}\n${meta.title}\n${chapters[0]?.hash ?? ''}`)}`;
 
   return {
     id,
     meta,
-    chapters: [chapter],
+    chapters,
     footnotes: {},
-    wordCount: chapter.wordCount,
+    wordCount,
   };
 }
