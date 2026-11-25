@@ -23,10 +23,10 @@ appId: com.rewiaty.app
     commands:
       - tapOn:
           id: "import-guide-pick-button"
-# Navigate Android system file picker (DocumentsUI) to /sdcard/Download/import-f20.epub
+# Navigate Android system file picker (DocumentsUI) to /sdcard/Download/${EPUB_FILE}
 - runFlow:
     when:
-      notVisible: "import-f20.epub"
+      notVisible: "${EPUB_FILE || 'import-f20.epub'}"
     commands:
       - tapOn:
           text: "Show roots"
@@ -35,9 +35,9 @@ appId: com.rewiaty.app
           text: "Downloads"
           optional: true
 - extendedWaitUntil:
-    visible: "import-f20.epub"
+    visible: "${EPUB_FILE || 'import-f20.epub'}"
     timeout: 15000
-- tapOn: "import-f20.epub"
+- tapOn: "${EPUB_FILE || 'import-f20.epub'}"
 # On a slow emulator DocumentsUI sometimes reads the tap as a long-press and enters
 # selection mode ("1 selected" + "Select"); confirm the selection instead of hanging.
 - runFlow:
@@ -83,3 +83,14 @@ appId: com.rewiaty.app
     timeout: 5000
 - waitForAnimationToEnd
 - takeScreenshot: "03-epub-chapter-two"
+# The figure in chapter two must actually *paint*: the engine posts the decoded box to React Native,
+# which exposes it as `reader-image-proof`. A path that resolved but decoded to nothing would leave
+# this invisible, which is exactly what the negative control (import-epub-broken) relies on.
+- extendedWaitUntil:
+    visible:
+      id: "reader-image-proof"
+    timeout: 20000
+- assertVisible:
+    id: "reader-image-proof"
+    text: "صورة [0-9]+×[0-9]+"
+- takeScreenshot: "04-epub-image-rendered"

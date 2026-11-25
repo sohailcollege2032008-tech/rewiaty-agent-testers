@@ -1,0 +1,14 @@
+appId: com.rewiaty.app
+---
+# Negative control for the image assertion in import-epub.yaml.
+#
+# The same journey runs against an EPUB whose figure *entry exists* but whose bytes are not a
+# decodable PNG. The book still opens and reads, so everything up to chapter two passes; the journey
+# must then FAIL at `reader-image-proof` because no image painted.
+#
+# The runner (scripts/run_rewiaty_flows.sh) inverts the exit code for this flow: a failure here is a
+# PASS, and a green run means the assertion cannot catch a broken image at all.
+- runFlow:
+    file: import-epub.yaml
+    env:
+      EPUB_FILE: import-f20-broken.epub
