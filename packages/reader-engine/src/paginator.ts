@@ -17,6 +17,15 @@ function normalizeInsets(insets?: ReaderInsets | null): ReaderInsets {
 
 const INITIAL_WORD_BUDGET = 2500;
 const BATCH_WORD_BUDGET = 2000;
+/**
+ * Expected fill fraction of the last page of a measured chapter. A chapter's content
+ * almost never ends exactly on a page boundary, so `words / pages` understates the
+ * real words-per-full-page by roughly half a page per measured chapter. Dividing by
+ * `pages` raw makes every estimate for a *smaller* chapter overshoot (a 60-paragraph
+ * chapter read as 2× a 120-paragraph one), which is what pushed the pinned total one
+ * page above the truth on the CI runner.
+ */
+const RAGGED_END_PAGE_FRACTION = 0.5;
 
 /** Element that pads a chapter to an even page count so every chapter starts on the same side. */
 const CHAPTER_PAD_CLASS = 'chapter-pad';
@@ -270,6 +279,18 @@ export class Paginator {
   // Layout signature whose first-frame measurements have already been reconciled with
   // the styles/faces that actually ended up applied (see `settleLayout`).
   private settledSignature: string | null = null;
+  /**
+   * No page number is exposed before this is true.
+   *
+   * The first frame of a book is laid out with whatever face the WebView has at that
+   * instant. Publishing a total then pins the whole map to fallback-face metrics, and
+   * the correction that arrives when the real face swaps in moves the number the reader
+   * is already looking at (the CI failure: "of 56" became "of 55"). Measurement becomes
+   * quotable only after `settleLayout` has re-measured the mounted chapters against the
+   * faces that actually applied. Reset per `load`, never by a settings change (the fonts
+   * are already resolved by then).
+   */
+  private metricsTrusted = false;
 
   private idleHandle: { kind: 'idle' | 'timeout'; id: number } | null = null;
   private transitionResetRaf: number | null = null;
@@ -328,6 +349,7 @@ export class Paginator {
     this.clearRestoredAnchor();
     this.invalidatePageMap();
     this.settledSignature = null;
+    this.metricsTrusted = false;
 
     this.resolveEffectiveDirection();
     this.applyStylesAndMeasureViewport();
@@ -600,6 +622,15 @@ export class Paginator {
       if (entry.pageCount !== before) changed = true;
     }
 
+    // The chapter being read is the only one whose real page count calibrates the
+    // estimate, and the density above already corrects for its partly filled last page,
+    // so a half-mounted slice is a usable sample. Remounting the rest of it here would
+    // stall the first number behind the whole chapter.
+
+    // From here on the measurements describe the faces that actually applied, so the
+    // page numbers may be quoted to the reader.
+    this.metricsTrusted = true;
+
     if (changed || firstForSignature) {
       this.invalidatePageMap();
       this.layoutVirtualizedChapterOffsets();
@@ -796,6 +827,8 @@ export class Paginator {
 
   getPositionSnapshot(): PositionSnapshot | null {
     if (!this.book) return null;
+    // Nothing is quotable before the layout settled (see `metricsTrusted`).
+    if (!this.metricsTrusted) return null;
     const chapter = this.book.chapters[this.currentChapterIdx];
     const curr = this.rendered.get(this.currentChapterIdx);
     if (!chapter || !curr) return null;
@@ -836,6 +869,9 @@ export class Paginator {
    */
   getTocEntries(): TocEntry[] {
     if (!this.book) return [];
+    // A TOC built from unsettled metrics would advertise page numbers that are about to
+    // move; the app keeps showing the library until real numbers exist.
+    if (!this.metricsTrusted) return [];
     const map = this.refreshPageMap();
     let startPage = 1;
     return this.book.chapters.map((ch, idx) => {
@@ -1457,39 +1493,62 @@ export class Paginator {
   }
 
   /**
-   * Words per real page, frozen per layout. Prefers complete chapters (their word
+   * Words per *full* page, frozen per layout. Prefers complete chapters (their word
    * count is the book's own number, not an approximation of the mounted DOM), then the
    * exact cache, and only falls back to a partially-mounted slice as a last resort.
+   *
+   * Every measured chapter ends on a partly filled page, so its `words / pages` ratio
+   * understates the density by up to one page per chapter. Dividing by `pages` raw makes
+   * a big chapter look like `ceil(2 × pages)` of a small one — a 60-paragraph chapter
+   * that really needs 14 pages is estimated at 28 for its 120-paragraph twin that really
+   * needs 27. Subtracting the expected ragged fill per sample keeps the estimate
+   * scale-invariant, so the pinned total matches the truth once chapters are measured.
    */
   private measuredDensity(): number {
+    const densityOf = (words: number, pages: number, samples: number): number => {
+      if (words <= 0 || pages <= 0) return 0;
+      const fullPages = pages - RAGGED_END_PAGE_FRACTION * Math.max(1, samples);
+      return words / Math.max(0.5, fullPages);
+    };
+
     let words = 0;
     let pages = 0;
+    let samples = 0;
     for (const entry of this.rendered.values()) {
       if (entry.isComplete && entry.pageCount > 0 && entry.chapter.wordCount > 0) {
         words += entry.chapter.wordCount;
         pages += entry.pageCount;
+        samples++;
       }
     }
-    if (words > 0 && pages > 0) return words / pages;
+    if (samples > 0) return densityOf(words, pages, samples);
 
+    words = 0;
+    pages = 0;
+    samples = 0;
     if (this.book) {
       for (const ch of this.book.chapters) {
         const cached = this.pageCache.get(this.cacheKey(ch));
         if (cached !== undefined && cached > 0 && ch.wordCount > 0) {
           words += ch.wordCount;
           pages += cached;
+          samples++;
         }
       }
     }
-    if (words > 0 && pages > 0) return words / pages;
+    if (samples > 0) return densityOf(words, pages, samples);
 
+    words = 0;
+    pages = 0;
+    samples = 0;
     for (const entry of this.rendered.values()) {
       if (entry.pageCount > 0 && entry.mountedWordCount > 0) {
         words += entry.mountedWordCount;
         pages += entry.pageCount;
+        samples++;
       }
     }
-    return words > 0 && pages > 0 ? words / pages : 220;
+    return samples > 0 ? densityOf(words, pages, samples) : 220;
   }
 
   /**

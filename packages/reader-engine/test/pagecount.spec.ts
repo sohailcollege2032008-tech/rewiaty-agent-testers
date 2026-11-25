@@ -274,6 +274,55 @@ test.describe('Rewiaty page numbering (R3)', () => {
     await expectTocTargetsAreReachable(page);
   });
 
+  test('(r3-3) the total is pinned only after the webfont has settled, and never moves for it', async ({
+    page,
+  }) => {
+    // Why (product): this is the CI-only failure. On a runner the webfont is still
+    // fetching when the first background batch reports, so the total was pinned to
+    // fallback-face metrics ("of 56") and corrected to the real one ("of 55") a moment
+    // later — the same number the reader was already looking at. Delaying the faces
+    // reproduces that window deterministically; a fixed engine reports exactly one
+    // total and it is the exact one.
+    test.setTimeout(180_000);
+    await page.route('**/*.woff2', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      await route.continue();
+    });
+    await page.setViewportSize(PORTRAIT);
+    await mountEngine(page);
+    const book = buildBook([120, 60, 60]);
+
+    await sendBridge(page, {
+      type: 'load',
+      book,
+      fontBaseUrl: fontsDirUrl,
+      settings: { disableAnimation: true },
+    });
+    await expect.poll(async () => (await latestPosition(page))?.page, { timeout: 10_000 }).toBe(1);
+
+    const atStart = (await latestPosition(page))!;
+    // Nothing derived from a half-loaded face may be published: the very first total the
+    // reader sees is already the settled one.
+    const facesLoaded = await page.evaluate(() => document.fonts?.status !== 'loading');
+    expect(facesLoaded, 'the first position must wait for the faces it measures').toBe(true);
+
+    let pos = atStart;
+    for (let turn = 0; turn < 240; turn++) {
+      const next = await stepForward(page);
+      if (!next) break;
+      expect(next.page).toBeGreaterThanOrEqual(pos.page);
+      pos = next;
+    }
+
+    const all = await positions(page);
+    const settled = assertTotalIsStable(all);
+    const total = settled.pageCount;
+    expect(pos.page).toBe(total);
+    expect(pos.estimated).toBe(false);
+    expect(total).toBe(atStart.pageCount);
+    assertTocIsCumulative(await stableToc(page), total);
+  });
+
   test('(r3-2) two-page spreads: the same numbers, and blank pad pages are never counted', async ({
     page,
   }) => {
