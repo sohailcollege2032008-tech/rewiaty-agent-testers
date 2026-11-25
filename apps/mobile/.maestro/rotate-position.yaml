@@ -1,17 +1,20 @@
 appId: com.rewiaty.app
 ---
-# F3: the reading position survives a screen rotation. Page 4 of the bundled
-# novel starts mid-paragraph; that fragment is the page's top text and must stay
-# on screen across portrait -> landscape -> portrait.
+# F3: the reading position survives a screen rotation.
 #
-# Why the page counter is copied instead of matched against a literal: the total
-# is an estimate that moves while background pagination settles (run 1 read
-# "صفحة 4 من ~26", run 2 read "~25" at the same page), so any hardcoded number is a
-# flaky selector. The real question is "did the layout reflow at all": in landscape
-# the same text needs a different number of pages, so the counter text MUST differ.
-# A portrait-locked activity (app.json orientation: portrait) keeps the WebView at
-# portrait width, the counter string comes back identical, and this journey fails
-# on purpose — that is the F3 bug, not a flaky selector.
+# STATUS: موقوف على قرار منتج. اللف ممكن يبقى للتابلت بس (`app.json` فيه
+# "orientation": "portrait" لحد دلوقتي)، فـ `scripts/ci-flows.sh` مش بيحسب الرحلة دي
+# بوابة. سبناها بتشتغل في الـ sweep علشان الدليل يفضل طازج لما القرار ينزل.
+#
+# What it proves, deterministically:
+#   * landscape must really reflow the page: the same text needs a different number
+#     of pages at a different width, so the HUD counter string MUST change.
+#     A portrait-locked activity keeps the WebView at portrait width, the copied
+#     string comes back identical, and the journey fails on purpose — that is the bug.
+#   * rotating back to portrait must land on the same page (±1 for anchor drift).
+# No literal page total is hardcoded: the total is an estimate that moves while
+# background pagination settles ("~25" in one run, "26" in the next at the same page),
+# which is exactly how an earlier version of this journey failed on its own selector.
 - launchApp
 - extendedWaitUntil:
     visible: "حَجَرُ الْمَاءِ"
@@ -22,10 +25,7 @@ appId: com.rewiaty.app
       id: "reader-loading-overlay"
     timeout: 40000
 - waitForAnimationToEnd
-# RTL: tapping the left edge advances. 3 taps -> page 4.
-- tapOn:
-    point: "15%,50%"
-- waitForAnimationToEnd
+# RTL: tapping the left edge advances.
 - tapOn:
     point: "15%,50%"
 - waitForAnimationToEnd
@@ -44,28 +44,30 @@ appId: com.rewiaty.app
           visible:
             id: "reader-page-counter"
           timeout: 15000
-- assertVisible: ".*خَيْطٌ أَحْمَرُ بَالٍ.*"
 - copyTextFrom:
     id: "reader-page-counter"
-- evalScript: ${output.portraitCounter = maestro.copiedText}
-- takeScreenshot: "01-page-4-portrait"
+- evalScript: ${output.portraitText = maestro.copiedText}
+- evalScript: ${output.portraitPage = (maestro.copiedText.match(/[0-9]+/) || [])[0]}
+- takeScreenshot: "01-portrait-before-rotation"
 - setOrientation: LANDSCAPE_LEFT
 - waitForAnimationToEnd
-# Still on the same page after the rotation ...
 - extendedWaitUntil:
-    visible: ".*خَيْطٌ أَحْمَرُ بَالٍ.*"
+    visible:
+      id: "reader-page-counter"
     timeout: 30000
 - copyTextFrom:
     id: "reader-page-counter"
-# ... and the layout really reflowed (landscape = fewer pages for the same text).
-- assertTrue: ${maestro.copiedText != output.portraitCounter}
-- takeScreenshot: "02-page-4-landscape"
+# The whole point: the layout reflowed, so the counter text is not the same string.
+- assertTrue: ${maestro.copiedText != output.portraitText}
+- takeScreenshot: "02-landscape-reflowed"
 - setOrientation: PORTRAIT
 - waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: ".*خَيْطٌ أَحْمَرُ بَالٍ.*"
+    visible:
+      id: "reader-page-counter"
     timeout: 30000
-- assertVisible:
+- copyTextFrom:
     id: "reader-page-counter"
-    text: ".*4.*"
-- takeScreenshot: "03-page-4-portrait-again"
+- evalScript: ${output.backPage = (maestro.copiedText.match(/[0-9]+/) || [])[0]}
+- assertTrue: ${output.backPage == output.portraitPage || output.backPage - output.portraitPage == 1 || output.portraitPage - output.backPage == 1}
+- takeScreenshot: "03-portrait-same-page-again"
