@@ -132,10 +132,10 @@
 ### F14 البنية التحتية للجودة
 - [x] gates.sh (typecheck، وvitest، والـ build، وPlaywright)
 - [x] سكيلز Expo وRN الرسمية متحمّلة
-- [ ] Release APK بـ mobile-run
-- [ ] Maestro flows على Redroid (الـ 5 رحلات اللي في flows.yaml)
+- [x] Release APK على GitHub Actions (`scripts/ci-flows.sh`، قرار سهيل: مفيش build على السيرفر)
+- [x] Maestro flows على emulator في GitHub Actions (الـ 5 رحلات، 5/5)
 - [x] ريبو mobile-agent-testers شغال على OpenCode Go (deepseek): demo لقى 14 issue ومن غير فلوس
-- [ ] جولة QA: global-qa، وnovice-ux-qa، وvisual-qa
+- [x] جولة QA على نسخة 5 (P1=0، P2=7 اتصلّحوا في #13 و#14، وP3=10 مفتوحين)
 - بوابات: [x] كود · [ ] اختبار · [x] مراجعة · [x] جهاز · [ ] QA
 
 ---
