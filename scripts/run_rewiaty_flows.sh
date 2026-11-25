@@ -140,6 +140,15 @@ if want_flow scrubber-direction; then
   run_flow "scrubber-direction" || true
 fi
 
+# 3c. drag-page-direction (clean state -> page 1 -> swipe right twice (1->2->3) -> swipe left
+#     (3->2) -> two short slow nudges that must leave the page where it is). The flow asserts the
+#     NUMBER in reader-page-counter, so a page that follows forced-RTL styles instead of the
+#     finger fails here.
+if want_flow drag-page-direction; then
+  adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
+  run_flow "drag-page-direction" || true
+fi
+
 # 4. settings-live (clean state -> OLED + Amiri + size + CSP/font logcat verification)
 if want_flow settings-live; then
   adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
