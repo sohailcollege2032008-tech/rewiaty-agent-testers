@@ -8,9 +8,24 @@ VALID_FLOWS=("first-launch-sample" "import-md" "resume-position" "settings-live"
 # it is NOT a gate: its FAIL is reported and does not turn the run red. Remove it from this list the
 # day the product decision lands and the journey passes.
 BLOCKED_FLOWS=("rotate-position")
+# Why (Sohail's decision): the 2 s open budget for a 200k-word book is a PRODUCT target, not a
+# runner-health check. The emulator runner's load swings between runs (measured 0.34 s to 3.9 s for
+# the same build), so a 2 s assertion on it says more about the box than about the reader. The
+# journey keeps running on every sweep and its measured opening time is printed in the summary, but
+# it is NEVER a gate — a FAIL here is reported and leaves the exit code alone. Speeding the open up
+# (caching `parseBook` inside `readBookBundle`) is its own ticket. What is still required is
+# EVIDENCE: a measure-only flow with no recorded result at all is treated as missing, not as a pass.
+MEASURE_ONLY_FLOWS=("long-book-open")
+# The assertion that carries the product number inside the journey (2 s = 2000 ms).
+MEASURE_ONLY_ASSERT_TIMEOUT="2000"
 is_blocked() {
   local f
   for f in "${BLOCKED_FLOWS[@]}"; do [ "$f" = "$1" ] && return 0; done
+  return 1
+}
+is_measure_only() {
+  local f
+  for f in "${MEASURE_ONLY_FLOWS[@]}"; do [ "$f" = "$1" ] && return 0; done
   return 1
 }
 
@@ -109,14 +124,31 @@ ARM64_SHA256="$(cut -d' ' -f1 "$EVIDENCE_DIR/apk-arm64/apk.sha256" 2>/dev/null |
 SUMMARY_PATH="$EVIDENCE_DIR/summary.md"
 TARGET_RC=0
 BLOCKED_LIST="${BLOCKED_FLOWS[*]}"
-python3 - "$EVIDENCE_DIR" "$SUMMARY_PATH" "$RUN_ID" "$RUN_URL" "$SHA256" "$ARM64_SIZE" "$ARM64_SHA256" "$SHA12" "$FLOW_TARGET" "$WATCH_RC" "$BLOCKED_LIST" <<'PY' || TARGET_RC=$?
+MEASURE_LIST="${MEASURE_ONLY_FLOWS[*]}"
+python3 - "$EVIDENCE_DIR" "$SUMMARY_PATH" "$RUN_ID" "$RUN_URL" "$SHA256" "$ARM64_SIZE" "$ARM64_SHA256" "$SHA12" "$FLOW_TARGET" "$WATCH_RC" "$BLOCKED_LIST" "$MEASURE_LIST" "$MEASURE_ONLY_ASSERT_TIMEOUT" <<'PY' || TARGET_RC=$?
+import json
 import os
 import sys
 import xml.etree.ElementTree as ET
 
-evidence_dir, summary_path, run_id, run_url, sha256, arm64_size_str, arm64_sha256, sha12, flow_target, watch_rc_str, blocked_list = sys.argv[1:12]
+(
+    evidence_dir,
+    summary_path,
+    run_id,
+    run_url,
+    sha256,
+    arm64_size_str,
+    arm64_sha256,
+    sha12,
+    flow_target,
+    watch_rc_str,
+    blocked_list,
+    measure_list,
+    measure_assert_timeout,
+) = sys.argv[1:14]
 watch_rc = int(watch_rc_str)
 blocked = {f for f in blocked_list.split() if f}
+measure_only = {f for f in measure_list.split() if f}
 arm64_size = int(arm64_size_str or 0)
 arm64_mb = f"{arm64_size / (1024 * 1024):.2f} MB ({arm64_size} bytes)" if arm64_size > 0 else "missing"
 
@@ -166,6 +198,47 @@ if os.path.isfile(csp_file):
     with open(csp_file, encoding="utf-8") as fh:
         csp_status = fh.read().strip() or "UNKNOWN"
 
+
+def measured_open(fid):
+    """The product number a measure-only flow recorded.
+
+    Maestro writes one JSON per journey into `logs/<flow>-commands.json`; the opening budget is
+    the `assertCondition` that carries the 2 s timeout. Its `duration` is the only honest
+    measurement we have of "first page on screen", so it is what the summary quotes — even when
+    the assertion failed, where the duration is how long the runner waited before giving up.
+    """
+    path = os.path.join(evidence_dir, "logs", f"{fid}-commands.json")
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            commands = json.load(fh)
+    except Exception:
+        return None
+    for entry in commands:
+        if not isinstance(entry, dict):
+            continue
+        meta = entry.get("metadata") or {}
+        evaluated = meta.get("evaluatedCommand") or entry.get("command") or {}
+        if not isinstance(evaluated, dict):
+            continue
+        node = None
+        for key, value in evaluated.items():
+            if str(key).lower().startswith("assertcondition"):
+                node = value
+                break
+        if not isinstance(node, dict):
+            continue
+        if str(node.get("timeout")) != measure_assert_timeout:
+            continue
+        duration = meta.get("duration")
+        return {
+            "status": meta.get("status"),
+            "duration_ms": duration if isinstance(duration, (int, float)) else None,
+        }
+    return None
+
+
 lines = [
     f"# Rewiaty Maestro Flows Summary (`{sha12}`)",
     "",
@@ -183,33 +256,64 @@ lines = [
 ]
 
 for fid in flows:
-    res, detail = status_map.get(fid, ("MISSING", "no result recorded"))
+    recorded = status_map.get(fid)
+    res, detail = recorded if recorded else ("MISSING", "no result recorded")
+    if fid in measure_only:
+        measurement = measured_open(fid)
+        if measurement and measurement["duration_ms"] is not None:
+            recorded_status = measurement["status"] or "UNKNOWN"
+            detail = (
+                f"opened in {measurement['duration_ms']} ms against a "
+                f"{measure_assert_timeout} ms product target (assert {recorded_status}); "
+                "measured, not a gate"
+            )
+        elif measurement:
+            detail = f"{detail}; the {measure_assert_timeout} ms assert recorded no duration"
+        else:
+            detail = f"{detail}; no {measure_assert_timeout} ms assert in the command log"
+        res = f"MEASURE-ONLY {res}"
     lines.append(f"| `{fid}` | **{res}** | {detail} |")
 
 with open(summary_path, "w", encoding="utf-8") as out:
     out.write("\n".join(lines) + "\n")
 
+notes = []
 if blocked:
-    lines.append("")
-    lines.append(
-        "Blocked (reported, not a gate): "
+    notes.append(
+        "- Blocked (reported, not a gate): "
         + ", ".join(f"`{b}`" for b in sorted(blocked))
         + " — F3 rotation waits on a product decision (landscape may become tablet-only; "
         "`apps/mobile/app.json` still locks the phone to portrait)."
     )
+if measure_only:
+    notes.append(
+        "- Measure-only (reported, never a gate): "
+        + ", ".join(f"`{m}`" for m in sorted(measure_only))
+        + f" — the {measure_assert_timeout} ms open budget is a product target and the emulator "
+        "runner's load moves it by seconds between runs, so the journey measures and prints the "
+        "number instead of deciding red/green. Speeding the open up is its own ticket."
+    )
+if notes:
+    lines.append("")
+    lines.extend(notes)
     with open(summary_path, "w", encoding="utf-8") as out:
         out.write("\n".join(lines) + "\n")
 
-# A green verdict needs every REQUESTED flow to have a recorded PASS (a missing artifact means
-# MISSING, never PASS). Blocked flows are reported in the table but never gates: their FAIL keeps the
-# emulator step red, so a red workflow is only accepted when a blocked flow is the reason.
+# A green verdict needs every REQUESTED gating flow to have a recorded PASS (a missing artifact
+# means MISSING, never PASS). Blocked and measure-only flows are reported in the table but never
+# gate: their FAIL keeps the emulator step red, so a red workflow is only accepted when one of
+# them is the reason. A measure-only flow must still have PRODUCED a result — no evidence at all
+# is treated as missing, because "we did not measure" is not the same as "we measured and it was
+# slow".
 targets = flows if flow_target == "all" else [flow_target]
-gated = [f for f in targets if f not in blocked]
+gated = [f for f in targets if f not in blocked and f not in measure_only]
 all_gated_pass = all(status_map.get(f, ("MISSING", ""))[0] == "PASS" for f in gated)
-red_explained_by_blocked = (watch_rc != 0) and any(
-    status_map.get(f, ("MISSING", ""))[0] != "PASS" for f in targets if f in blocked
+missing_measure = [f for f in targets if f in measure_only and status_map.get(f, ("MISSING", ""))[0] == "MISSING"]
+non_gating = blocked | measure_only
+red_explained_by_non_gating = (watch_rc != 0) and any(
+    status_map.get(f, ("MISSING", ""))[0] != "PASS" for f in targets if f in non_gating
 )
-ok = all_gated_pass and (watch_rc == 0 or red_explained_by_blocked)
+ok = all_gated_pass and not missing_measure and (watch_rc == 0 or red_explained_by_non_gating)
 
 sys.exit(0 if ok else 1)
 PY
@@ -224,5 +328,8 @@ fi
 
 if [ "$FLOW_TARGET" = "all" ] || is_blocked "$FLOW_TARGET"; then
   echo "==> NOTE: ${BLOCKED_FLOWS[*]} is blocked on a product decision and is not a gate."
+fi
+if [ "$FLOW_TARGET" = "all" ] || is_measure_only "$FLOW_TARGET"; then
+  echo "==> NOTE: ${MEASURE_ONLY_FLOWS[*]} is measure-only (${MEASURE_ONLY_ASSERT_TIMEOUT} ms product target): its number is printed, it never gates."
 fi
 echo "==> Flow verification PASSED for target '$FLOW_TARGET'."

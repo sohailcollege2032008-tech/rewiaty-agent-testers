@@ -1,4 +1,6 @@
 # .factory/flows.yaml — رحلات المستخدم اللي بتحدد «خلص» (proof check بيقراها). الـ run بيتملي في M4.
+# gate: الافتراضي إن الرحلة بوابة. `blocked` = موقوفة على قرار منتج، و`measure-only` = بتقيس وبتكتب
+# الرقم في `.factory/evidence/<sha>/summary.md` بس مش بوابة (حمولة runner الـ emulator متغيرة).
 flows:
   - id: first-launch-sample
     who: "قارئ عربي بيفتح التطبيق أول مرة"
@@ -40,6 +42,7 @@ flows:
     who: "قارئ بيرجع يكمل بعد ما لف الشاشة"
     steps: "يفتح الرواية ويكمل لصفحة ← ياخد نص العدّاد (صفحة N من ~M) ← يلف الشاشة landscape ← العدّاد لازم يتغير (نفس النص على عرض مختلف = عدد صفحات مختلف؛ شاشة مقفولة على portrait بترجّع نفس النص وبالتالي الرحلة تفشل) ← يرجع portrait ← نفس الصفحة ±1"
     target: release-apk
+    gate: blocked
     run: "bash scripts/ci-flows.sh rotate-position"
     artifact: ".factory/evidence/latest/apk/app.apk"
   - id: keep-awake
@@ -52,6 +55,9 @@ flows:
     who: "قارئ عنده رواية ضخمة"
     steps: "يدخل رواية 200 ألف كلمة (الـ runner بيدخّلها بـ ACTION_VIEW) ← يرجع للمكتبة ← يقفل التطبيق ويفتحه ← يفتح الرواية ← أول صفحة تظهر في أقل من ثانيتين"
     target: release-apk
+    # قرار سهيل: الـ 2 ثانية هدف منتج، بس مش بوابة على runner الـ emulator (حمولته بتتحرك ثواني
+    # بين الرنات). الرحلة بتقيس وتكتب الرقم في summary، ومش بتأثر على exit code.
+    gate: measure-only
     run: "bash scripts/ci-flows.sh long-book-open"
     artifact: ".factory/evidence/latest/apk/app.apk"
   - id: scrubber-direction
