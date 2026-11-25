@@ -1,0 +1,100 @@
+appId: com.rewiaty.app
+---
+# The page must follow the finger in the book's own reading direction.
+#
+# In an Arabic (RTL) book the next page lies to the left of this one, so dragging the paper
+# toward the RIGHT brings it in — the same side that used to be the "forward" tap zone. A
+# leftward drag goes back. (An LTR book is the mirror; the engine derives the sign from
+# book.meta.dir, and r5.spec.ts (c4) pins that half down.)
+#
+# Every assertion below reads the NUMBER in `reader-page-counter`, so a page that turns the
+# wrong way — the RN bug Sohail found in the scrubber, `translateX`/`e.x` are physical while
+# forced-RTL styles flip `left`/`right` — fails here instead of passing on a screenshot.
+- launchApp
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 20000
+- waitForAnimationToEnd
+# The bars open on their own the first time (with the hint); open them only if they are closed.
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-page-counter"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-page-counter"
+    timeout: 5000
+- assertVisible:
+    id: "reader-page-counter"
+    text: "صفحة 1 من .*"
+- takeScreenshot: "01-start-page-1"
+# 1) Finger to the RIGHT: next page in RTL.
+- swipe:
+    start: "20%,50%"
+    end: "80%,50%"
+    duration: 500
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "reader-page-counter"
+      text: "صفحة 2 من .*"
+    timeout: 5000
+- takeScreenshot: "02-forward-page-2"
+# 2) Right again: 2 -> 3, so the turn is repeatable and not a one-off at the edge.
+- swipe:
+    start: "20%,50%"
+    end: "80%,50%"
+    duration: 500
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "reader-page-counter"
+      text: "صفحة 3 من .*"
+    timeout: 5000
+- takeScreenshot: "03-forward-page-3"
+# 3) Finger to the LEFT: previous page in RTL. The number must come back down.
+- swipe:
+    start: "80%,50%"
+    end: "20%,50%"
+    duration: 500
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "reader-page-counter"
+      text: "صفحة 2 من .*"
+    timeout: 5000
+- takeScreenshot: "04-back-page-2"
+# 4) A short slow nudge (well under the 30 % commit distance) is not a turn: the page
+#    settles back where it was. Toward the right first ...
+- swipe:
+    start: "50%,50%"
+    end: "57%,50%"
+    duration: 900
+- waitForAnimationToEnd
+- assertNotVisible:
+    id: "reader-page-counter"
+    text: "صفحة 3 من .*"
+- assertVisible:
+    id: "reader-page-counter"
+    text: "صفحة 2 من .*"
+# ... then toward the left, which would be the previous page if it committed.
+- swipe:
+    start: "50%,50%"
+    end: "43%,50%"
+    duration: 900
+- waitForAnimationToEnd
+- assertNotVisible:
+    id: "reader-page-counter"
+    text: "صفحة 1 من .*"
+- assertVisible:
+    id: "reader-page-counter"
+    text: "صفحة 2 من .*"
+- takeScreenshot: "05-short-drags-kept-page-2"

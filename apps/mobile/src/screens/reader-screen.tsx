@@ -86,7 +86,9 @@ export function readerErrorMessage(err: unknown): string {
 }
 
 export const HUD_HINT_KV_KEY = 'reader_hud_hint_seen_v1';
-export const HUD_HINT_TEXT = 'اضغط في نص الصفحة عشان تظهر الإعدادات والفهرس، وعلى الأطراف عشان تقلّب.';
+// Why (product, R5/A4): edges no longer turn pages — the hint used to teach a gesture the
+// engine now ignores. Swiping is the only way to turn, so say that instead.
+export const HUD_HINT_TEXT = 'اضغط في نص الصفحة عشان تظهر الإعدادات والفهرس، واسحب بإيدك عشان تقلّب.';
 
 // `spread` comes from the engine's ReaderSettings ('auto' | 'single').
 type EngineSettingsPayload = Partial<ReaderSettings>;
