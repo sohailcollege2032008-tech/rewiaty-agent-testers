@@ -946,14 +946,6 @@ export function ReaderScreen() {
             bounces={false}
             onLoadEnd={() => setWebLoaded(true)}
             onMessage={handleWebViewMessage}
-            // Why (tech): a release WebView does not forward its console to logcat, so a page-side
-            // failure (a figure that never measured, a message that never posted) is invisible from
-            // the outside. The engine logs `[reader] …` probes; carrying just those through to the
-            // RN console puts them in the device log without drowning it in page noise.
-            onConsoleMessage={(event) => {
-              const message = event.nativeEvent.message;
-              if (message.includes('[reader]')) console.log(message);
-            }}
           />
         ) : null}
 
