@@ -32,12 +32,16 @@ appId: com.rewiaty.app
 - tapOn:
     id: "toc-item-ch02"
 - waitForAnimationToEnd
-# Turn 2 pages into Chapter 2
-- tapOn:
-    point: "15%,50%"
+# R5: turn 2 pages into Chapter 2 with the finger (RTL: swipe right = next page)
+- swipe:
+    start: "20%,50%"
+    end: "80%,50%"
+    duration: 400
 - waitForAnimationToEnd
-- tapOn:
-    point: "15%,50%"
+- swipe:
+    start: "20%,50%"
+    end: "80%,50%"
+    duration: 400
 - waitForAnimationToEnd
 - takeScreenshot: "01-ch2-before-zoom"
 # Open settings and increase font size (20 -> 24)

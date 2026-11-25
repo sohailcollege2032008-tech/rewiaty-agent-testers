@@ -859,16 +859,21 @@ test.describe('F18 — tashkeel modes', () => {
       landed = position;
     }
     expect(landed, 'the 20k chapter must offer a mid-block page').toBeTruthy();
-    const anchor = landed!.anchor;
+
+    // Let the reader's background work finish the chapter: the timed switch below rewrites
+    // every text node of it, which is the scenario the requirement names (a 20k-word
+    // chapter, not just the mounted window).
+    await expect
+      .poll(async () => mountedBlocksOf(page, 'ch01'), { timeout: 240_000 })
+      .toBe(chapterBlockCount);
+
+    // …and let the offscreen exact pass finish, so the timings are about real numbers.
+    const measured = await waitUntilMeasured(page);
+    const anchor = measured.anchor;
+    expect(anchor.charOffset, 'the anchor must start mid-block').toBeGreaterThan(40);
+    expect(measured.estimated, 'the 20k chapter must be fully measured for a real number').toBe(false);
     const anchorOriginal = await originalTextOfBlock(book, anchor.blockId);
     expect(countMarks(anchorOriginal), 'the anchor block must be vocalised').toBeGreaterThan(40);
-
-    // Let the whole chapter be measured: the timings below must be about real numbers.
-    const measured = await waitUntilMeasured(page);
-    expect(measured.anchor, 'measuring the chapter must not move the anchor').toEqual(anchor);
-    expect(await mountedBlocksOf(page, 'ch01'), 'the whole chapter is mounted now').toBe(
-      chapterBlockCount,
-    );
     const measuredPage = measured.page;
     const measuredChapterPage = measured.chapterPage;
     const measuredPageCount = measured.pageCount;
