@@ -6,25 +6,34 @@ import { BookCover } from './book-cover';
 import { TYPOGRAPHY } from '@/theme/layout';
 import { getAppThemeTokens } from '@/theme/reader-theme';
 import type { BookLibraryRecord, ThemeId } from '@/types/reader';
+import { progressToPercent } from '@/utils/progress';
 
 export type BookCardProps = {
   book: BookLibraryRecord;
   theme?: ThemeId;
   isTablet?: boolean;
+  isNew?: boolean;
   onPress: (book: BookLibraryRecord) => void;
   onLongPress: (book: BookLibraryRecord) => void;
 };
 
 const PRESS_EASING = cubicBezier(0.22, 1, 0.36, 1);
 
-export function BookCard({ book, theme, isTablet = false, onPress, onLongPress }: BookCardProps) {
+export function BookCard({
+  book,
+  theme,
+  isTablet = false,
+  isNew = false,
+  onPress,
+  onLongPress,
+}: BookCardProps) {
   const [pressed, setPressed] = useState(false);
   const palette = getAppThemeTokens(theme);
-  const pct = Math.max(0, Math.min(100, Math.round(book.progress * 100)));
+  const pct = progressToPercent(book.progress);
   const isRtl = book.dir !== 'ltr';
   const titleScale = isTablet ? TYPOGRAPHY.scale.tileTitleTablet : TYPOGRAPHY.scale.tileTitle;
 
-  const statusText = pct === 100 ? 'مكتملة' : pct === 0 ? 'جديدة' : `${pct}%`;
+  const statusText = pct >= 98 ? 'مقروء' : isNew ? 'جديدة' : `${pct}%`;
 
   return (
     <Pressable

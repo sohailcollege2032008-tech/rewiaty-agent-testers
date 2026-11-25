@@ -1004,10 +1004,15 @@ export class Paginator {
     const fontSize = Math.max(14, Math.min(36, this.settings.fontSize));
     const fontWeight = Math.max(300, Math.min(600, Math.round(this.settings.fontWeight)));
 
+    // Clear pinned stage dimensions so the stage measures against the viewport & --max-width.
+    rootStyle.removeProperty('--stage-width');
+    rootStyle.removeProperty('--stage-height');
+
     // The spread decision comes from the *viewport*, because the stage width is
     // already capped by --max-width and would feedback-loop on itself.
-    const viewportW = Math.floor(this.rootEl.clientWidth) || window.innerWidth || 390;
-    const viewportH = Math.floor(this.rootEl.clientHeight) || window.innerHeight || 844;
+    const rootRect = this.rootEl.getBoundingClientRect();
+    const viewportW = Math.floor(rootRect.width || this.rootEl.clientWidth || window.innerWidth || 390);
+    const viewportH = Math.floor(rootRect.height || this.rootEl.clientHeight || window.innerHeight || 844);
     const spread =
       this.settings.spread !== 'single' && viewportW >= SPREAD_MIN_VIEWPORT_PX && viewportW > viewportH;
 
@@ -1019,11 +1024,14 @@ export class Paginator {
       rootStyle.setProperty('--max-width', `${maxCh}ch`);
     }
 
-    // Read the stage after the width cap so the measurement is final.
-    const stageW = Math.floor(this.stageEl.clientWidth) || viewportW;
-    const stageH = Math.floor(this.stageEl.clientHeight) || viewportH;
+    // Read the stage after the width cap and floor fractional CSS pixels so pageWidth
+    // matches the clipped stage box with zero subpixel drift across page turns.
+    const stageRect = this.stageEl.getBoundingClientRect();
+    const stageW = Math.floor(stageRect.width || this.stageEl.clientWidth || viewportW);
+    const stageH = Math.floor(stageRect.height || this.stageEl.clientHeight || viewportH);
 
     const pageWidth = spread ? Math.floor(stageW / 2) : stageW;
+    const bookWidth = spread ? pageWidth * 2 : pageWidth;
     // In spread mode the centre gutter is the column gap, so each column keeps
     // the same half-gutter of breathing room on its outer edge and the crease
     // lands exactly on the middle of the book.
@@ -1046,7 +1054,7 @@ export class Paginator {
     const paddingBottom = effectiveInsetBottom + marginV;
 
     this.metrics = {
-      width: spread ? pageWidth * 2 : stageW,
+      width: bookWidth,
       height: stageH,
       pageWidth,
       marginH,
@@ -1056,11 +1064,17 @@ export class Paginator {
       spread,
     };
 
+    // Pin stage box to the exact integer page/book dimensions so overflow clipping and
+    // translateX page strides agree to the pixel.
+    rootStyle.setProperty('--stage-width', `${bookWidth}px`);
+    rootStyle.setProperty('--stage-height', `${stageH}px`);
+
     const colWidth = Math.max(80, pageWidth - 2 * marginH);
     const colGap = 2 * marginH;
 
+    const bookLang = this.book?.meta.lang?.trim() || (this.dir === 'rtl' ? 'ar' : 'en');
     document.documentElement.setAttribute('dir', this.dir);
-    document.documentElement.setAttribute('lang', this.book?.meta.lang ?? (this.dir === 'rtl' ? 'ar' : 'en'));
+    document.documentElement.setAttribute('lang', bookLang);
     this.rootEl.setAttribute('dir', this.dir);
     this.rootEl.classList.toggle('spread-mode', spread);
 
@@ -1349,7 +1363,7 @@ export class Paginator {
   }
 
   private layoutVirtualizedChapterOffsets(): void {
-    const pageW = this.metrics.pageWidth;
+    const pageW = Math.round(this.metrics.pageWidth);
     const curr = this.rendered.get(this.currentChapterIdx);
     const prev = this.rendered.get(this.currentChapterIdx - 1);
     const next = this.rendered.get(this.currentChapterIdx + 1);
@@ -1360,13 +1374,15 @@ export class Paginator {
     }
 
     if (prev) {
-      const offsetPx = this.dir === 'rtl' ? prev.layoutPageCount * pageW : -(prev.layoutPageCount * pageW);
+      const rawOffset = this.dir === 'rtl' ? prev.layoutPageCount * pageW : -(prev.layoutPageCount * pageW);
+      const offsetPx = Math.round(rawOffset) || 0;
       prev.el.style.transform = `translate3d(${offsetPx}px, 0, 0)`;
       prev.el.setAttribute('aria-hidden', 'true');
     }
 
     if (next && curr) {
-      const offsetPx = this.dir === 'rtl' ? -(curr.layoutPageCount * pageW) : curr.layoutPageCount * pageW;
+      const rawOffset = this.dir === 'rtl' ? -(curr.layoutPageCount * pageW) : curr.layoutPageCount * pageW;
+      const offsetPx = Math.round(rawOffset) || 0;
       next.el.style.transform = `translate3d(${offsetPx}px, 0, 0)`;
       next.el.setAttribute('aria-hidden', 'true');
     }
@@ -1384,10 +1400,12 @@ export class Paginator {
       this.trackEl.style.transition = '';
     }
 
-    const offsetPx =
+    const pageW = Math.round(this.metrics.pageWidth);
+    const rawOffset =
       this.dir === 'rtl'
-        ? this.currentChapterPage * this.metrics.pageWidth
-        : -(this.currentChapterPage * this.metrics.pageWidth);
+        ? this.currentChapterPage * pageW
+        : -(this.currentChapterPage * pageW);
+    const offsetPx = Math.round(rawOffset) || 0;
 
     this.trackEl.style.transform = `translate3d(${offsetPx}px, 0, 0)`;
 

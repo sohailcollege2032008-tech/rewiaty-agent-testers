@@ -634,4 +634,63 @@ describe('ReaderScreen', () => {
     expect(weightLabel.props.numberOfLines).toBe(1);
     expect(weightLabel.props.adjustsFontSizeToFit).toBe(true);
   });
+
+  it('matches engine bookProgress in running footer, sets quiet 0.6 opacity, drops bookmark hint, truncates chapter title cleanly, and labels WebView in Arabic (P3-3, P3-6, P3-9, P3-10)', async () => {
+    mockKv.clear();
+    mockKv.set('reader_hud_hint_seen_v1', true);
+    const { getByTestId, getByText, queryByText } = await renderLoadedReader();
+
+    expect(capturedWebViewProps?.accessibilityLabel).toBe('صفحة الرواية');
+    expect(touchBookOpened).toHaveBeenCalledWith('book_123', expect.any(Number));
+    const openedTs = (touchBookOpened as jest.Mock).mock.calls[0]?.[1] as number;
+    expect(openedTs).toBeGreaterThan(1000);
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({
+        type: 'position',
+        anchor: { blockId: 'ch02_p0001', charOffset: 0 },
+        chapterId: 'ch02',
+        page: 8,
+        pageCount: 13,
+        chapterPage: 3,
+        chapterPageCount: 6,
+        bookProgress: 7 / 12,
+      });
+    });
+
+    // P3-3: 7/12 = 58.33% -> 58%, matching LibraryScreen (not page/pageCount = 62%)
+    const runningNumbers = getByText('8 / 13 · 58%');
+    expect(runningNumbers.props.numberOfLines).toBe(1);
+    const runningNumbersStyle = ReactNative.StyleSheet.flatten(runningNumbers.props.style) as Record<
+      string,
+      unknown
+    >;
+    expect(runningNumbersStyle.opacity).toBe(0.6);
+    expect(runningNumbersStyle.flexShrink).toBe(0);
+
+    const runningChapterText = getByTestId('reader-running-chapter');
+    expect(runningChapterText.props.numberOfLines).toBe(1);
+    expect(runningChapterText.props.ellipsizeMode).toBe('tail');
+    const runningChapterStyle = ReactNative.StyleSheet.flatten(
+      runningChapterText.props.style,
+    ) as Record<string, unknown>;
+    expect(runningChapterStyle.opacity).toBe(0.6);
+
+    // P3-6: no "اضغط الشريطة لحفظ الصفحة" hint in HUD footer
+    await act(async () => {
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+    expect(queryByText('اضغط الشريطة لحفظ الصفحة')).toBeNull();
+
+    // P3-9: HUD footer chapter title & counter flex cleanly
+    const hudChapter = getByTestId('reader-chapter-title');
+    expect(hudChapter.props.numberOfLines).toBe(1);
+    expect(hudChapter.props.ellipsizeMode).toBe('tail');
+    const hudCounter = getByTestId('reader-page-counter');
+    expect(hudCounter.props.numberOfLines).toBe(1);
+    expect(
+      (ReactNative.StyleSheet.flatten(hudCounter.props.style) as Record<string, unknown>).flexShrink,
+    ).toBe(0);
+  });
 });

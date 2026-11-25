@@ -186,7 +186,9 @@ export function BookCover({
               writingDirection: isRtl ? 'rtl' : 'ltr',
             },
           ]}
-          numberOfLines={3}
+          numberOfLines={2}
+          adjustsFontSizeToFit
+          minimumFontScale={0.6}
         >
           {title}
         </Text>
@@ -202,6 +204,8 @@ export function BookCover({
               },
             ]}
             numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.6}
           >
             {author}
           </Text>

@@ -622,4 +622,117 @@ test.describe('Rewiaty Reader Engine', () => {
     await page.mouse.click(390 * 0.15, 422);
     await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(2);
   });
+
+  test('(i) P3-4: fractional stage widths with insets keep integer translateX and no line box crosses page boundaries', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 412, height: 915 });
+    await mountEngine(page);
+    // Simulate fractional CSS root width (like Android density 2.625 where 1080px / 2.625 = 411.42857px)
+    await page.evaluate(() => {
+      document.getElementById('reader-root')!.style.width = '411.43px';
+    });
+
+    const book = buildLongArabicBook(90, 3);
+    const insets = { top: 68, bottom: 96 };
+
+    await sendBridge(page, {
+      type: 'load',
+      book,
+      insets,
+      settings: { disableAnimation: true, fontSize: 21, lineHeight: 1.95 },
+    });
+
+    await expect.poll(async () => (await getLatestPosition(page))?.pageCount ?? 0).toBeGreaterThan(8);
+
+    const totalPages = (await getLatestPosition(page))!.pageCount;
+    const turnsToCheck = Math.min(totalPages, 15);
+
+    for (let turn = 0; turn < turnsToCheck; turn++) {
+      const check = await page.evaluate((appliedInsets) => {
+        const stage = document.getElementById('reader-stage')!;
+        const track = document.getElementById('reader-track')!;
+        const curr = document.querySelector<HTMLElement>('.chapter[aria-hidden="false"]')!;
+        const vpRect = stage.getBoundingClientRect();
+        const pageWidth = Number.parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue('--page-width'),
+        );
+
+        const trackTransform = getComputedStyle(track).transform;
+        let translateX = 0;
+        if (trackTransform && trackTransform !== 'none') {
+          const match = /matrix\(([^)]+)\)/.exec(trackTransform);
+          if (match?.[1]) {
+            const parts = match[1].split(',').map((v) => Number(v.trim()));
+            translateX = parts[4] ?? 0;
+          }
+        }
+
+        const outOfBounds: Array<{ left: number; right: number; top: number; bottom: number; text: string }> = [];
+        let visibleCount = 0;
+
+        const walker = document.createTreeWalker(curr, NodeFilter.SHOW_TEXT);
+        const range = document.createRange();
+        let node = walker.nextNode() as Text | null;
+
+        while (node) {
+          if (node.data.trim().length > 0) {
+            range.selectNodeContents(node);
+            const rects = range.getClientRects();
+            for (let i = 0; i < rects.length; i++) {
+              const r = rects[i]!;
+              if (r.width <= 0 || r.height <= 0) continue;
+              if (r.right <= vpRect.left + 0.5 || r.left >= vpRect.right - 0.5) continue;
+              visibleCount++;
+              if (
+                r.left < vpRect.left - 0.5 ||
+                r.right > vpRect.right + 0.5 ||
+                r.top < vpRect.top + appliedInsets.top - 0.5 ||
+                r.bottom > vpRect.bottom - appliedInsets.bottom + 0.5
+              ) {
+                outOfBounds.push({
+                  left: r.left,
+                  right: r.right,
+                  top: r.top,
+                  bottom: r.bottom,
+                  text: node.data.slice(0, 30),
+                });
+              }
+            }
+          }
+          node = walker.nextNode() as Text | null;
+        }
+
+        return {
+          stageWidth: vpRect.width,
+          pageWidth,
+          translateX,
+          visibleCount,
+          outOfBounds,
+        };
+      }, insets);
+
+      expect(Number.isInteger(check.pageWidth)).toBe(true);
+      expect(check.stageWidth).toBe(check.pageWidth);
+      expect(Number.isInteger(check.translateX)).toBe(true);
+      expect(Math.abs(check.translateX) % check.pageWidth).toBe(0);
+      expect(check.visibleCount).toBeGreaterThan(0);
+      expect(check.outOfBounds).toEqual([]);
+
+      await sendBridge(page, { type: 'next' });
+    }
+  });
+
+  test('(j) P3-10: html lang reflects the book language and title is Arabic', async ({ page }) => {
+    await mountEngine(page);
+    expect(await page.title()).toBe('صفحة الرواية');
+
+    const arBook = parseBook(sampleArText, 'sample-ar.md');
+    await sendBridge(page, { type: 'load', book: arBook, settings: { disableAnimation: true } });
+    await expect.poll(async () => page.evaluate(() => document.documentElement.getAttribute('lang'))).toBe('ar');
+
+    const frBook = parseBook('---\ntitle: "Le Petit"\nlang: fr\ndir: ltr\n---\n\n# Chapitre 1\n\nBonjour.', 'fr.md');
+    await sendBridge(page, { type: 'load', book: frBook, settings: { disableAnimation: true } });
+    await expect.poll(async () => page.evaluate(() => document.documentElement.getAttribute('lang'))).toBe('fr');
+  });
 });

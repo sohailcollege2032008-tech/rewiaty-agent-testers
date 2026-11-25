@@ -31,15 +31,11 @@ appId: com.rewiaty.app
     timeout: 15000
 - tapOn: "sample-ar.md"
 - extendedWaitUntil:
-    visible: "حَجَرُ الْمَاءِ"
-    timeout: 15000
-- takeScreenshot: "01-imported-book-card"
-- tapOn: "حَجَرُ الْمَاءِ"
-- extendedWaitUntil:
     notVisible:
       id: "reader-loading-overlay"
     timeout: 20000
 - waitForAnimationToEnd
+- takeScreenshot: "01-imported-book-opened"
 # Open the bars only if they are closed (they open on their own with a hint on first launch).
 - runFlow:
     when:

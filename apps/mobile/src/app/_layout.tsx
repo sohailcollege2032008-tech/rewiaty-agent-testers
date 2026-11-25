@@ -4,6 +4,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Stack } from 'expo-router/stack';
 import * as SplashScreen from 'expo-splash-screen';
 
+import { ToastOverlay } from '@/components/toast-overlay';
 import { useIncomingBookIntent } from '@/utils/use-incoming-book-intent';
 
 if (Platform.OS !== 'web') {
@@ -26,6 +27,7 @@ export default function RootLayout() {
         <Stack.Screen name="index" />
         <Stack.Screen name="reader/[id]" />
       </Stack>
+      <ToastOverlay />
     </GestureHandlerRootView>
   );
 }
