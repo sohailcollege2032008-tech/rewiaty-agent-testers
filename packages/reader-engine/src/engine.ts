@@ -13,6 +13,14 @@ const RIGHT_ZONE_RATIO = 0.7;
  * reported. A face that never resolves must not leave the reader without page numbers.
  */
 const SETTLE_MAX_WAIT_MS = 400;
+/**
+ * Extra window granted on top of `SETTLE_MAX_WAIT_MS` when a face is still fetching at
+ * that point. Long enough to cover a bundled woff2 that lost the race with the first
+ * frame, short enough that a wedged face cannot hold the page numbers.
+ */
+const SETTLE_FONT_GRACE_MS = 400;
+/** How often the settle pass re-checks `document.fonts.status` while faces fetch. */
+const SETTLE_POLL_MS = 50;
 
 export class ReaderEngine {
   private readonly rootEl: HTMLElement;
@@ -321,20 +329,37 @@ export class ReaderEngine {
    */
   private emitAfterSettle(): void {
     const token = ++this.settleToken;
+    const startedAt = Date.now();
+    const fonts = document.fonts;
+
     const flush = () => {
       if (token !== this.settleToken) return;
       this.paginator.settleLayout();
       this.emitPositionAndToc();
     };
-    const fonts = document.fonts;
+
+    const attempt = () => {
+      if (token !== this.settleToken) return;
+      // `fonts.ready` only covers the loads that were pending when it was awaited. A
+      // face requested by the first layout can still be fetching, and measuring now
+      // pins page counts to the fallback metrics — the exact numbers the reader would
+      // then watch change. Wait for the faces to land (bounded) before quoting anything.
+      const stillFetching = fonts?.status === 'loading';
+      if (
+        stillFetching &&
+        Date.now() - startedAt < SETTLE_MAX_WAIT_MS + SETTLE_FONT_GRACE_MS
+      ) {
+        window.setTimeout(attempt, SETTLE_POLL_MS);
+        return;
+      }
+      window.requestAnimationFrame(flush);
+    };
+
     const bounded = new Promise<void>((resolve) => {
       window.setTimeout(resolve, SETTLE_MAX_WAIT_MS);
     });
     const fontsReady: Promise<void> = fonts?.ready ? fonts.ready.then(() => undefined) : Promise.resolve();
-    void Promise.race([fontsReady, bounded]).then(() => {
-      if (token !== this.settleToken) return;
-      window.requestAnimationFrame(flush);
-    });
+    void Promise.race([fontsReady, bounded]).then(attempt);
   }
 
   private openFootnote(fnId: string): void {
