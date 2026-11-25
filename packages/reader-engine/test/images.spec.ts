@@ -230,6 +230,8 @@ test('paints an imported figure and reports its box to the app', async ({ page }
   );
   expect(marker).toBe(`reader-image-proof ${proof.width}x${proof.height}`);
   expect(await page.evaluate(() => document.getElementById('reader-image-error'))).toBeNull();
+  // The diagnostic probe stands down once there is an answer.
+  expect(await page.evaluate(() => document.getElementById('reader-image-probe'))).toBeNull();
 });
 
 test('a figure taller than the page is shrunk onto one page instead of being cut in two', async ({

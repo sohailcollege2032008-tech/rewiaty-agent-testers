@@ -370,6 +370,8 @@ export class ReaderEngine {
    * Maestro and from an evidence dump.
    */
   private writeImageProbe(mounted: HTMLImageElement[], rendered: number): void {
+    // Once an outcome has been reported, more counters would only talk over it.
+    if (this.imageProofSignature !== '') return;
     const first = mounted[0];
     const rect = first ? first.getBoundingClientRect() : null;
     const detail = first
@@ -396,11 +398,20 @@ export class ReaderEngine {
     el.textContent = text;
   }
 
-  /** TEMP: the outcome the journey asserts, in the page itself. */
+  /**
+   * The outcome the journey asserts, written into the page itself.
+   *
+   * It lives in the page (not only in the app) because the page is the surface being proven, and
+   * because the accessibility tree exposes DOM text — which is how a device run can tell "the page
+   * measured a painted figure" apart from "the bridge lost the message".
+   */
   private writeOutcomeMarker(count: number, width: number, height: number): void {
     const painted = count > 0 && width > 0 && height > 0;
     const other = painted ? 'reader-image-error' : 'reader-image-proof';
     document.getElementById(other)?.remove();
+    // The step-by-step probe has done its job once there is an answer; keeping it would leave a
+    // screen reader reading diagnostic counters over the page.
+    document.getElementById('reader-image-probe')?.remove();
     this.pageMarker(
       painted ? 'reader-image-proof' : 'reader-image-error',
       painted ? `reader-image-proof ${width}x${height}` : 'reader-image-error',
@@ -591,6 +602,10 @@ export class ReaderEngine {
     }
     this.emitPosition();
     this.emitToc();
+    // Any settled, published state is also a chance that a figure is now on screen. The pump is
+    // idempotent (a pending timer short-circuits, a reported box is deduped), so this is the
+    // catch-all that makes the proof independent of which callback happened to fire first.
+    this.scheduleImageProof();
   }
 
   /**
