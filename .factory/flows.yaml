@@ -38,13 +38,13 @@ flows:
     artifact: ".factory/evidence/latest/apk/app.apk"
   - id: rotate-position
     who: "قارئ بيرجع يكمل بعد ما لف الشاشة"
-    steps: "يقرا صفحة 4 ← يلف الشاشة landscape ← نفس أول نص في الصفحة لسه ظاهر ← يرجع portrait ← نفس النص"
+    steps: "يفتح الرواية ويكمل لصفحة ← ياخد نص العدّاد (صفحة N من ~M) ← يلف الشاشة landscape ← العدّاد لازم يتغير (نفس النص على عرض مختلف = عدد صفحات مختلف؛ شاشة مقفولة على portrait بترجّع نفس النص وبالتالي الرحلة تفشل) ← يرجع portrait ← نفس الصفحة ±1"
     target: release-apk
     run: "bash scripts/ci-flows.sh rotate-position"
     artifact: ".factory/evidence/latest/apk/app.apk"
   - id: keep-awake
     who: "قارئ بيسيب الصفحة مفتوحة"
-    steps: "يفتح الرواية ← الشاشة تسيب 25 ثانية من غير أي لمس (أطول من screen timeout 15 ثانية) ← الشاشة لسه شغالة ← لمسة واحدة تقلّب الصفحة"
+    steps: "يفتح الرواية ← الشاشة تسيب 45 ثانية من غير أي لمس (والـ runner ظابط screen_off_timeout على 30 ثانية) ← الشاشة لسه Awake ← وcontrol: المكتبة من غير القارئ بتنام على نفس الإعداد"
     target: release-apk
     run: "bash scripts/ci-flows.sh keep-awake"
     artifact: ".factory/evidence/latest/apk/app.apk"

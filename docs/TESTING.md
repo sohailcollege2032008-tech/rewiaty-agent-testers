@@ -9,7 +9,7 @@ bash scripts/ci-flows.sh all        # أو flow واحد: first-launch-sample | 
 
 - `keep-awake` بيظبط `screen_off_timeout` على 30 ثانية (و`stay_on_while_plugged_in` مقفول) في `scripts/run_rewiaty_flows.sh` في الريبو البابليك قبل ما يشغّل الرحلة، الرحلة بتقعد 45 ثانية idle، وبعدها بيسجّل `dumpsys power` في اللوج كدليل (`mWakefulness=Awake`) وكمان بيتأكد إن مدة الرحلة ≥ 45 ثانية. وفيه control: شاشة المكتبة (من غير القارئ) بتنام فعلًا بعد 40 ثانية بنفس الإعداد.
 - `long-book-open` بيولّد `samples/long-ar.md` بـ `samples/gen-long.mjs` على الـ runner ويدفعه لـ `/sdcard/Download`، وبيدخّله للتطبيق بـ `ACTION_VIEW` على `content://` (مش من file picker — F2 عن فتح الكتاب مش عن المستندات)، وبعد ما القارئ يرسم فعلًا بيعمل `force-stop` وبعدها بيفتح الكتاب من المكتبة ويقيس أول صفحة في 2 ثانية.
-- `rotate-position` بيعتبر الرحلة فاشلة لو التطبيق ما لفّش فعلًا (لو إجمالي الصفحات فضل 26 بعد `setOrientation: LANDSCAPE_LEFT`).
+- `rotate-position` بيعتبر الرحلة فاشلة لو التطبيق ما لفّش فعلًا: بياخد نص العدّاد قبل اللف (`صفحة N من ~M`)، وبعد `setOrientation: LANDSCAPE_LEFT` النص لازم يتغير — لأن نفس النص على عرض مختلف = عدد صفحات مختلف، وأي شاشة مقفولة على `portrait` بترجّع نفس النص بالظبط. الرحلة دي **موقوفة على قرار منتج** (اللف ممكن يبقى للتابلت بس) وعشان كده `scripts/ci-flows.sh` بيبلّغ عنها بس مش بيحسبها بوابة.
 
 السكربت بيعمل كده:
 1. بيعمل push للكود على فرع `src/<sha12>` في الريبو البابليك.
