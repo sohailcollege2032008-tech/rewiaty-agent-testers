@@ -409,20 +409,47 @@ describe('ReaderScreen', () => {
     expect(queryByTestId('reader-settings-side-panel')).toBeNull();
   });
 
-  it('shows the bars with a hint the first time a reader opens a book, and only once', async () => {
+  it('shows the bars with a hint the first time a reader opens a book', async () => {
     mockKv.clear();
-    const first = await renderLoadedReader();
+    const screen = await renderLoadedReader();
     await act(async () => {
       emitWebMessage({ type: 'ready' });
     });
-    await waitFor(() => expect(first.getByTestId('reader-hud-hint')).toBeTruthy());
-    expect(first.getByTestId('reader-settings-button')).toBeTruthy();
-    first.unmount();
+    await waitFor(() => expect(screen.getByTestId('reader-hud-hint')).toBeTruthy());
+    expect(screen.getByTestId('reader-settings-button')).toBeTruthy();
+    expect(mockKv.get('reader_hud_hint_seen_v1')).toBe(true);
+  });
 
-    const second = await renderLoadedReader();
+  it('does not show the hint again once it was seen', async () => {
+    // One render per test: two renders in one test overlapped act() and broke the following tests.
+    mockKv.clear();
+    mockKv.set('reader_hud_hint_seen_v1', true);
+    const screen = await renderLoadedReader();
     await act(async () => {
       emitWebMessage({ type: 'ready' });
     });
-    expect(second.queryByTestId('reader-hud-hint')).toBeNull();
+    expect(screen.queryByTestId('reader-hud-hint')).toBeNull();
+  });
+
+  it('checks the first-open hint once even when ready arrives twice', async () => {
+    const db = jest.requireMock('@/storage/database');
+    mockKv.clear();
+    await renderLoadedReader();
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({ type: 'ready' });
+    });
+    expect((db.getKv as jest.Mock).mock.calls.filter(([k]: [string]) => k === 'reader_hud_hint_seen_v1')).toHaveLength(1);
+  });
+
+  it('keeps reading when the hint storage fails', async () => {
+    const db = jest.requireMock('@/storage/database');
+    (db.getKv as jest.Mock).mockRejectedValueOnce(new Error('sqlite busy'));
+    const screen = await renderLoadedReader();
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+    });
+    expect(screen.queryByTestId('reader-hud-hint')).toBeNull();
+    expect(screen.getByTestId('reader-webview')).toBeTruthy();
   });
 });

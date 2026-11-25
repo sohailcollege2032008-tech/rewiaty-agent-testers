@@ -96,6 +96,16 @@ describe('intent-import & Android Open With flow', () => {
     expect(importContent).toHaveBeenCalledWith('# فصل\n\nنص.', 'كتاب.md', undefined);
   });
 
+  it('rejects binary bytes even when the provider claims a text MIME type', async () => {
+    const { File } = jest.requireMock('expo-file-system');
+    (File as jest.Mock).mockImplementationOnce((uri: string) => ({
+      uri, name: '1000000020', size: 4, type: 'text/plain', bytes: () => Promise.resolve(new Uint8Array([0x50, 0x4b, 0x00, 0x03])),
+    }));
+    const importContent = jest.fn();
+    await expect(importBookFromUri('content://media/external/downloads/1000000020', { importContent })).rejects.toThrow('مش ملف نصي');
+    expect(importContent).not.toHaveBeenCalled();
+  });
+
   it('imports book content from URI using injected file reader and importer', async () => {
     const readFile = jest.fn().mockResolvedValue({
       text: '# الفصل الأول\n\nنص تجريبي للفتح من تطبيق خارجي.',

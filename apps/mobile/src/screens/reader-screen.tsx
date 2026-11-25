@@ -80,6 +80,8 @@ export function ReaderScreen() {
   const hasManualThemeRef = useRef(false);
   const fontBaseUrlRef = useRef<string | null>(null);
   const latestStateRef = useRef<BookReaderState | null>(null);
+  // 'ready' can arrive again (WebView reload); the first-open hint is checked once per screen.
+  const hintCheckedRef = useRef(false);
 
   const [readerHtml, setReaderHtml] = useState<string | null>(null);
   const [fontBaseUrl, setFontBaseUrl] = useState<string | null>(null);
@@ -305,12 +307,18 @@ export function ReaderScreen() {
           setEngineReady(true);
           // Why (product): Sohail could not find the settings in preview 1 — nothing told him the page
           // centre opens the bars. The first time a reader opens a book, show the bars with a hint.
-          void getKv<boolean>(HUD_HINT_KV_KEY, false).then((seen) => {
-            if (seen) return;
-            setHudVisible(true);
-            setShowHudHint(true);
-            void setKv(HUD_HINT_KV_KEY, true);
-          });
+          if (!hintCheckedRef.current) {
+            hintCheckedRef.current = true;
+            void getKv<boolean>(HUD_HINT_KV_KEY, false)
+              .then((seen) => {
+                if (seen) return;
+                setHudVisible(true);
+                setShowHudHint(true);
+                return setKv(HUD_HINT_KV_KEY, true);
+              })
+              // A storage failure only costs the hint; reading must never break over it.
+              .catch(() => undefined);
+          }
           break;
         case 'toc':
           setTocEntries(parsed.chapters);

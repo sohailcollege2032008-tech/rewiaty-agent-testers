@@ -67,7 +67,20 @@ echo "==> Run started: $RUN_URL"
 WATCH_RC=0
 # Why (tech): `gh run watch` returned early once (run 45513367448) and the summary said MISSING for every flow.
 # Poll the run's own status until it is completed, then read its conclusion.
-until [ "$(gh run view "$RUN_ID" -R "$TESTERS_REPO" --json status -q .status 2>/dev/null)" = "completed" ]; do sleep 30; done
+# Bounded (90 min) so an API/auth outage cannot hang the factory; 5 consecutive read errors abort.
+POLLS=0; READ_ERRS=0
+while :; do
+  if STATUS="$(gh run view "$RUN_ID" -R "$TESTERS_REPO" --json status -q .status)"; then
+    READ_ERRS=0
+    [ "$STATUS" = "completed" ] && break
+  else
+    READ_ERRS=$((READ_ERRS + 1))
+    if [ "$READ_ERRS" -ge 5 ]; then echo "ERROR: cannot read run status for $RUN_URL" >&2; exit 1; fi
+  fi
+  POLLS=$((POLLS + 1))
+  if [ "$POLLS" -ge 180 ]; then echo "ERROR: run $RUN_URL not completed after 90 min" >&2; exit 1; fi
+  sleep 30
+done
 [ "$(gh run view "$RUN_ID" -R "$TESTERS_REPO" --json conclusion -q .conclusion)" = "success" ] || WATCH_RC=1
 
 EVIDENCE_DIR="$ROOT_DIR/.factory/evidence/$SHA12"
@@ -152,10 +165,10 @@ for fid in flows:
 with open(summary_path, "w", encoding="utf-8") as out:
     out.write("\n".join(lines) + "\n")
 
-if flow_target == "all":
-    ok = (watch_rc == 0) and all(status_map.get(f, ("MISSING", ""))[0] == "PASS" for f in flows)
-else:
-    ok = status_map.get(flow_target, ("MISSING", ""))[0] == "PASS"
+# A green verdict needs the workflow itself to succeed AND every requested flow to have a recorded PASS
+# (a missing artifact means MISSING, never PASS).
+targets = flows if flow_target == "all" else [flow_target]
+ok = (watch_rc == 0) and all(status_map.get(f, ("MISSING", ""))[0] == "PASS" for f in targets)
 
 sys.exit(0 if ok else 1)
 PY
