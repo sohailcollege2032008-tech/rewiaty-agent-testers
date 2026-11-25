@@ -54,3 +54,9 @@ flows:
     target: release-apk
     run: "bash scripts/ci-flows.sh long-book-open"
     artifact: ".factory/evidence/latest/apk/app.apk"
+  - id: scrubber-direction
+    who: "قارئ عربي بيسحب شريط الصفحات"
+    steps: "يفتح الرواية ← يسحب الشريط ناحية اليمين فيروح لأول الكتاب ← يسحبه ناحية الشمال فيروح لآخره (النقطة ماشية مع صباعه)"
+    target: release-apk
+    run: "bash scripts/ci-flows.sh scrubber-direction"
+    artifact: ".factory/evidence/latest/apk/app.apk"

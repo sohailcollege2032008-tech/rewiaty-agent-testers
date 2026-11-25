@@ -175,7 +175,11 @@ export function PageScrubber({ page, pageCount, dir, theme, onSeekPage }: PageSc
           <View style={[styles.track, { backgroundColor: palette.border }]}>
             <Animated.View style={[styles.fill, { backgroundColor: palette.accent }, fillStyle]} />
           </View>
+          {/* Fixed reference at the physical middle of the track; journeys assert the thumb is
+              left/right of it, because the RTL bug was visual (the page math was right). */}
+          <View testID="reader-scrubber-mid" pointerEvents="none" style={styles.midMarker} />
           <Animated.View
+            testID="reader-scrubber-thumb"
             style={[
               styles.thumb,
               {
@@ -210,6 +214,11 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   touchArea: {
+    // Why: the app forces RTL (I18nManager.forceRTL), so RN would flip `left` to `right` for the
+    // thumb and fill while the gesture's `e.x` stays physical (from the left edge). That made the
+    // thumb move opposite to the finger. The track is laid out in physical LTR coordinates and the
+    // reading direction is applied only in computePageFromX / currentProgress.
+    direction: 'ltr',
     height: 32,
     justifyContent: 'center',
     position: 'relative',
@@ -225,6 +234,14 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     borderRadius: 2,
+  },
+  midMarker: {
+    position: 'absolute',
+    left: '50%',
+    top: 15,
+    width: 2,
+    height: 2,
+    opacity: 0.01,
   },
   thumb: {
     position: 'absolute',
