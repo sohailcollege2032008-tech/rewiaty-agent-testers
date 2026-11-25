@@ -37,7 +37,7 @@ adb push app/samples/sample-ar.md /sdcard/Download/sample-ar.md
 adb push app/samples/edge-cases.md /sdcard/Download/edge-cases.md
 # Why (tech): the 200k-word novel is generated, not committed (samples/long-ar.md is gitignored),
 # so the runner generates it from samples/gen-long.mjs and pushes the exact file the flow imports.
-if want_flow long-book-open; then
+if want_flow long-book-open && [ -f app/samples/gen-long.mjs ]; then
   echo "==> Generating the 200k-word sample (long-ar.md)..."
   node app/samples/gen-long.mjs | tee results/logs/long-sample.txt
   wc -w app/samples/long-ar.md | tee -a results/logs/long-sample.txt
@@ -58,6 +58,16 @@ run_flow() {
   local shot_dir="results/screenshots/${flow_id}"
   local rec_pid=""
   local flow_rc=0
+
+  # Why: branches cut before a journey existed don't ship its yaml; with FLOW=all that is a SKIP,
+  # not a red run. An explicitly requested flow that is missing still fails.
+  if [ ! -f "$flow_file" ]; then
+    if [ "$WANT_FLOWS" = "all" ]; then
+      echo "==> SKIP $flow_id (no $flow_file on this ref)"
+      printf '%s\tSKIP\tflow file absent on this ref\n' "$flow_id" >> results/status.tsv
+      return 0
+    fi
+  fi
 
   mkdir -p "$debug_dir" "$shot_dir"
   close_system_dialogs
@@ -284,7 +294,7 @@ PY
 fi
 
 # 9. long-book-open (clean state -> import the generated 200k-word novel -> cold open timed at 2s)
-if want_flow long-book-open; then
+if want_flow long-book-open && [ -f app/samples/gen-long.mjs ]; then
   adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
   run_flow "long-book-open" || true
 fi
