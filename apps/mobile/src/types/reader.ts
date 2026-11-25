@@ -1,3 +1,5 @@
+import type { Anchor } from '@rewiaty/book-format';
+
 export type {
   IndentMode,
   RNToWebMessage,
@@ -10,6 +12,25 @@ export type {
   TocEntry,
   WebToRNMessage,
 } from '../../../../packages/reader-engine/src/types';
+
+/**
+ * A bookmark stores its place as a text anchor (block + character offset) plus a quote and the
+ * surrounding text, so it can be restored even after the book is reflowed or re-parsed.
+ */
+export type BookmarkItem = {
+  id: string;
+  anchor: Anchor;
+  chapterId: string;
+  chapterTitle: string;
+  /** Up to ~80 characters starting at the anchor. */
+  quote: string;
+  /** Up to ~25 characters immediately before the quote. */
+  contextBefore: string;
+  /** Up to ~25 characters immediately after the quote. */
+  contextAfter: string;
+  page?: number;
+  createdAt: number;
+};
 
 export type BookLibraryRecord = {
   id: string;
@@ -43,6 +64,8 @@ export type BookReaderState = {
   page?: number;
   pageCount?: number;
   bookmarks?: number[];
+  /** Text-anchored bookmarks (F16). `bookmarks` stays for older saved states. */
+  bookmarkItems?: BookmarkItem[];
   settings?: Partial<import('../../../../packages/reader-engine/src/types').ReaderSettings>;
   updatedAt: number;
 };
