@@ -72,3 +72,9 @@ flows:
     target: release-apk
     run: "bash scripts/ci-flows.sh scrubber-direction"
     artifact: ".factory/evidence/latest/apk/app.apk"
+  - id: highlight-add
+    who: "قارئ بيظلل جملة"
+    steps: "يفتح الرواية التجريبية ← ضغط مطوّل على النص ← يختار لون ← يتأكد إن التظليل نزل على النص نفسه مش المعكوس ← يقفل الكتاب ويفتحه ← التظليل لسه موجود"
+    target: release-apk
+    run: "bash scripts/ci-flows.sh highlight-add"
+    artifact: ".factory/evidence/latest/apk/app.apk"

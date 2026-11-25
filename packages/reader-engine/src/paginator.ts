@@ -6,7 +6,16 @@ import {
   measureChToPx,
   spineTokensFor,
 } from './spread.js';
-import { THEMES, type ReaderInsets, type ReaderSettings, type TocEntry } from './types.js';
+import { hitTestHighlightAtPoint, renderEngineHighlights } from './highlights.js';
+import {
+  HIGHLIGHT_COLORS,
+  THEMES,
+  type EngineHighlight,
+  type ReaderInsets,
+  type ReaderSettings,
+  type SelectionRect,
+  type TocEntry,
+} from './types.js';
 
 function normalizeInsets(insets?: ReaderInsets | null): ReaderInsets {
   const top = typeof insets?.top === 'number' && Number.isFinite(insets.top) ? Math.max(0, Math.round(insets.top)) : 0;
@@ -331,6 +340,7 @@ export class Paginator {
   private idleHandle: { kind: 'idle' | 'timeout'; id: number } | null = null;
   private transitionResetRaf: number | null = null;
   private layoutGeneration = 0;
+  private highlights: EngineHighlight[] = [];
 
   // --- exact pagination pass (offscreen, frame-chunked) ---
   /** Chapters still to measure, in priority order (see `startExactPagination`). */
@@ -764,7 +774,13 @@ export class Paginator {
     });
   }
 
-  setBook(book: Book, settings: ReaderSettings, initialAnchor?: Anchor, insets?: ReaderInsets): void {
+  setBook(
+    book: Book,
+    settings: ReaderSettings,
+    initialAnchor?: Anchor,
+    insets?: ReaderInsets,
+    highlights?: EngineHighlight[],
+  ): void {
     this.cancelIdleWork();
     this.cancelExactPagination();
     this.cancelDragSettle();
@@ -773,6 +789,7 @@ export class Paginator {
     this.book = book;
     this.settings = { ...settings };
     this.insets = normalizeInsets(insets);
+    this.highlights = Array.isArray(highlights) ? [...highlights] : [];
     this.clearRenderedDom();
     this.clearRestoredAnchor();
     this.invalidatePageMap();
@@ -829,6 +846,25 @@ export class Paginator {
     }
 
     this.applyTrackTransform(false);
+    this.renderHighlights();
+  }
+
+  setHighlights(highlights: EngineHighlight[]): void {
+    this.highlights = Array.isArray(highlights) ? [...highlights] : [];
+    this.renderHighlights();
+  }
+
+  renderHighlights(forceOverlay = false): { mode: 'css-highlight' | 'overlay'; renderedCount: number } {
+    return renderEngineHighlights(this.rendered.values(), this.highlights, { forceOverlay });
+  }
+
+  hitTestHighlight(
+    clientX: number,
+    clientY: number,
+  ): { highlight: EngineHighlight; rect: SelectionRect } | null {
+    const active = this.rendered.get(this.currentChapterIdx);
+    if (!active) return null;
+    return hitTestHighlightAtPoint([active], this.highlights, clientX, clientY);
   }
 
   /**
@@ -902,6 +938,7 @@ export class Paginator {
       if (active && !active.isComplete) {
         this.appendNextBatch(active, BATCH_WORD_BUDGET);
         this.layoutVirtualizedChapterOffsets();
+        this.renderHighlights();
         this.callbacks.onBackgroundProgress?.();
         if (active.isComplete) {
           this.callbacks.onChapterLayoutComplete?.(active.chapter.id);
@@ -922,6 +959,7 @@ export class Paginator {
             this.pageCache.set(this.cacheKey(adj.chapter), adj.pageCount);
           }
           this.layoutVirtualizedChapterOffsets();
+          this.renderHighlights();
           if (!adj.isComplete || this.hasUnmountedAdjacentChapters()) {
             scheduleNext(step);
           }
@@ -930,6 +968,7 @@ export class Paginator {
         if (!adj.isComplete) {
           this.appendNextBatch(adj, BATCH_WORD_BUDGET);
           this.layoutVirtualizedChapterOffsets();
+          this.renderHighlights();
           if (!adj.isComplete || this.hasUnmountedAdjacentChapters()) {
             scheduleNext(step);
           }
@@ -982,6 +1021,7 @@ export class Paginator {
     }
 
     this.applyTrackTransform(false);
+    this.renderHighlights();
     this.scheduleBackgroundWork();
   }
 
@@ -1010,6 +1050,7 @@ export class Paginator {
       this.currentChapterPage = this.alignToSpread(this.resolveAnchorPageInCurrentChapter(anchorBefore));
     }
     this.applyTrackTransform(false);
+    this.renderHighlights();
     this.scheduleBackgroundWork();
     return true;
   }
@@ -1048,6 +1089,7 @@ export class Paginator {
     this.layoutVirtualizedChapterOffsets();
     this.currentChapterPage = this.alignToSpread(this.resolveAnchorPageInCurrentChapter(anchorBefore));
     this.applyTrackTransform(false);
+    this.renderHighlights();
     return true;
   }
 
@@ -1097,6 +1139,7 @@ export class Paginator {
     if (changed || firstForSignature) {
       this.invalidatePageMap();
       this.layoutVirtualizedChapterOffsets();
+      this.renderHighlights();
     }
     // Count the rest of the book offscreen so the page number (and the total) are a
     // property of the book and the layout, not of which chapters happen to be mounted.
@@ -1121,6 +1164,7 @@ export class Paginator {
     }
     if (mounted) {
       this.layoutVirtualizedChapterOffsets();
+      this.renderHighlights();
       if (curr.isComplete) {
         this.callbacks.onChapterLayoutComplete?.(curr.chapter.id);
       }
@@ -1139,6 +1183,7 @@ export class Paginator {
       this.clearRestoredAnchor();
       this.syncActiveAndEvict(0);
       this.applyTrackTransform(false);
+      this.renderHighlights();
       this.scheduleBackgroundWork();
       return true;
     }
@@ -1166,6 +1211,7 @@ export class Paginator {
       const curr = this.rendered.get(this.currentChapterIdx);
       this.currentChapterPage = curr ? this.lastSpreadStart(curr.layoutPageCount) : 0;
       this.applyTrackTransform(false);
+      this.renderHighlights();
       this.scheduleBackgroundWork();
       return true;
     }
@@ -1220,6 +1266,7 @@ export class Paginator {
       this.currentChapterPage = this.alignToSpread(this.resolveAnchorPageInCurrentChapter(target.anchor));
       this.clearRestoredAnchor();
       this.applyTrackTransform(false);
+      this.renderHighlights();
       this.scheduleBackgroundWork();
       return true;
     }
@@ -1246,6 +1293,7 @@ export class Paginator {
       this.currentChapterPage = this.alignToSpread(Math.min(maxPage, requestedZeroBased));
       this.clearRestoredAnchor();
       this.applyTrackTransform(false);
+      this.renderHighlights();
       this.scheduleBackgroundWork();
       return true;
     }
@@ -1284,6 +1332,7 @@ export class Paginator {
       this.currentChapterPage = this.alignToSpread(Math.min(maxPage, pageInChapter));
       this.clearRestoredAnchor();
       this.applyTrackTransform(false);
+      this.renderHighlights();
       this.scheduleBackgroundWork();
       return true;
     }
@@ -1590,6 +1639,11 @@ export class Paginator {
     rootStyle.setProperty('--accent-color', theme.accent);
     rootStyle.setProperty('--popover-bg', theme.popoverBg);
     rootStyle.setProperty('--popover-border', theme.popoverBorder);
+
+    const isDarkTheme = this.settings.theme === 'burnt-paper' || this.settings.theme === 'oled-crimson';
+    for (const meta of HIGHLIGHT_COLORS) {
+      rootStyle.setProperty(`--hl-${meta.id}`, isDarkTheme ? meta.fillDark : meta.fillLight);
+    }
 
     // Design tokens (Warraq tablet / open-book spread) exposed as CSS variables.
     rootStyle.setProperty('--spread-gutter', `${SPREAD_GUTTER_PX}px`);

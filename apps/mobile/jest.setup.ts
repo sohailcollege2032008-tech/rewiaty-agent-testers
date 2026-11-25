@@ -50,6 +50,11 @@ jest.mock('expo-sqlite', () => ({
   openDatabaseAsync: jest.fn(),
 }));
 
+jest.mock('expo-sharing', () => ({
+  isAvailableAsync: jest.fn(async () => true),
+  shareAsync: jest.fn(async () => undefined),
+}));
+
 jest.mock('react-native-webview', () => {
   const React = require('react');
   const { View } = require('react-native');
