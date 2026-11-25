@@ -5,6 +5,7 @@ export type {
   RNToWebMessage,
   ReaderInsets,
   ReaderSettings,
+  TashkeelMode,
   TapZone,
   TextAlignMode,
   ThemeId,
