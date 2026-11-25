@@ -202,7 +202,8 @@ describe('ReaderScreen', () => {
     expect(loadPayload.type).toBe('load');
     expect(loadPayload.book.id).toBe('book_123');
     expect(loadPayload.anchor).toEqual({ blockId: 'ch01_p0003', charOffset: 12 });
-    expect(loadPayload.settings).toEqual(DEFAULT_SETTINGS);
+    // A phone always gets one page, sent explicitly on load (the engine's own default is 'auto').
+    expect(loadPayload.settings).toEqual({ ...DEFAULT_SETTINGS, spread: 'single' });
     expect(loadPayload.fontBaseUrl).toBe('file:///mock/cache/rewiaty-fonts/');
   });
 
@@ -320,6 +321,8 @@ describe('ReaderScreen', () => {
       partial: { fontSize: 21 },
     });
 
+    // Each settings tab shows only its own section.
+    await fireEvent.press(getByTestId('settings-tab-theme'));
     await fireEvent.press(getByTestId('theme-option-oled-crimson'));
     expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
       type: 'settings',
@@ -327,12 +330,14 @@ describe('ReaderScreen', () => {
     });
     expect(selectManualTheme).toHaveBeenCalledWith('oled-crimson');
 
+    await fireEvent.press(getByTestId('settings-tab-font'));
     await fireEvent.press(getByTestId('font-option-Readex Pro'));
     expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
       type: 'settings',
       partial: { fontFamily: 'Readex Pro' },
     });
 
+    await fireEvent.press(getByTestId('settings-tab-layout'));
     await fireEvent(getByTestId('settings-disable-animation-switch'), 'valueChange', true);
     expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
       type: 'settings',
@@ -386,7 +391,7 @@ describe('ReaderScreen', () => {
     const { getByTestId, queryByTestId } = await renderLoadedReader();
 
     const loadPayload = JSON.parse(postedToWebView[0]!);
-    expect(loadPayload.settings.spread).toBeUndefined();
+    expect(loadPayload.settings.spread).toBe('single');
     expect(loadPayload.settings.maxReadingWidth).toBe(62);
 
     await act(async () => {

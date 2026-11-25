@@ -151,10 +151,12 @@ function SettingsContent({
     null,
   );
 
+  // Why (product): each tab shows only its own section. Scrolling to a section did nothing at the 35% snap
+  // (@gorhom/bottom-sheet locks content scroll below the top snap point), so the Theme tab lit up while
+  // the Font section stayed on screen — found by the settings-live Maestro flow on CI.
   const jumpToSection = (tab: SettingsTabId) => {
     setActiveTab(tab);
-    const y = sectionOffsets.current[tab] ?? 0;
-    scrollRef.current?.scrollTo({ y, animated: true });
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
   };
 
   const ScrollContainer = isSidePanel ? ScrollView : BottomSheetScrollView;
@@ -265,6 +267,7 @@ function SettingsContent({
         showsVerticalScrollIndicator={false}
       >
         {/* Section 1: Font */}
+        {activeTab === 'font' ? (
         <View
           style={styles.section}
           onLayout={(e) => {
@@ -408,10 +411,11 @@ function SettingsContent({
             palette={palette}
           />
         </View>
-
+        ) : null}
         {/* Section 2: Layout */}
+        {activeTab === 'layout' ? (
         <View
-          style={[styles.section, styles.sectionDivider, { borderTopColor: palette.border }]}
+          style={styles.section}
           onLayout={(e) => {
             sectionOffsets.current.layout = e.nativeEvent.layout.y;
           }}
@@ -607,10 +611,11 @@ function SettingsContent({
             />
           </View>
         </View>
-
+        ) : null}
         {/* Section 3: Theme (Data-driven from THEME_OPTIONS) */}
+        {activeTab === 'theme' ? (
         <View
-          style={[styles.section, styles.sectionDivider, { borderTopColor: palette.border }]}
+          style={styles.section}
           onLayout={(e) => {
             sectionOffsets.current.theme = e.nativeEvent.layout.y;
           }}
@@ -685,6 +690,7 @@ function SettingsContent({
             })}
           </View>
         </View>
+        ) : null}
       </ScrollContainer>
     </View>
   );
