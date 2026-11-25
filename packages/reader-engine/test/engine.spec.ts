@@ -380,10 +380,15 @@ test.describe('Rewiaty Reader Engine', () => {
     await expect.poll(async () => (await getLatestPosition(page))?.page).toBeGreaterThan(pageBeforeTurn);
   });
 
-  test('(d) tap zones work with reversed direction in RTL vs LTR', async ({ page }) => {
+  test('(d) a tap never turns the page — edges and centre all report the center zone (RTL and LTR)', async ({
+    page,
+  }) => {
     await mountEngine(page);
 
-    // 1. RTL book: left = next, right = prev, center = center
+    const tapRatios = [0.15, 0.85, 0.5];
+
+    // 1. RTL book: a tap on either edge must not advance or rewind the reader; every tap
+    //    opens/closes the bars, so the host only ever sees `zone: 'center'`.
     const rtlBook = parseBook(sampleArText, 'sample-ar.md');
     await sendBridge(page, {
       type: 'load',
@@ -391,28 +396,22 @@ test.describe('Rewiaty Reader Engine', () => {
       settings: { disableAnimation: true },
     });
     await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(1);
+    const rtlPages = (await getLatestPosition(page))!.pageCount;
 
-    // Tap left zone (15% width) -> next page in RTL
-    await page.mouse.click(390 * 0.15, 422);
-    await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(2);
-    let msgs = await getMessages(page);
-    expect(msgs.filter((m) => m.type === 'tap').at(-1)).toEqual({ type: 'tap', zone: 'next' });
+    for (const ratio of tapRatios) {
+      const before = (await getMessages(page)).filter((m) => m.type === 'tap').length;
+      await page.mouse.click(390 * ratio, 422);
+      await expect
+        .poll(async () => (await getMessages(page)).filter((m) => m.type === 'tap').length)
+        .toBe(before + 1);
+      expect((await getMessages(page)).filter((m) => m.type === 'tap').at(-1)).toEqual({
+        type: 'tap',
+        zone: 'center',
+      });
+      expect((await getLatestPosition(page))?.page, `tap at ${ratio} turned the page`).toBe(1);
+    }
 
-    // Tap right zone (85% width) -> prev page in RTL
-    await page.mouse.click(390 * 0.85, 422);
-    await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(1);
-    msgs = await getMessages(page);
-    expect(msgs.filter((m) => m.type === 'tap').at(-1)).toEqual({ type: 'tap', zone: 'prev' });
-
-    // Tap center zone (50% width) -> center, stays on page 1
-    await page.mouse.click(390 * 0.5, 422);
-    await expect.poll(async () => {
-      const list = (await getMessages(page)).filter((m) => m.type === 'tap');
-      return list.at(-1)?.zone;
-    }).toBe('center');
-    expect((await getLatestPosition(page))?.page).toBe(1);
-
-    // 2. LTR book: right = next, left = prev, center = center
+    // 2. LTR book: mirrored layout, same rule.
     const ltrBook = parseBook(sampleEnText, 'sample-en.md');
     await sendBridge(page, {
       type: 'load',
@@ -421,28 +420,29 @@ test.describe('Rewiaty Reader Engine', () => {
     });
     await expect.poll(async () => {
       const p = await getLatestPosition(page);
-      return p?.page === 1 && p?.chapterId === 'ch01' && (await page.locator('.chapter').first().getAttribute('dir')) === 'ltr';
+      return (
+        p?.page === 1 &&
+        p?.chapterId === 'ch01' &&
+        (await page.locator('.chapter').first().getAttribute('dir')) === 'ltr'
+      );
     }).toBe(true);
 
-    // Tap right zone (85% width) -> next page in LTR
-    await page.mouse.click(390 * 0.85, 422);
-    await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(2);
-    msgs = await getMessages(page);
-    expect(msgs.filter((m) => m.type === 'tap').at(-1)).toEqual({ type: 'tap', zone: 'next' });
+    for (const ratio of tapRatios) {
+      const before = (await getMessages(page)).filter((m) => m.type === 'tap').length;
+      await page.mouse.click(390 * ratio, 422);
+      await expect
+        .poll(async () => (await getMessages(page)).filter((m) => m.type === 'tap').length)
+        .toBe(before + 1);
+      expect((await getMessages(page)).filter((m) => m.type === 'tap').at(-1)).toEqual({
+        type: 'tap',
+        zone: 'center',
+      });
+      expect((await getLatestPosition(page))?.page, `tap at ${ratio} turned the page`).toBe(1);
+    }
 
-    // Tap left zone (15% width) -> prev page in LTR
-    await page.mouse.click(390 * 0.15, 422);
-    await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(1);
-    msgs = await getMessages(page);
-    expect(msgs.filter((m) => m.type === 'tap').at(-1)).toEqual({ type: 'tap', zone: 'prev' });
-
-    // Tap center zone (50% width) -> center, stays on page 1
-    await page.mouse.click(390 * 0.5, 422);
-    await expect.poll(async () => {
-      const list = (await getMessages(page)).filter((m) => m.type === 'tap');
-      return list.at(-1)?.zone;
-    }).toBe('center');
-    expect((await getLatestPosition(page))?.page).toBe(1);
+    // Guard the fixture itself: the RTL book really does have more than one page, so the
+    // assertions above are about a tap not turning a page, not about a one-page book.
+    expect(rtlPages).toBeGreaterThan(1);
   });
 
   test('(e) a 20,000-word chapter emits ready in less than 1500ms', async ({ page }) => {
@@ -600,7 +600,7 @@ test.describe('Rewiaty Reader Engine', () => {
     expect(updatedBounds.maxBottom).toBeLessThanOrEqual(updatedBounds.stageBottom - largerInsets.bottom);
   });
 
-  test('(h) suppress-taps blocks page turns during cooldown and resumes afterwards', async ({ page }) => {
+  test('(h) suppress-taps blocks taps during cooldown and resumes afterwards', async ({ page }) => {
     await mountEngine(page);
     const rtlBook = parseBook(sampleArText, 'sample-ar.md');
 
@@ -611,16 +611,22 @@ test.describe('Rewiaty Reader Engine', () => {
     });
     await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(1);
 
-    await sendBridge(page, { type: 'suppress-taps', durationMs: 300 });
-    // Tap left zone (next in RTL) during cooldown -> must NOT turn page.
-    await page.mouse.click(390 * 0.15, 422);
-    await page.waitForTimeout(80);
-    expect((await getLatestPosition(page))?.page).toBe(1);
+    const taps = async () => (await getMessages(page)).filter((m) => m.type === 'tap');
+    const before = (await taps()).length;
 
-    // Wait past cooldown -> tap turns page normally.
+    await sendBridge(page, { type: 'suppress-taps', durationMs: 300 });
+    // A tap during the cooldown (the settings sheet's close animation) must not reach the
+    // host at all, so the bars cannot flicker back open.
+    await page.mouse.click(390 * 0.5, 422);
+    await page.waitForTimeout(80);
+    expect((await taps()).length).toBe(before);
+
+    // Once the cooldown is over a tap is delivered again, always as a centre tap.
     await page.waitForTimeout(260);
-    await page.mouse.click(390 * 0.15, 422);
-    await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(2);
+    await page.mouse.click(390 * 0.5, 422);
+    await expect.poll(async () => (await taps()).length).toBe(before + 1);
+    expect((await taps()).at(-1)).toEqual({ type: 'tap', zone: 'center' });
+    expect((await getLatestPosition(page))?.page).toBe(1);
   });
 
   test('(i) P3-4: fractional stage widths with insets keep integer translateX and no line box crosses page boundaries', async ({
