@@ -25,12 +25,16 @@ appId: com.rewiaty.app
       id: "reader-loading-overlay"
     timeout: 40000
 - waitForAnimationToEnd
-# RTL: tapping the left edge advances.
-- tapOn:
-    point: "15%,50%"
+# R5: page turns are made with the finger — in RTL a swipe to the right advances.
+- swipe:
+    start: "20%,50%"
+    end: "80%,50%"
+    duration: 500
 - waitForAnimationToEnd
-- tapOn:
-    point: "15%,50%"
+- swipe:
+    start: "20%,50%"
+    end: "80%,50%"
+    duration: 500
 - waitForAnimationToEnd
 # The counter lives in the HUD bar, which a centre tap toggles.
 - runFlow:

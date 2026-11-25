@@ -39,14 +39,20 @@ appId: com.rewiaty.app
     id: "toc-item-ch04"
 - waitForAnimationToEnd
 - takeScreenshot: "02-chapter-4-start"
-# RTL: tapping the left edge advances. Stop on the page that shows the [^1] link.
+# R5: page turns are made with the finger now — in RTL a swipe to the right advances.
+# The SWIPE is required: after R5 an edge tap no longer turns anything (run 45688359714
+# stopped on page 21/26 with the reference one page away, `Assertion is false: "^1$" is
+# visible`). The search is bounded to five pages instead of assuming a fixed page number,
+# because exact pagination decides which page the chapter heading lands on.
 - repeat:
-    times: 20
+    times: 5
     while:
       notVisible: "^1$"
     commands:
-      - tapOn:
-          point: "15%,50%"
+      - swipe:
+          start: "20%,50%"
+          end: "80%,50%"
+          duration: 500
       - waitForAnimationToEnd
 - assertVisible: "^1$"
 - takeScreenshot: "03-footnote-reference-visible"
