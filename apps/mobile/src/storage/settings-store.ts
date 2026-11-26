@@ -3,6 +3,7 @@ import {
   THEMES,
   type IndentMode,
   type ReaderSettings,
+  type TashkeelMode,
   type TextAlignMode,
   type ThemeId,
 } from '../../../../packages/reader-engine/src/types';
@@ -22,6 +23,7 @@ const VALID_THEMES = new Set<ThemeId>(Object.keys(THEMES) as ThemeId[]);
 const VALID_FONTS = new Set<string>(READER_FONT_FAMILIES);
 const VALID_ALIGNS = new Set<TextAlignMode>(['start', 'justify']);
 const VALID_INDENTS = new Set<IndentMode>(['classic', 'block']);
+const VALID_TASHKEEL = new Set<TashkeelMode>(['full', 'none', 'shadda-tanween']);
 const VALID_DIRS = new Set<'auto' | 'rtl' | 'ltr'>(['auto', 'rtl', 'ltr']);
 
 type RawStoredSettings = Partial<Omit<ReaderSettings, 'theme'>> & {
@@ -71,6 +73,9 @@ export function sanitizeSettingsPartial(
   }
   if (partial.indentMode !== undefined && VALID_INDENTS.has(partial.indentMode)) {
     next.indentMode = partial.indentMode;
+  }
+  if (partial.tashkeel !== undefined && VALID_TASHKEEL.has(partial.tashkeel)) {
+    next.tashkeel = partial.tashkeel;
   }
   if (partial.marginHorizontal !== undefined) {
     next.marginHorizontal = Math.round(
@@ -215,6 +220,8 @@ export function getSectionResetPartial(
         lineHeight: DEFAULT_SETTINGS.lineHeight,
         wordSpacing: DEFAULT_SETTINGS.wordSpacing,
         paragraphSpacing: DEFAULT_SETTINGS.paragraphSpacing,
+        // F18: «التشكيل» lives in the font tab, so its reset returns to «كامل».
+        tashkeel: DEFAULT_SETTINGS.tashkeel,
       };
     case 'layout':
       return {

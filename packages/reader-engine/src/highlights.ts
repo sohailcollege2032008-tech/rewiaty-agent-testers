@@ -1,5 +1,6 @@
 import type { Anchor } from '@rewiaty/book-format';
 import { HIGHLIGHT_COLORS, type EngineHighlight, type HighlightColor, type SelectionInfo, type SelectionRect } from './types.js';
+import { originalTextOf } from './tashkeel.js';
 
 export type HighlightChapterTarget = {
   el: HTMLElement;
@@ -349,7 +350,18 @@ function unionRects(rects: DOMRectList | DOMRect[], fallback: DOMRect): Selectio
   };
 }
 
-export function extractSelectionInfo(): SelectionInfo | null {
+/**
+ * Read the current selection into the shape the host persists.
+ *
+ * Everything the host stores — the anchor offset, the length, the quote and its context —
+ * addresses the **book file's text**, never the on-screen copy: F18's tashkeel modes hide
+ * combining marks from the DOM, so the displayed offsets are shorter than the file's. The
+ * caller passes `mapToOriginal` (the paginator's display→original mapper); without it the
+ * two coordinate systems are assumed equal (`full` mode).
+ */
+export function extractSelectionInfo(
+  mapToOriginal?: (blockEl: HTMLElement, displayOffset: number) => number,
+): SelectionInfo | null {
   const sel = window.getSelection();
   const range =
     activeSelectionRange && !activeSelectionRange.collapsed
@@ -372,13 +384,13 @@ export function extractSelectionInfo(): SelectionInfo | null {
   const chapterId = chapterEl.getAttribute('data-chapter-id') ?? '';
   if (!blockId) return null;
 
-  const fullText = blockEl.textContent ?? '';
-  if (!fullText) return null;
+  const displayText = blockEl.textContent ?? '';
+  if (!displayText) return null;
 
   let start = getOffsetInBlock(blockEl, range.startContainer, range.startOffset);
   let end = blockEl.contains(range.endContainer)
     ? getOffsetInBlock(blockEl, range.endContainer, range.endOffset)
-    : fullText.length;
+    : displayText.length;
 
   if (end < start) {
     const tmp = start;
@@ -386,10 +398,10 @@ export function extractSelectionInfo(): SelectionInfo | null {
     end = tmp;
   }
 
-  while (start < end && /\s/.test(fullText[start] ?? '')) {
+  while (start < end && /\s/.test(displayText[start] ?? '')) {
     start += 1;
   }
-  while (end > start && /\s/.test(fullText[end - 1] ?? '')) {
+  while (end > start && /\s/.test(displayText[end - 1] ?? '')) {
     end -= 1;
   }
 
@@ -399,14 +411,21 @@ export function extractSelectionInfo(): SelectionInfo | null {
   if (!trimmedRange) return null;
 
   const rect = unionRects(trimmedRange.getClientRects(), trimmedRange.getBoundingClientRect());
-  const anchor: Anchor = { blockId, charOffset: start };
+
+  // Persist the file's coordinates: the selection walked the displayed text, but the host
+  // stores a highlight it will later render again, possibly in another tashkeel mode.
+  const toOriginal = mapToOriginal ?? ((_el: HTMLElement, offset: number) => offset);
+  const originalStart = toOriginal(blockEl, start);
+  const originalEnd = toOriginal(blockEl, end);
+  const originalText = originalTextOf(blockEl);
+  const anchor: Anchor = { blockId, charOffset: originalStart };
 
   return {
     anchor,
-    length: end - start,
-    quote: fullText.slice(start, end),
-    contextBefore: fullText.slice(Math.max(0, start - CONTEXT_CHARS), start),
-    contextAfter: fullText.slice(end, end + CONTEXT_CHARS),
+    length: Math.max(0, originalEnd - originalStart),
+    quote: originalText.slice(originalStart, originalEnd),
+    contextBefore: originalText.slice(Math.max(0, originalStart - CONTEXT_CHARS), originalStart),
+    contextAfter: originalText.slice(originalEnd, originalEnd + CONTEXT_CHARS),
     chapterId,
     rect,
   };

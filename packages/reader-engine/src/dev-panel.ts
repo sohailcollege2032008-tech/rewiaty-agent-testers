@@ -28,6 +28,7 @@ const controls = {
   fontWeight: document.getElementById('setting-weight') as HTMLSelectElement,
   textAlign: document.getElementById('setting-align') as HTMLSelectElement,
   indentMode: document.getElementById('setting-indent') as HTMLSelectElement,
+  tashkeel: document.getElementById('setting-tashkeel') as HTMLSelectElement,
   spread: document.getElementById('setting-spread') as HTMLSelectElement,
   theme: document.getElementById('setting-theme') as HTMLSelectElement,
   disableAnimation: document.getElementById('setting-noanim') as HTMLInputElement,
@@ -56,6 +57,7 @@ function syncControlsFromSettings(): void {
   controls.fontWeight.value = String(currentSettings.fontWeight);
   controls.textAlign.value = currentSettings.textAlign;
   controls.indentMode.value = currentSettings.indentMode;
+  controls.tashkeel.value = currentSettings.tashkeel;
   controls.spread.value = currentSettings.spread ?? 'auto';
   controls.theme.value = currentSettings.theme;
   controls.disableAnimation.checked = currentSettings.disableAnimation;
@@ -167,6 +169,9 @@ controls.textAlign.addEventListener('change', () =>
 );
 controls.indentMode.addEventListener('change', () =>
   updateSetting({ indentMode: controls.indentMode.value as ReaderSettings['indentMode'] }),
+);
+controls.tashkeel.addEventListener('change', () =>
+  updateSetting({ tashkeel: controls.tashkeel.value as ReaderSettings['tashkeel'] }),
 );
 controls.spread.addEventListener('change', () =>
   updateSetting({ spread: controls.spread.value === 'single' ? 'single' : 'auto' }),

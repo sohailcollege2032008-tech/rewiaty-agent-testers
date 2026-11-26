@@ -312,7 +312,9 @@ export class ReaderEngine {
           this.clearSelection();
           postToHost({ type: 'selection', selection: null });
         } else {
-          const selection = extractSelectionInfo();
+          const selection = extractSelectionInfo((el, offset) =>
+            this.paginator.toOriginalOffsetInBlock(el, offset),
+          );
           if (selection) {
             postToHost({ type: 'selection', selection });
           }
@@ -729,7 +731,9 @@ export class ReaderEngine {
     this.isSelecting = false;
     this.selectionAnchor = null;
     this.pointerStart = null;
-    const selection = extractSelectionInfo();
+    const selection = extractSelectionInfo((el, offset) =>
+      this.paginator.toOriginalOffsetInBlock(el, offset),
+    );
     if (!selection) {
       this.rootEl.classList.remove('is-selecting');
     }

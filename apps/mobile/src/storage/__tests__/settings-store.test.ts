@@ -148,6 +148,7 @@ describe('settings-store', () => {
         fontWeight: 500,
         textAlign: 'start',
         indentMode: 'block',
+        tashkeel: 'shadda-tanween',
         marginHorizontal: 32,
         marginVertical: 20,
         maxReadingWidth: 75,
@@ -160,6 +161,7 @@ describe('settings-store', () => {
 
     expect(updated.fontFamily).toBe('Readex Pro');
     expect(updated.theme).toBe('sepia');
+    expect(updated.tashkeel).toBe('shadda-tanween');
     expect(updated.disableAnimation).toBe(true);
 
     const reloaded = await loadReaderSettings(db);
@@ -194,6 +196,43 @@ describe('settings-store', () => {
     expect(result.maxReadingWidth).toBe(85);
     expect(result.fontFamily).toBe('Noto Naskh Arabic');
     expect('letterSpacing' in result).toBe(false);
+  });
+
+  it('persists the tashkeel mode, ignores unknown values, and resets it with the font tab (F18)', async () => {
+    // «كامل» is the reading default: the file's own text, nothing hidden.
+    expect(DEFAULT_SETTINGS.tashkeel).toBe('full');
+    expect((await loadReaderSettings(db)).tashkeel).toBe('full');
+
+    const hidden = await updateReaderSettings({ tashkeel: 'none' }, db);
+    expect(hidden.tashkeel).toBe('none');
+    expect((await loadReaderSettings(db)).tashkeel).toBe('none');
+
+    const intermediate = await updateReaderSettings({ tashkeel: 'shadda-tanween' }, db);
+    expect(intermediate.tashkeel).toBe('shadda-tanween');
+    expect((await loadReaderSettings(db)).tashkeel).toBe('shadda-tanween');
+
+    // A value this build does not know (an older/newer app, a hand-edited row) must not
+    // clobber the reader's choice…
+    const ignored = await updateReaderSettings(
+      { tashkeel: 'harakat' } as unknown as Partial<typeof DEFAULT_SETTINGS>,
+      db,
+    );
+    expect(ignored.tashkeel).toBe('shadda-tanween');
+
+    // …and when it is the only stored value it falls back to «كامل» instead of breaking.
+    const staleDb = createKvTestDb();
+    await staleDb.runAsync(
+      'INSERT INTO kv (key, value) VALUES (?, ?)',
+      SETTINGS_KV_KEY,
+      JSON.stringify({ tashkeel: 'harakat' }),
+    );
+    expect((await loadReaderSettings(staleDb)).tashkeel).toBe('full');
+
+    // The control lives in the font tab, so that reset brings it back to «كامل».
+    await updateReaderSettings({ tashkeel: 'none', fontSize: 27 }, db);
+    const afterFontReset = await resetSection('font', db);
+    expect(afterFontReset.tashkeel).toBe('full');
+    expect(afterFontReset.fontSize).toBe(DEFAULT_SETTINGS.fontSize);
   });
 
   it('resets only the requested tab fields in resetSection(tab) (A11)', async () => {
