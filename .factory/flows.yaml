@@ -1,4 +1,6 @@
 # .factory/flows.yaml — رحلات المستخدم اللي بتحدد «خلص» (proof check بيقراها). الـ run بيتملي في M4.
+# gate: الافتراضي إن الرحلة بوابة. `blocked` = موقوفة على قرار منتج، و`measure-only` = بتقيس وبتكتب
+# الرقم في `.factory/evidence/<sha>/summary.md` بس مش بوابة (حمولة runner الـ emulator متغيرة).
 flows:
   - id: first-launch-sample
     who: "قارئ عربي بيفتح التطبيق أول مرة"
@@ -35,6 +37,34 @@ flows:
     steps: "يفتح الرواية ← يسحب بإيده لليمين فتزيد الصفحة (1←2←3) ← يسحب لليسار فترجع (3←2) ← سحب قصير بيرجع ومايقلّبش"
     target: release-apk
     run: "bash scripts/ci-flows.sh drag-page-direction"
+    artifact: ".factory/evidence/latest/apk/app.apk"
+  - id: footnote-popover
+    who: "قارئ واجه حاشية في وسط الرواية"
+    steps: "يفتح الرواية التجريبية ← يروح الفصل الرابع ← يدوس على رقم الحاشية [^1] ← popover فيه نص الحاشية ← يقفله ويفضل على نفس الصفحة"
+    target: release-apk
+    run: "bash scripts/ci-flows.sh footnote-popover"
+    artifact: ".factory/evidence/latest/apk/app.apk"
+  - id: rotate-position
+    who: "قارئ بيرجع يكمل بعد ما لف الشاشة"
+    steps: "يفتح الرواية ويكمل لصفحة ← ياخد نص العدّاد (صفحة N من ~M) ← يلف الشاشة landscape ← العدّاد لازم يتغير (نفس النص على عرض مختلف = عدد صفحات مختلف؛ شاشة مقفولة على portrait بترجّع نفس النص وبالتالي الرحلة تفشل) ← يرجع portrait ← نفس الصفحة ±1"
+    target: release-apk
+    gate: blocked
+    run: "bash scripts/ci-flows.sh rotate-position"
+    artifact: ".factory/evidence/latest/apk/app.apk"
+  - id: keep-awake
+    who: "قارئ بيسيب الصفحة مفتوحة"
+    steps: "يفتح الرواية ← الشاشة تسيب 45 ثانية من غير أي لمس (والـ runner ظابط screen_off_timeout على 30 ثانية) ← الشاشة لسه Awake ← وcontrol: المكتبة من غير القارئ بتنام على نفس الإعداد"
+    target: release-apk
+    run: "bash scripts/ci-flows.sh keep-awake"
+    artifact: ".factory/evidence/latest/apk/app.apk"
+  - id: long-book-open
+    who: "قارئ عنده رواية ضخمة"
+    steps: "يدخل رواية 200 ألف كلمة (الـ runner بيدخّلها بـ ACTION_VIEW) ← يرجع للمكتبة ← يقفل التطبيق ويفتحه ← يفتح الرواية ← أول صفحة تظهر في أقل من ثانيتين"
+    target: release-apk
+    # قرار سهيل: الـ 2 ثانية هدف منتج، بس مش بوابة على runner الـ emulator (حمولته بتتحرك ثواني
+    # بين الرنات). الرحلة بتقيس وتكتب الرقم في summary، ومش بتأثر على exit code.
+    gate: measure-only
+    run: "bash scripts/ci-flows.sh long-book-open"
     artifact: ".factory/evidence/latest/apk/app.apk"
   - id: scrubber-direction
     who: "قارئ عربي بيسحب شريط الصفحات"

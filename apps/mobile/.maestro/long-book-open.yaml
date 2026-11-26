@@ -1,0 +1,22 @@
+appId: com.rewiaty.app
+---
+# F2: a ~200k-word novel opens and shows its first page in under 2 seconds.
+# The runner generates samples/long-ar.md, pushes it, and hands it to the app through the
+# content:// VIEW intent, waiting until the reader has actually rendered before it starts
+# this flow. The DocumentsUI picker is deliberately not part of this journey: F2 is about
+# opening a big book, and in run 45626039118 a picker tap that turned into a long press left
+# the picker stuck in selection mode so the app never received the file.
+# The runner force-stops the app first, so everything below reads the 200k words from disk.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "الرِّوَايَةُ الطَّوِيلَةُ لِلِاخْتِبَارِ"
+    timeout: 30000
+- takeScreenshot: "01-library-with-long-book"
+- tapOn: "الرِّوَايَةُ الطَّوِيلَةُ لِلِاخْتِبَارِ"
+# THE MEASUREMENT: the first page's text must appear within 2s of opening the book.
+- extendedWaitUntil:
+    visible: ".*تَعْرِفُ الْبَحْرَ قَبْلَ أَنْ تَعْرِفَ اسْمَهُ.*"
+    timeout: 2000
+- takeScreenshot: "02-first-page-under-2s"
+- assertVisible: ".* / .*"
