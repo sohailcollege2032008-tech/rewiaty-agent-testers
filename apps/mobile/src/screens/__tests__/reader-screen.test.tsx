@@ -66,6 +66,8 @@ jest.mock('@/storage/bundle', () => ({
   readAssetText: jest.fn(),
   readBookBundle: jest.fn(),
   saveBookReaderState: jest.fn(),
+  getBookDir: jest.fn(() => ({ uri: 'file:///mock/document/books/book_123/' })),
+  getBooksRootDir: jest.fn(() => ({ uri: 'file:///mock/document/books/' })),
 }));
 
 const mockKv = new Map<string, unknown>();
@@ -114,7 +116,7 @@ describe('ReaderScreen', () => {
     (readAssetText as jest.Mock).mockResolvedValue('<html><body>reader</body></html>');
     (touchBookOpened as jest.Mock).mockResolvedValue(undefined);
     (saveBookReaderState as jest.Mock).mockResolvedValue(undefined);
-    (ensureOfflineFontsDir as jest.Mock).mockResolvedValue('file:///mock/cache/rewiaty-fonts/');
+    (ensureOfflineFontsDir as jest.Mock).mockResolvedValue('file:///mock/document/books/_fonts/');
     (loadThemePreference as jest.Mock).mockResolvedValue({
       settings: { ...DEFAULT_SETTINGS },
       hasManualTheme: false,
@@ -183,13 +185,16 @@ describe('ReaderScreen', () => {
     expect(props.originWhitelist).toEqual(['file://*', 'about:blank']);
     expect(props.originWhitelist).not.toContain('*');
     expect(props.allowFileAccess === true).toBe(Platform.OS === 'android');
-    expect(props.allowingReadAccessToURL).toBe('file:///mock/cache/rewiaty-fonts/');
+    expect(props.allowingReadAccessToURL).toBe('file:///mock/document/books/');
+    expect((props.source as { baseUrl?: string }).baseUrl).toBe(
+      'file:///mock/document/books/book_123/',
+    );
 
     const canStart = props.onShouldStartLoadWithRequest as (request: {
       url: string;
     }) => boolean;
     expect(canStart({ url: 'about:blank' })).toBe(true);
-    expect(canStart({ url: 'file:///mock/cache/rewiaty-fonts/' })).toBe(true);
+    expect(canStart({ url: 'file:///mock/document/books/book_123/' })).toBe(true);
     expect(canStart({ url: 'file:///etc/passwd' })).toBe(false);
     expect(canStart({ url: 'file:///mock/document/books/other/book.md' })).toBe(false);
 
@@ -212,7 +217,48 @@ describe('ReaderScreen', () => {
     expect(loadPayload.anchor).toEqual({ blockId: 'ch01_p0003', charOffset: 12 });
     // A phone always gets one page, sent explicitly on load (the engine's own default is 'auto').
     expect(loadPayload.settings).toEqual({ ...DEFAULT_SETTINGS, spread: 'single' });
-    expect(loadPayload.fontBaseUrl).toBe('file:///mock/cache/rewiaty-fonts/');
+    expect(loadPayload.fontBaseUrl).toBe('file:///mock/document/books/_fonts/');
+  });
+
+  it('exposes the engine image proof so an import can be proven to have painted a figure', async () => {
+    const utils = await renderLoadedReader();
+    expect(utils.queryByTestId('reader-image-proof')).toBeNull();
+
+    await act(async () => {
+      emitWebMessage({ type: 'image-rendered', count: 1, width: 240, height: 160 });
+    });
+
+    const proof = utils.getByTestId('reader-image-proof');
+    expect(proof.props.children).toBe('صورة 240×160');
+    expect(utils.queryByTestId('reader-image-error')).toBeNull();
+  });
+
+  it('surfaces a mounted figure that painted nothing as an explicit error, not as silence', async () => {
+    const utils = await renderLoadedReader();
+
+    // The engine reports `count: 0` when a figure was mounted but decoded to nothing. An absent
+    // node would be indistinguishable from "the engine never reported", which is what let the
+    // negative control pass for the wrong reason (CI run 45687065853).
+    await act(async () => {
+      emitWebMessage({ type: 'image-rendered', count: 0, width: 0, height: 0 });
+    });
+
+    const failure = utils.getByTestId('reader-image-error');
+    expect(failure.props.children).toBe('الصورة مش ظاهرة');
+    expect(utils.queryByTestId('reader-image-proof')).toBeNull();
+  });
+
+  it('does not call a figure with no box a proof', async () => {
+    const utils = await renderLoadedReader();
+
+    // The proof means "a reader can see this figure", not "a file resolved": a decoded image that
+    // laid out to nothing must not satisfy the import assertion.
+    await act(async () => {
+      emitWebMessage({ type: 'image-rendered', count: 1, width: 0, height: 0 });
+    });
+
+    expect(utils.queryByTestId('reader-image-proof')).toBeNull();
+    expect(utils.getByTestId('reader-image-error')).toBeTruthy();
   });
 
   it('automatically uses burnt-paper when system colorScheme is dark and no manual theme is set', async () => {

@@ -64,8 +64,13 @@ export const BUNDLED_FONT_ASSETS: readonly BundledFontAsset[] = [
 
 let cachedFontDirPromise: Promise<string> | null = null;
 
+/**
+ * Fonts live under the books root on purpose: iOS `allowingReadAccessToURL` is a single directory,
+ * and the book figures also need to be readable. Putting `_fonts` next to the book folders keeps
+ * both reachable through that one root, so the WebView still cannot see the rest of the sandbox.
+ */
 export function getOfflineFontsDir(): Directory {
-  return new Directory(Paths.cache, 'rewiaty-fonts');
+  return new Directory(Paths.document, 'books', '_fonts');
 }
 
 export async function ensureOfflineFontsDir(): Promise<string> {

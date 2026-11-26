@@ -641,7 +641,7 @@ export function LibraryScreen() {
                     { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
                   ]}
                 >
-                  اضغط «+ استيراد» لإضافة رواية بصيغة .md أو .txt
+                  اضغط «+ استيراد» لإضافة رواية بصيغة .md أو .txt أو .zip أو .epub
                 </Text>
                 <Pressable
                   testID="library-empty-import-button"

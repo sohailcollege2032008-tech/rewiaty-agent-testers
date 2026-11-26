@@ -54,6 +54,8 @@ jest.mock('@/storage/bundle', () => ({
   readAssetText: jest.fn(),
   readBookBundle: jest.fn(),
   saveBookReaderState: jest.fn(),
+  getBookDir: jest.fn(() => ({ uri: 'file:///mock/document/books/book_hl/' })),
+  getBooksRootDir: jest.fn(() => ({ uri: 'file:///mock/document/books/' })),
 }));
 
 jest.mock('@/storage/database', () => ({

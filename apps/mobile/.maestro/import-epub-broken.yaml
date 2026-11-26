@@ -1,0 +1,29 @@
+appId: com.rewiaty.app
+---
+# Negative control for the figure assertion in import-epub.yaml.
+#
+# The same shared journey (import-epub-steps.yaml) runs against an EPUB whose figure *entry exists*
+# and is mounted in the DOM, but whose bytes are not a decodable PNG. The book still opens and reads,
+# so every step up to chapter two passes.
+#
+# What must happen here, and why the order matters:
+#   1. the page reports the mounted figure as `count: 0` and writes `reader-image-error` — proof the
+#      engine saw the figure and it painted nothing, not that nothing was reported;
+#   2. the positive proof `reader-image-proof` must then be ABSENT. This second assertion is the one
+#      that fails, so the runner's inverted verdict is only accepted when the failure evidence names
+#      `reader-image-proof`. A silent engine (bug) fails step 1 instead and the runner rejects the run.
+#
+# The runner (scripts/run_rewiaty_flows.sh) inverts the exit code: a failure here is a PASS, and a
+# green run means the assertion cannot catch a broken image at all.
+- runFlow:
+    file: import-epub-steps.yaml
+    env:
+      EPUB_FILE: import-f20-broken.epub
+- extendedWaitUntil:
+    visible: "reader-image-error.*"
+    timeout: 20000
+- takeScreenshot: "04-epub-image-broken"
+- assertVisible: "reader-image-error.*"
+- extendedWaitUntil:
+    visible: "reader-image-proof.*"
+    timeout: 5000

@@ -72,6 +72,16 @@ flows:
     target: release-apk
     run: "bash scripts/ci-flows.sh scrubber-direction"
     artifact: ".factory/evidence/latest/apk/app.apk"
+  - id: import-epub
+    who: "قارئ عنده رواية EPUB فيها صور"
+    steps: "المكتبة ← استيراد ← يختار ملف epub ← الكتاب يفتح بفصوله بالترتيب ← صورة الفصل التاني باينة فعلاً على الصفحة"
+    target: release-apk
+    run: "bash scripts/ci-flows.sh import-epub"
+  - id: import-epub-broken
+    who: "ضابط جودة بيتأكد إن اختبار الصورة مش بيكدب"
+    steps: "نفس رحلة الـ epub بس على ملف صورته مش قابلة للفك ← لازم الرحلة تفشل عند التأكد إن الصورة ظهرت (والـ runner بيقلب النتيجة: فشل = PASS)"
+    target: release-apk
+    run: "bash scripts/ci-flows.sh import-epub-broken"
   - id: highlight-add
     who: "قارئ بيظلل جملة"
     steps: "يفتح الرواية التجريبية ← ضغط مطوّل على النص ← يختار لون ← يتأكد إن التظليل نزل على النص نفسه مش المعكوس ← يقفل الكتاب ويفتحه ← التظليل لسه موجود"

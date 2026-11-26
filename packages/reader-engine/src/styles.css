@@ -345,6 +345,13 @@ body {
   border-radius: 6px;
 }
 
+/* Dark pages: a pure-white illustration glares. Dim it without washing out line art. */
+:root[data-theme='burnt-paper'] .block-image img,
+:root[data-theme='oled-crimson'] .block-image img {
+  opacity: 0.9;
+  filter: brightness(0.88) contrast(1.04);
+}
+
 .fn-ref {
   font-size: 0.72em;
   line-height: 0;

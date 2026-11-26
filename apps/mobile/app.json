@@ -30,7 +30,11 @@
             { "scheme": "content", "mimeType": "text/plain" },
             { "scheme": "file", "mimeType": "text/plain" },
             { "scheme": "content", "mimeType": "text/x-markdown" },
-            { "scheme": "file", "mimeType": "text/x-markdown" }
+            { "scheme": "file", "mimeType": "text/x-markdown" },
+            { "scheme": "content", "mimeType": "application/epub+zip" },
+            { "scheme": "file", "mimeType": "application/epub+zip" },
+            { "scheme": "content", "mimeType": "application/zip" },
+            { "scheme": "file", "mimeType": "application/zip" }
           ]
         },
         {
@@ -60,6 +64,30 @@
               "host": "*",
               "mimeType": "application/octet-stream",
               "pathPattern": ".*\\.MD"
+            },
+            {
+              "scheme": "content",
+              "host": "*",
+              "mimeType": "application/octet-stream",
+              "pathPattern": ".*\\.epub"
+            },
+            {
+              "scheme": "file",
+              "host": "*",
+              "mimeType": "application/octet-stream",
+              "pathPattern": ".*\\.epub"
+            },
+            {
+              "scheme": "content",
+              "host": "*",
+              "mimeType": "application/octet-stream",
+              "pathPattern": ".*\\.zip"
+            },
+            {
+              "scheme": "file",
+              "host": "*",
+              "mimeType": "application/octet-stream",
+              "pathPattern": ".*\\.zip"
             }
           ]
         }
