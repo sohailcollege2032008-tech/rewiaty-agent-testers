@@ -58,6 +58,17 @@ export class ReaderEngine {
   private hadSelectionOnDown = false;
   private gesture: {
     pointerId: number;
+    /**
+     * What the finger actually landed on, captured at `pointerdown`.
+     *
+     * Why (bug, found after R5): `pointerdown` calls `setPointerCapture` on the reader root, so
+     * every later pointer event of that gesture — `pointerup` included — is retargeted to the
+     * root. Reading `e.target` at `pointerup` therefore never sees the footnote link any more,
+     * and a real touch stopped opening the sheet at all. (Measured with a real touch on the
+     * merged tree: `pointerdown target=a.fn-ref` → `pointerup target=div#reader-root`.) The
+     * landing element is only trustworthy at pointerdown, so that is where it is kept.
+     */
+    downTarget: EventTarget | null;
     startX: number;
     startY: number;
     lastX: number;
@@ -70,6 +81,18 @@ export class ReaderEngine {
   /** Bumped on every `load`, so a settle pass for an old book can't report over a new one. */
   private settleToken = 0;
   private suppressTapUntil = 0;
+  /**
+   * Pointer id of the gesture that opened the footnote popover.
+   *
+   * Why (bug): the popover opens on `pointerup`, so the `click` the browser synthesises for
+   * that same tap is dispatched *after* the backdrop is already on screen. When the tap point
+   * sits above the sheet panel (anything in the top ~55% of the page), the browser hit-tests
+   * that trailing click against the backdrop and it closed the popover in the same gesture
+   * (CI runs 45654469093, 45661209279, 45668376498). The fix is to remember which pointer
+   * opened the sheet and drop exactly that click. No timer: a stale id can never swallow a
+   * real dismiss, because any new gesture starts with a fresh `pointerdown` that clears it.
+   */
+  private footnoteOpenPointerId: number | null = null;
   /**
    * The first position of a book is withheld until the paginator knows the exact page
    * map, so the reader never sees a page number (or a total) that is about to move.
@@ -110,6 +133,7 @@ export class ReaderEngine {
       this.pointerStart = { x: e.clientX, y: e.clientY, time: Date.now() };
       this.gesture = {
         pointerId: e.pointerId,
+        downTarget: e.target,
         startX: e.clientX,
         startY: e.clientY,
         lastX: e.clientX,
@@ -222,13 +246,19 @@ export class ReaderEngine {
       this.pointerStart = null;
       if (!gesture) return;
 
-      // Ignore taps on footnote links
-      const target = e.target as HTMLElement | null;
-      const fnLink = target?.closest<HTMLElement>('[data-fn]');
+      // Ignore taps on footnote links. The element has to come from the gesture's own landing
+      // target: pointer capture retargets this event to the root (see gesture.downTarget).
+      const target = (gesture.downTarget ?? e.target) as HTMLElement | null;
+      const fnLink = target?.closest?.<HTMLElement>('[data-fn]') ?? null;
       if (fnLink && !gesture.dragging) {
         e.preventDefault();
         const fnId = fnLink.getAttribute('data-fn');
-        if (fnId) this.openFootnote(fnId);
+        if (fnId) {
+          // The click that follows this pointerup belongs to the same gesture: opening the
+          // sheet must not also dismiss it. See footnoteOpenPointerId.
+          this.footnoteOpenPointerId = e.pointerId;
+          this.openFootnote(fnId);
+        }
         return;
       }
 
@@ -301,7 +331,22 @@ export class ReaderEngine {
     });
 
     this.footnoteCloseBtn.addEventListener('click', () => this.closeFootnote());
+    // A fresh gesture that starts on the backdrop is a real dismiss request; whatever click it
+    // produces is not the tail of the opening tap.
+    this.footnoteBackdrop.addEventListener('pointerdown', () => {
+      this.footnoteOpenPointerId = null;
+    });
     this.footnoteBackdrop.addEventListener('click', (e) => {
+      const pointerId = (e as PointerEvent).pointerId;
+      if (
+        this.footnoteOpenPointerId !== null &&
+        (pointerId === undefined || pointerId === this.footnoteOpenPointerId)
+      ) {
+        // The click synthesised right after the opening pointerup, not a user dismiss.
+        this.footnoteOpenPointerId = null;
+        return;
+      }
+      this.footnoteOpenPointerId = null;
       if (e.target === this.footnoteBackdrop) {
         this.closeFootnote();
       }
