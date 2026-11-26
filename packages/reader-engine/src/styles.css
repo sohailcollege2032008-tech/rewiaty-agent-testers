@@ -539,7 +539,7 @@ body {
   pointer-events: none;
   display: none;
   overflow: hidden;
-  background-color: transparent;
+  background-color: var(--quote-bg);
 }
 
 .reader-root.scroll-mode .scroll-progress-bar {

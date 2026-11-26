@@ -717,6 +717,13 @@ export class ReaderEngine {
         break;
       }
       case 'settings': {
+        if (this.scrollSettleTimer !== null) {
+          window.clearTimeout(this.scrollSettleTimer);
+          this.scrollSettleTimer = null;
+          if (this.paginator.isScrollMode()) {
+            this.paginator.handleScrollSettled();
+          }
+        }
         const partial = msg.partial ?? {};
         this.paginator.updateSettings(partial, msg.insets);
         this.emitPositionAndToc();

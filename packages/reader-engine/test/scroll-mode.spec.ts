@@ -414,9 +414,12 @@ test.describe('F22 scroll mode', () => {
       }, inScroll.anchor.blockId),
     ).toBe(true);
 
-    // Read a little further in scroll mode, then switch back.
-    await scrollStageTo(page, Math.round((await stageScroll(page)).height * 0.6));
-    await expect.poll(async () => (await getLatestPosition(page))?.chapterProgress ?? 0).toBeGreaterThan(0);
+    // Read a little further in scroll mode, wait for the settled report, then switch back.
+    const beforeScroll = await stageScroll(page);
+    await scrollStageTo(page, Math.min(beforeScroll.max, beforeScroll.top + Math.round(beforeScroll.height * 0.6)));
+    await expect
+      .poll(async () => (await getLatestPosition(page))?.anchor.blockId)
+      .not.toBe(inScroll.anchor.blockId);
     const scrolled = (await getLatestPosition(page))!;
 
     await sendBridge(page, { type: 'settings', partial: { readingMode: 'paginated' } });

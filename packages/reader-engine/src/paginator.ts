@@ -2502,6 +2502,7 @@ export class Paginator {
       this.clearRestoredAnchor();
     }
 
+    this.layoutVirtualizedChapterOffsets();
     this.applyTrackTransform(false);
     this.renderHighlights();
     this.updateScrollProgressFill();
