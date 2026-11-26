@@ -1,0 +1,68 @@
+appId: com.rewiaty.app
+---
+# F26 «صباعك بين الصفحات»: jumping away from where you were reading (here: from the TOC into
+# chapter 3) must leave a floating way back to the page you left, and tapping it must put you
+# back on that page. Chapter 3 is used because it is many pages away from page 1, so the pill
+# has a real page to return to.
+- launchApp
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 40000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 40000
+- waitForAnimationToEnd
+- takeScreenshot: "01-book-open"
+# Open the bars only if they are closed (they open on their own with a hint on first launch).
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-toc-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-toc-button"
+    timeout: 15000
+- tapOn:
+    id: "reader-toc-button"
+- extendedWaitUntil:
+    visible:
+      id: "toc-item-ch03"
+    timeout: 15000
+- tapOn:
+    id: "toc-item-ch03"
+# The jump landed in chapter 3…
+- extendedWaitUntil:
+    visible:
+      id: "reader-running-chapter"
+      text: ".*الثَّالِث.*"
+    timeout: 20000
+# …and the pill offers the way back to the page we left.
+- extendedWaitUntil:
+    visible:
+      id: "jump-back-pill"
+    timeout: 20000
+- assertVisible: "ارجع لصفحة.*"
+- takeScreenshot: "02-jump-back-pill"
+- tapOn:
+    id: "jump-back-pill"
+- extendedWaitUntil:
+    notVisible:
+      id: "jump-back-pill"
+    timeout: 20000
+# Back where we were: chapter 1, page 1 (the bars stay open across a TOC jump).
+- extendedWaitUntil:
+    visible:
+      id: "reader-running-chapter"
+      text: ".*الْأَوَّل.*"
+    timeout: 20000
+- extendedWaitUntil:
+    visible:
+      id: "reader-page-counter"
+      text: "صفحة 1 من .*"
+    timeout: 20000
+- takeScreenshot: "03-back-on-page-1"
