@@ -11,6 +11,7 @@ export type {
   ReaderSettings,
   SelectionInfo,
   SelectionRect,
+  TashkeelMode,
   TapZone,
   TextAlignMode,
   ThemeId,

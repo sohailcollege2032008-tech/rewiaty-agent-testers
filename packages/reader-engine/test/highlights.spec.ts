@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
 import { parseBook } from '../../book-format/src/index.js';
+import { stripTashkeel } from '../src/tashkeel.js';
 import type { RNToWebMessage, WebToRNMessage } from '../src/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -504,5 +505,191 @@ test.describe('Reader Engine Highlights & Selection', () => {
       .toBe(1);
     const afterExact = await goldHighlightAudit(page);
     expect(afterExact.text.startsWith(expected)).toBe(true);
+  });
+
+  test('tashkeel modes keep highlights and selections in the file’s coordinates (F18 × P2-E)', async ({
+    page,
+  }) => {
+    await mountEngine(page);
+    const book = parseBook(sampleArText, 'sample-ar.md');
+    // `ch01_p0001` carries no inline markup, so its textContent is this string.
+    const firstBlockOriginal = book.chapters[0]!.blocks[0]!.html.replace(/<[^>]*>/g, '');
+    const phrase = 'الْأَمْوَاجُ';
+    const originalOffset = firstBlockOriginal.indexOf(phrase);
+    const hiddenPhrase = stripTashkeel(phrase, 'none');
+    const shaddaPhrase = stripTashkeel(phrase, 'shadda-tanween');
+    expect(originalOffset, 'the fixture paragraph must contain the vocalised phrase').toBeGreaterThan(0);
+    expect(hiddenPhrase.length, 'the phrase must actually lose marks in «بدون»').toBeLessThan(
+      phrase.length,
+    );
+
+    // The highlight is stored the way the host stores it: in the file's coordinates.
+    await sendBridge(page, {
+      type: 'load',
+      book,
+      fontBaseUrl: fontsDirUrl,
+      settings: { disableAnimation: true, fontFamily: 'Amiri', fontSize: 22, tashkeel: 'none' },
+      highlights: [
+        {
+          id: 'hl-f18',
+          blockId: 'ch01_p0001',
+          charOffset: originalOffset,
+          length: phrase.length,
+          color: 'gold',
+        },
+      ],
+    });
+    await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(1);
+
+    // (1) Stored in original coordinates, painted on the *displayed* letters: raw file offsets
+    // would overshoot by every hidden mark and start/end on the wrong word.
+    await expect.poll(async () => (await goldHighlightAudit(page)).count).toBe(1);
+    expect(
+      (await goldHighlightAudit(page)).text,
+      '«بدون» must paint the visible letters of the stored range',
+    ).toBe(hiddenPhrase);
+
+    // (2) A mode change re-maps the very same stored highlight, with no re-save from the host.
+    await sendBridge(page, { type: 'settings', partial: { tashkeel: 'shadda-tanween' } });
+    await expect
+      .poll(async () => (await goldHighlightAudit(page)).text, { timeout: 10_000 })
+      .toBe(shaddaPhrase);
+
+    await sendBridge(page, { type: 'settings', partial: { tashkeel: 'full' } });
+    await expect
+      .poll(async () => (await goldHighlightAudit(page)).text, { timeout: 10_000 })
+      .toBe(phrase);
+
+    // (3) A tap on the highlight in a hidden mode still resolves the stored id.
+    await sendBridge(page, { type: 'settings', partial: { tashkeel: 'none' } });
+    await expect
+      .poll(async () => (await goldHighlightAudit(page)).text, { timeout: 10_000 })
+      .toBe(hiddenPhrase);
+    const tapPt = await page.evaluate(() => {
+      const css = (CSS as unknown as { highlights: Map<string, Set<Range>> }).highlights;
+      const range = Array.from(css.get('rewiaty-hl-gold')!)[0]!;
+      const rect = range.getClientRects()[0]!;
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    });
+    const beforeTap = (await getMessages(page)).length;
+    await page.mouse.click(tapPt.x, tapPt.y);
+    await expect
+      .poll(async () =>
+        (await getMessages(page)).slice(beforeTap).some((m) => m.type === 'highlight-tap'),
+      )
+      .toBe(true);
+    expect(
+      (await getMessages(page)).slice(beforeTap).find((m) => m.type === 'highlight-tap'),
+    ).toMatchObject({ type: 'highlight-tap', highlightId: 'hl-f18' });
+
+    // (4) A selection made on the displayed text is reported in the file's coordinates: the
+    // quote must still carry the marks the reader cannot see, and its stripped form must be
+    // exactly the words that were highlighted on screen.
+    await sendBridge(page, { type: 'clear-selection' });
+    const coords = await page.evaluate(() => {
+      const p = document.querySelector<HTMLElement>('.chapter[aria-hidden="false"] .block-p')!;
+      const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+      const textNode = walker.nextNode() as Text;
+      const r = document.createRange();
+      r.setStart(textNode, 8);
+      r.setEnd(textNode, 9);
+      const startRect = r.getBoundingClientRect();
+      const endRange = document.createRange();
+      endRange.setStart(textNode, 32);
+      endRange.setEnd(textNode, 33);
+      const endRect = endRange.getBoundingClientRect();
+      return {
+        startX: startRect.left + startRect.width / 2,
+        startY: startRect.top + startRect.height / 2,
+        endX: endRect.left + endRect.width / 2,
+        endY: endRect.top + endRect.height / 2,
+      };
+    });
+
+    const beforeSelection = (await getMessages(page)).length;
+    await page.mouse.move(coords.startX, coords.startY);
+    await page.mouse.down();
+    await page.waitForTimeout(450);
+    await page.mouse.move(coords.endX, coords.endY, { steps: 10 });
+    await page.mouse.up();
+
+    await expect
+      .poll(async () =>
+        (await getMessages(page))
+          .slice(beforeSelection)
+          .some((m) => m.type === 'selection' && m.selection !== null),
+      )
+      .toBe(true);
+
+    const selMsg = (await getMessages(page))
+      .slice(beforeSelection)
+      .find(
+        (m): m is Extract<WebToRNMessage, { type: 'selection' }> =>
+          m.type === 'selection' && m.selection !== null,
+      )!;
+    const selection = selMsg.selection!;
+    const storedSlice = firstBlockOriginal.slice(
+      selection.anchor.charOffset,
+      selection.anchor.charOffset + selection.length,
+    );
+
+    expect(selection.anchor.blockId).toBe('ch01_p0001');
+    expect(selection.length, 'a selection worth checking must span several letters').toBeGreaterThan(5);
+    // Consistency: the reported length/quote describe the file's text at the reported offset.
+    expect(selection.quote).toBe(storedSlice);
+    expect(selection.length).toBe(selection.quote.length);
+    // The proof that this is not display-space: the quote still has the marks «بدون» hides.
+    expect(stripTashkeel(storedSlice, 'none').length).toBeLessThan(storedSlice.length);
+    // Geometry stays display-space, so it must still be a real on-screen rect.
+    expect(selection.rect.width).toBeGreaterThan(0);
+    expect(selection.contextBefore.length).toBeLessThanOrEqual(20);
+    expect(selection.contextAfter.length).toBeLessThanOrEqual(20);
+    expect((await getLatestPosition(page))?.page).toBe(1);
+
+    // Round-trip: handing the reported coordinates straight back as a highlight must paint
+    // exactly the visible text of the quote. That proves the display→original (selection)
+    // and original→display (painting) directions are inverses of each other.
+    await sendBridge(page, { type: 'clear-selection' });
+    await sendBridge(page, {
+      type: 'highlights',
+      highlights: [
+        {
+          id: 'hl-sel',
+          blockId: selection.anchor.blockId,
+          charOffset: selection.anchor.charOffset,
+          length: selection.length,
+          color: 'gold',
+        },
+      ],
+    });
+    await expect
+      .poll(async () => (await goldHighlightAudit(page)).text, { timeout: 10_000 })
+      .toBe(stripTashkeel(selection.quote, 'none'));
+
+    // …and it must land on the *same geometry* the finger selected. This is what fails if the
+    // selection had been reported in display coordinates: the range would start several letters
+    // earlier (every hidden mark before it counted as visible) and paint another word.
+    const painted = await page.evaluate(() => {
+      const css = (CSS as unknown as { highlights: Map<string, Set<Range>> }).highlights;
+      const ranges = Array.from(css.get('rewiaty-hl-gold') ?? []);
+      let left = Infinity;
+      let top = Infinity;
+      let right = -Infinity;
+      let bottom = -Infinity;
+      for (const range of ranges) {
+        for (const rect of Array.from(range.getClientRects())) {
+          if (rect.width <= 0 || rect.height <= 0) continue;
+          left = Math.min(left, rect.left);
+          top = Math.min(top, rect.top);
+          right = Math.max(right, rect.right);
+          bottom = Math.max(bottom, rect.bottom);
+        }
+      }
+      return { left, top, width: right - left, height: bottom - top };
+    });
+    expect(Math.abs(painted.left - selection.rect.left)).toBeLessThan(3);
+    expect(Math.abs(painted.top - selection.rect.top)).toBeLessThan(3);
+    expect(Math.abs(painted.width - selection.rect.width)).toBeLessThan(3);
+    expect(Math.abs(painted.height - selection.rect.height)).toBeLessThan(3);
   });
 });

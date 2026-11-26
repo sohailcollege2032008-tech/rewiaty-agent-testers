@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { READER_FONT_FAMILIES, type SettingsTabId } from '@/storage/settings-store';
 import { FONT_LABELS_AR, RADIUS, TYPOGRAPHY, useResponsiveLayout } from '@/theme/layout';
 import { getAppThemeTokens, THEME_OPTIONS, type AppThemeTokens } from '@/theme/reader-theme';
-import type { IndentMode, ReaderSettings, TextAlignMode } from '@/types/reader';
+import type { IndentMode, ReaderSettings, TashkeelMode, TextAlignMode } from '@/types/reader';
 
 export type ReaderSettingsSheetProps = {
   visible: boolean;
@@ -40,6 +40,13 @@ const ALIGN_OPTIONS: ReadonlyArray<{ value: TextAlignMode; label: string }> = [
 const INDENT_OPTIONS: ReadonlyArray<{ value: IndentMode; label: string }> = [
   { value: 'classic', label: 'كلاسيكي بمسافة' },
   { value: 'block', label: 'فقرات منفصلة' },
+];
+
+/** F18 — أوضاع التشكيل: كامل (الافتراضي) / بدون / شدّة وتنوين بس. */
+const TASHKEEL_OPTIONS: ReadonlyArray<{ value: TashkeelMode; label: string }> = [
+  { value: 'full', label: 'كامل' },
+  { value: 'none', label: 'بدون' },
+  { value: 'shadda-tanween', label: 'شدّة وتنوين' },
 ];
 
 const DIR_OPTIONS: ReadonlyArray<{ value: 'auto' | 'rtl' | 'ltr'; label: string }> = [
@@ -430,6 +437,59 @@ function SettingsContent({
             }
             palette={palette}
           />
+
+          {/* F18 — أوضاع التشكيل: بيتنفّذ جوه المحرك وقت العرض على text nodes بس، ومفيش
+              span بيتحط جوه الكلمة علشان التشبيك العربي ميتكسرش. */}
+          <View style={stackControlRow ? styles.ctrlRowStacked : styles.ctrlRow}>
+            <Text
+              style={[styles.ctrlLabel, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}
+              numberOfLines={1}
+            >
+              التشكيل
+            </Text>
+            <View
+              style={[
+                styles.segGroup,
+                stackControlRow && styles.segGroupStacked,
+                { borderColor: palette.border, backgroundColor: palette.surface },
+              ]}
+            >
+              {TASHKEEL_OPTIONS.map((opt) => {
+                const active = settings.tashkeel === opt.value;
+                return (
+                  <Pressable
+                    key={opt.value}
+                    testID={`settings-tashkeel-${opt.value}`}
+                    onPress={() => onChange({ tashkeel: opt.value })}
+                    hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+                    style={({ pressed }) => [
+                      styles.segBtn,
+                      active && { backgroundColor: palette.ctaBg },
+                      pressed && styles.pressed,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.65}
+                      style={[
+                        styles.segBtnText,
+                        {
+                          color: active ? palette.ctaText : palette.muted,
+                          fontWeight: active ? '600' : '500',
+                          fontFamily: TYPOGRAPHY.uiFont,
+                        },
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
         </View>
         ) : null}
         {/* Section 2: Layout */}
