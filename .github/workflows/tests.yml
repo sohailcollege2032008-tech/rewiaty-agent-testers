@@ -29,3 +29,6 @@ jobs:
         run: |
           for f in $(git ls-files '*.sh'); do bash -n "$f"; done
           shellcheck -S warning $(git ls-files '*.sh')
+      - name: Flow selection gate (no emulator)
+        if: matrix.python == '3.13'
+        run: bash tests/run_flows_selection.sh
