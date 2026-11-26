@@ -21,6 +21,11 @@ appId: com.rewiaty.app
     timeout: 10000
 - takeScreenshot: "03-mission-control"
 # The demo seed always carries one running tashkeel job on «حجر الماء».
+- scrollUntilVisible:
+    element:
+      id: "job-pause-job_tashkeel_water"
+    direction: DOWN
+    timeout: 10000
 - assertVisible:
     id: "job-pause-job_tashkeel_water"
 - tapOn:
@@ -53,6 +58,11 @@ appId: com.rewiaty.app
 - extendedWaitUntil:
     visible:
       id: "byok-settings-card"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "byok-mode-server-saved"
+    direction: DOWN
     timeout: 10000
 - assertVisible:
     id: "byok-mode-server-saved"
