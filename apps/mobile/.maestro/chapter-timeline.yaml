@@ -1,0 +1,56 @@
+appId: com.rewiaty.app
+---
+# F29 — the scrubber rail is weighted per chapter and drags with a rich tooltip.
+# Track: one divider per chapter boundary (the sample book has several chapters).
+# Tooltip: chapter title + page + the chapter's first line, while/just after dragging.
+- launchApp
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 20000
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-scrubber-track"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-scrubber-track"
+    timeout: 5000
+- assertVisible:
+    id: "reader-scrubber-track"
+# More than one chapter means at least the first divider is painted on the weighted rail.
+- assertVisible:
+    id: "timeline-tick-0"
+- takeScreenshot: "01-chapter-timeline-track"
+# Drag toward the end of the book; the tooltip must name the chapter and show a first line.
+- swipe:
+    from:
+      id: "reader-scrubber-track"
+    direction: LEFT
+    duration: 800
+- assertVisible:
+    id: "reader-scrubber-tooltip"
+- assertVisible:
+    id: "reader-scrubber-tooltip-chapter"
+- assertVisible:
+    id: "reader-scrubber-tooltip-preview"
+- takeScreenshot: "02-chapter-timeline-tooltip"
+# The seek really landed: the page counter is back on screen with a real page number.
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-page-counter"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- assertVisible:
+    id: "reader-page-counter"
+- takeScreenshot: "03-chapter-timeline-after-drag"

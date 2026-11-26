@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import {
   GestureDetector,
@@ -11,7 +11,16 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { TYPOGRAPHY } from '@/theme/layout';
 import { getAppThemeTokens } from '@/theme/reader-theme';
-import type { ThemeId } from '@/types/reader';
+import { HIGHLIGHT_COLORS, type ThemeId } from '@/types/reader';
+import {
+  buildChapterTimeline,
+  ratioToPhysicalX,
+  resolveScrubTooltip,
+  segmentsToTicks,
+  type ChapterSegment,
+  type TimelineChapterInput,
+  type TimelineMarker,
+} from '@/utils/chapter-timeline';
 
 export type PageScrubberProps = {
   page: number;
@@ -19,9 +28,19 @@ export type PageScrubberProps = {
   dir: 'rtl' | 'ltr';
   theme?: ThemeId;
   onSeekPage: (targetPage: number) => void;
+  /**
+   * F29 — optional chapter timeline. Callers that omit these get exactly the pre-F29 scrubber.
+   * Segments are derived from `timelineChapters` when not supplied.
+   */
+  timelineChapters?: readonly TimelineChapterInput[];
+  timelineSegments?: readonly ChapterSegment[];
+  timelineMarkers?: readonly TimelineMarker[];
 };
 
 const THUMB_SIZE = 15;
+const MARKER_SIZE = 6;
+/** How long the tooltip stays after a released drag, so the reader sees where they landed. */
+const TOOLTIP_LINGER_MS = 1800;
 
 function computePageFromX(x: number, width: number, pageCount: number, isRtl: boolean): number {
   'worklet';
@@ -31,10 +50,20 @@ function computePageFromX(x: number, width: number, pageCount: number, isRtl: bo
   return Math.max(1, Math.min(pageCount, Math.round(1 + progress * (pageCount - 1))));
 }
 
-export function PageScrubber({ page, pageCount, dir, theme, onSeekPage }: PageScrubberProps) {
+export function PageScrubber({
+  page,
+  pageCount,
+  dir,
+  theme,
+  onSeekPage,
+  timelineChapters,
+  timelineSegments,
+  timelineMarkers,
+}: PageScrubberProps) {
   const palette = getAppThemeTokens(theme);
   const isRtl = dir === 'rtl';
   const [previewPage, setPreviewPage] = useState<number | null>(null);
+  const lingerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const trackWidth = useSharedValue(0);
   const isDragging = useSharedValue(false);
   const dragRatio = useSharedValue(0);
@@ -43,21 +72,78 @@ export function PageScrubber({ page, pageCount, dir, theme, onSeekPage }: PageSc
   const safePage = Math.max(1, Math.min(safeCount, page));
   const currentProgress = safeCount <= 1 ? 1 : (safePage - 1) / (safeCount - 1);
 
+  // The track is weighted by chapter word count: a long chapter gets a longer stretch of the rail.
+  const segments = useMemo(
+    () =>
+      timelineSegments ?? (timelineChapters ? buildChapterTimeline(timelineChapters) : []),
+    [timelineSegments, timelineChapters],
+  );
+  const ticks = useMemo(() => segmentsToTicks(segments, dir), [segments, dir]);
+  const markers = useMemo(
+    () =>
+      (timelineMarkers ?? []).map((marker) => ({
+        ...marker,
+        x: ratioToPhysicalX(marker.ratio, dir),
+      })),
+    [timelineMarkers, dir],
+  );
+  const tooltip = useMemo(
+    () =>
+      previewPage === null
+        ? null
+        : resolveScrubTooltip({
+            chapters: timelineChapters ?? [],
+            page: previewPage,
+            pageCount: safeCount,
+          }),
+    [previewPage, timelineChapters, safeCount],
+  );
+
+  const clearLingerTimer = useCallback(() => {
+    if (lingerTimerRef.current !== null) {
+      clearTimeout(lingerTimerRef.current);
+      lingerTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => clearLingerTimer, [clearLingerTimer]);
+
   const commitPage = useCallback(
     (targetPage: number) => {
+      // Keep the tooltip visible for a beat after release: it confirms the page the reader landed on.
+      setPreviewPage(targetPage);
+      clearLingerTimer();
+      lingerTimerRef.current = setTimeout(() => {
+        lingerTimerRef.current = null;
+        setPreviewPage(null);
+      }, TOOLTIP_LINGER_MS);
+      onSeekPage(targetPage);
+    },
+    [clearLingerTimer, onSeekPage],
+  );
+
+  const updatePreview = useCallback(
+    (targetPage: number) => {
+      clearLingerTimer();
+      setPreviewPage(targetPage);
+    },
+    [clearLingerTimer],
+  );
+
+  // A tap is a direct jump: it needs no confirmation card, so it keeps the pre-F29 behaviour.
+  const commitPageWithoutTooltip = useCallback(
+    (targetPage: number) => {
+      clearLingerTimer();
       setPreviewPage(null);
       onSeekPage(targetPage);
     },
-    [onSeekPage],
+    [clearLingerTimer, onSeekPage],
   );
 
-  const updatePreview = useCallback((targetPage: number) => {
-    setPreviewPage(targetPage);
-  }, []);
-
   const clearPreview = useCallback(() => {
+    clearLingerTimer();
     setPreviewPage(null);
-  }, []);
+  }, [clearLingerTimer]);
 
   const pan = usePanGesture({
     activeOffsetX: [-4, 4],
@@ -99,7 +185,7 @@ export function PageScrubber({ page, pageCount, dir, theme, onSeekPage }: PageSc
       const w = trackWidth.get();
       if (w <= 0 || e.canceled) return;
       const target = computePageFromX(e.x, w, safeCount, isRtl);
-      scheduleOnRN(commitPage, target);
+      scheduleOnRN(commitPageWithoutTooltip, target);
     },
   });
 
@@ -140,8 +226,9 @@ export function PageScrubber({ page, pageCount, dir, theme, onSeekPage }: PageSc
 
   return (
     <View style={styles.container}>
-      {previewPage !== null ? (
+      {tooltip !== null ? (
         <View
+          testID="reader-scrubber-tooltip"
           style={[
             styles.previewTooltip,
             {
@@ -150,7 +237,24 @@ export function PageScrubber({ page, pageCount, dir, theme, onSeekPage }: PageSc
             },
           ]}
         >
+          {tooltip.chapterTitle ? (
+            <Text
+              testID="reader-scrubber-tooltip-chapter"
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={[
+                styles.previewChapter,
+                {
+                  color: palette.heading ?? palette.text,
+                  fontFamily: TYPOGRAPHY.uiFont,
+                },
+              ]}
+            >
+              {tooltip.chapterTitle}
+            </Text>
+          ) : null}
           <Text
+            testID="reader-scrubber-tooltip-page"
             style={[
               styles.previewText,
               {
@@ -159,8 +263,24 @@ export function PageScrubber({ page, pageCount, dir, theme, onSeekPage }: PageSc
               },
             ]}
           >
-            {`صفحة ${previewPage}`}
+            {`صفحة ${tooltip.page}`}
           </Text>
+          {tooltip.preview ? (
+            <Text
+              testID="reader-scrubber-tooltip-preview"
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={[
+                styles.previewLine,
+                {
+                  color: palette.muted,
+                  fontFamily: TYPOGRAPHY.uiFont,
+                },
+              ]}
+            >
+              {tooltip.preview}
+            </Text>
+          ) : null}
         </View>
       ) : null}
       <GestureDetector gesture={gesture}>
@@ -174,10 +294,38 @@ export function PageScrubber({ page, pageCount, dir, theme, onSeekPage }: PageSc
         >
           <View style={[styles.track, { backgroundColor: palette.border }]}>
             <Animated.View style={[styles.fill, { backgroundColor: palette.accent }, fillStyle]} />
+            {ticks.map((tick) => (
+              <View
+                key={`tick-${tick.index}`}
+                testID={`timeline-tick-${tick.index}`}
+                pointerEvents="none"
+                style={[
+                  styles.tick,
+                  {
+                    left: `${tick.x * 100}%`,
+                    backgroundColor: palette.hudBg,
+                  },
+                ]}
+              />
+            ))}
           </View>
           {/* Fixed reference at the physical middle of the track; journeys assert the thumb is
               left/right of it, because the RTL bug was visual (the page math was right). */}
           <View testID="reader-scrubber-mid" pointerEvents="none" style={styles.midMarker} />
+          {markers.map((marker) => (
+            <View
+              key={`${marker.kind}-${marker.id}`}
+              testID={`timeline-marker-${marker.kind}-${marker.id}`}
+              pointerEvents="none"
+              style={[
+                styles.marker,
+                {
+                  left: `${marker.x * 100}%`,
+                  backgroundColor: markerColor(marker, palette.isDark, palette.ribbon),
+                },
+              ]}
+            />
+          ))}
           <Animated.View
             testID="reader-scrubber-thumb"
             style={[
@@ -195,6 +343,14 @@ export function PageScrubber({ page, pageCount, dir, theme, onSeekPage }: PageSc
   );
 }
 
+/** Bookmark = the theme's crimson ribbon; highlight = its own stored colour. */
+function markerColor(marker: TimelineMarker, isDark: boolean, ribbon: string): string {
+  if (marker.kind === 'bookmark') return ribbon;
+  const meta = HIGHLIGHT_COLORS.find((candidate) => candidate.id === marker.color);
+  if (!meta) return ribbon;
+  return isDark ? meta.swatchDark : meta.swatchLight;
+}
+
 const styles = StyleSheet.create({
   container: {
     width: '100%',
@@ -202,16 +358,29 @@ const styles = StyleSheet.create({
   },
   previewTooltip: {
     alignSelf: 'center',
+    maxWidth: '92%',
     paddingHorizontal: 12,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 6,
     borderWidth: 1,
+    gap: 2,
     boxShadow: '0 4px 12px rgba(0, 0, 0, 0.12)',
+  },
+  previewChapter: {
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   previewText: {
     fontSize: 12,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
+    textAlign: 'center',
+  },
+  previewLine: {
+    fontSize: 11.5,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   touchArea: {
     // Why: the app forces RTL (I18nManager.forceRTL), so RN would flip `left` to `right` for the
@@ -234,6 +403,21 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     borderRadius: 2,
+  },
+  tick: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 1.5,
+    opacity: 0.9,
+  },
+  marker: {
+    position: 'absolute',
+    top: (32 - MARKER_SIZE) / 2 + 1,
+    width: MARKER_SIZE,
+    height: MARKER_SIZE,
+    borderRadius: MARKER_SIZE / 2,
+    transform: [{ translateX: -MARKER_SIZE / 2 }],
   },
   midMarker: {
     position: 'absolute',

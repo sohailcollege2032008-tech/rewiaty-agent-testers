@@ -13,6 +13,11 @@ import Svg, { Circle, Path } from 'react-native-svg';
 import { TYPOGRAPHY } from '@/theme/layout';
 import { getAppThemeTokens, THEME_OPTIONS } from '@/theme/reader-theme';
 import type { ThemeId } from '@/types/reader';
+import type {
+  ChapterSegment,
+  TimelineChapterInput,
+  TimelineMarker,
+} from '@/utils/chapter-timeline';
 import { PageScrubber } from './page-scrubber';
 
 const EASE_OUT = Easing.bezier(0.22, 1, 0.36, 1);
@@ -31,6 +36,10 @@ export type ReaderHudProps = {
   isTabletLandscape?: boolean;
   dir: 'rtl' | 'ltr';
   theme?: ThemeId;
+  /** F29 — weighted chapter timeline data, forwarded to the page scrubber. */
+  timelineChapters?: readonly TimelineChapterInput[];
+  timelineSegments?: readonly ChapterSegment[];
+  timelineMarkers?: readonly TimelineMarker[];
   onBack: () => void;
   onOpenToc: () => void;
   onOpenSettings: () => void;
@@ -52,6 +61,9 @@ export function ReaderHud({
   isTabletLandscape = false,
   dir,
   theme,
+  timelineChapters,
+  timelineSegments,
+  timelineMarkers,
   onBack,
   onOpenToc,
   onOpenSettings,
@@ -434,6 +446,9 @@ export function ReaderHud({
             dir={dir}
             theme={theme}
             onSeekPage={onSeekPage}
+            timelineChapters={timelineChapters}
+            timelineSegments={timelineSegments}
+            timelineMarkers={timelineMarkers}
           />
 
           <View style={styles.footerSubRow}>
