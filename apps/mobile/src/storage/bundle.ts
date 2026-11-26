@@ -52,10 +52,18 @@ function isTxtFile(fileName: string): boolean {
   return /\.txt$/i.test(fileName.trim());
 }
 
+export type ImportBookContentOptions = {
+  /** Force the bundle id (archive imports fold image bytes into their identity). */
+  bookId?: string;
+  /** Write into this directory instead of the library's `books/<id>` (staging before commit). */
+  bookDir?: Directory;
+};
+
 export async function importBookContent(
   rawText: string,
   fileName: string,
   db?: DatabaseAdapter,
+  options: ImportBookContentOptions = {},
 ): Promise<BookLibraryRecord> {
   if (!rawText || !rawText.trim()) {
     throw new Error('الملف فارغ ولا يحتوي على نص.');
@@ -65,10 +73,10 @@ export async function importBookContent(
   const parsed: Book =
     sourceFormat === 'txt' ? parseTxt(rawText, fileName) : parseBook(rawText, fileName);
 
-  const id = computeBookId(rawText);
+  const id = options.bookId ?? computeBookId(rawText);
   const book: Book = { ...parsed, id };
 
-  const bookDir = getBookDir(id);
+  const bookDir = options.bookDir ?? getBookDir(id);
   bookDir.create({ intermediates: true, idempotent: true });
 
   const assetsDir = new Directory(bookDir, 'assets');

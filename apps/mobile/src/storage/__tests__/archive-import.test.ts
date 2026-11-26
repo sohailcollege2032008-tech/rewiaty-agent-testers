@@ -1,7 +1,7 @@
 import { strToU8, zipSync } from 'fflate';
 import { Directory, File, Paths } from 'expo-file-system';
 
-import { EPUB_DRM_MESSAGE } from '@rewiaty/book-format';
+import { EPUB_DRM_MESSAGE, MAX_ARCHIVE_FILE_BYTES } from '@rewiaty/book-format';
 
 import {
   ARCHIVE_TOO_LARGE_FILE_MESSAGE,
@@ -39,15 +39,32 @@ const CHAPTER = `<?xml version="1.0"?>
 
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01, 0x02, 0x03]);
 
-function buildEpub(): Uint8Array {
+function buildEpub(imageBytes: Uint8Array = PNG_BYTES): Uint8Array {
   return zipSync({
     mimetype: strToU8('application/epub+zip'),
     'META-INF/container.xml': strToU8(CONTAINER_XML),
     'OEBPS/content.opf': strToU8(OPF),
     'OEBPS/ch1.xhtml': strToU8(CHAPTER),
-    'OEBPS/images/fig.png': PNG_BYTES,
+    'OEBPS/images/fig.png': imageBytes,
     'OEBPS/style.css': strToU8('body{color:red}'),
   });
+}
+
+/** Mock of the bundle writer: it only writes book.md, exactly like the real one for this fixture. */
+function bundlingImportContent() {
+  return jest.fn(
+    async (
+      markdown: string,
+      _fileName: string,
+      _db: unknown,
+      options?: { bookId?: string; bookDir?: Directory },
+    ) => {
+      if (options?.bookDir) {
+        await new File(options.bookDir, 'book.md').write(markdown);
+      }
+      return { ...MOCK_RECORD, id: options?.bookId ?? MOCK_RECORD.id };
+    },
+  );
 }
 
 const TEMP_ROOT = new Directory(Paths.cache, 'rewiaty-archive-tests');
@@ -112,6 +129,31 @@ describe('archive book import', () => {
     expect(bytes).not.toHaveBeenCalled();
   });
 
+  it('rejects an archive just over the real 50 MiB limit, at the boundary', async () => {
+    const bytes = jest.fn();
+    // One byte past the limit proves the boundary itself; 512 MiB would pass even with a wrong cap.
+    await expect(
+      importBookArchiveFile(
+        { size: MAX_ARCHIVE_FILE_BYTES + 1, name: 'big.epub', bytes },
+        'big.epub',
+      ),
+    ).rejects.toThrow(ARCHIVE_TOO_LARGE_FILE_MESSAGE);
+    expect(bytes).not.toHaveBeenCalled();
+
+    // Exactly at the limit is allowed through to the reader (which then fails on the content).
+    await expect(
+      importBookArchiveFile(
+        { size: MAX_ARCHIVE_FILE_BYTES, name: 'at-limit.epub', bytes: async () => strToU8('not a zip') },
+        'at-limit.epub',
+      ),
+    ).rejects.not.toThrow(ARCHIVE_TOO_LARGE_FILE_MESSAGE);
+  });
+
+  it('states the real 50 MiB limit in the Arabic rejection message', () => {
+    expect(ARCHIVE_TOO_LARGE_FILE_MESSAGE).toContain('50 ميجابايت');
+    expect(ARCHIVE_TOO_LARGE_FILE_MESSAGE).not.toContain('100');
+  });
+
   it('surfaces the Arabic DRM message instead of importing a locked EPUB', async () => {
     const locked = zipSync({
       mimetype: strToU8('application/epub+zip'),
@@ -144,5 +186,96 @@ describe('archive book import', () => {
 
     expect(created).not.toBeNull();
     expect((created as unknown as Directory).exists).toBe(false);
+    // No staging leftovers either: a failed import must leave the library root clean.
+    expect(root.list()).toEqual([]);
+  });
+
+  it('keeps the previous book intact when a re-import fails after writing its assets', async () => {
+    const root = freshRoot();
+    const dirFor = (bookId: string) => new Directory(root, bookId);
+
+    const first = await importBookArchiveBytes(buildEpub(), 'novel.epub', undefined, {
+      importContent: bundlingImportContent(),
+      bookDirFor: dirFor,
+    });
+
+    // Second import of the same archive: images are staged, then the bundle write fails.
+    await expect(
+      importBookArchiveBytes(buildEpub(), 'novel.epub', undefined, {
+        importContent: jest.fn().mockRejectedValue(new Error('boom')),
+        bookDirFor: dirFor,
+      }),
+    ).rejects.toThrow('boom');
+
+    const bookDir = new Directory(root, first.id);
+    expect(bookDir.exists).toBe(true);
+    expect(new File(bookDir, 'book.md').exists).toBe(true);
+    expect(Array.from(await new File(bookDir, 'assets/fig.png').bytes())).toEqual(Array.from(PNG_BYTES));
+    expect(root.list()).toHaveLength(1);
+  });
+
+  it('does not overwrite the first book images when a second, different-image import fails', async () => {
+    const root = freshRoot();
+    const dirFor = (bookId: string) => new Directory(root, bookId);
+
+    const first = await importBookArchiveBytes(buildEpub(PNG_BYTES), 'novel.epub', undefined, {
+      importContent: bundlingImportContent(),
+      bookDirFor: dirFor,
+    });
+
+    // Same text, different picture, and the bundle write fails after the images were staged.
+    const otherPng = new Uint8Array([...PNG_BYTES, 0xde, 0xad, 0xbe, 0xef]);
+    await expect(
+      importBookArchiveBytes(buildEpub(otherPng), 'novel.epub', undefined, {
+        importContent: jest.fn().mockRejectedValue(new Error('boom')),
+        bookDirFor: dirFor,
+      }),
+    ).rejects.toThrow('boom');
+
+    expect(
+      Array.from(await new File(new Directory(root, first.id), 'assets/fig.png').bytes()),
+    ).toEqual(Array.from(PNG_BYTES));
+    expect(root.list()).toHaveLength(1);
+  });
+
+  it('gives archives with identical text but different image bytes different book ids', async () => {
+    const root = freshRoot();
+    const dirFor = (bookId: string) => new Directory(root, bookId);
+    const otherPng = new Uint8Array([...PNG_BYTES, 0xaa, 0xbb]);
+
+    const first = await importBookArchiveBytes(buildEpub(PNG_BYTES), 'one.epub', undefined, {
+      importContent: bundlingImportContent(),
+      bookDirFor: dirFor,
+    });
+    const second = await importBookArchiveBytes(buildEpub(otherPng), 'two.epub', undefined, {
+      importContent: bundlingImportContent(),
+      bookDirFor: dirFor,
+    });
+
+    expect(first.id).not.toBe(second.id);
+    // Both books keep their own picture; the second import cannot overwrite the first.
+    expect(
+      Array.from(await new File(new Directory(root, first.id), 'assets/fig.png').bytes()),
+    ).toEqual(Array.from(PNG_BYTES));
+    expect(
+      Array.from(await new File(new Directory(root, second.id), 'assets/fig.png').bytes()),
+    ).toEqual(Array.from(otherPng));
+  });
+
+  it('maps the exact same archive to the same id, so re-importing is idempotent', async () => {
+    const root = freshRoot();
+    const dirFor = (bookId: string) => new Directory(root, bookId);
+
+    const first = await importBookArchiveBytes(buildEpub(), 'novel.epub', undefined, {
+      importContent: bundlingImportContent(),
+      bookDirFor: dirFor,
+    });
+    const second = await importBookArchiveBytes(buildEpub(), 'renamed.epub', undefined, {
+      importContent: bundlingImportContent(),
+      bookDirFor: dirFor,
+    });
+
+    expect(second.id).toBe(first.id);
+    expect(root.list()).toHaveLength(1);
   });
 });
