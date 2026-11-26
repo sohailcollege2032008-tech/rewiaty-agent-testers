@@ -17,7 +17,8 @@ close_system_dialogs() {
 }
 
 mkdir -p results/junit results/screenshots results/video results/logs results/debug
-: > results/status.tsv
+STATUS_FILE="results/status.tsv"
+: > "$STATUS_FILE"
 
 # Why (tech): the workflow passes the requested flow id as $FLOW. Without this gate every dispatch
 # re-ran all journeys (a 4-minute fix cost a 15-minute run). "all" or empty keeps the full sweep.
@@ -408,9 +409,96 @@ if want_flow highlight-add; then
   run_flow "highlight-add" || true
 fi
 
+# 11. Generic fallback — any flow id requested from outside that has no block above.
+#
+# Why (tech): the blocks above are a closed set. When the app repo dispatched a NEW journey id
+# (scroll-mode, lighting-themes, …) it matched none of the `if want_flow <id>` lines, so nothing ran,
+# results/status.tsv stayed empty (0 bytes) and the workflow still reported success — a green device
+# gate for a journey that never ran. This loop runs whatever was asked for and the check after it
+# refuses to call the run successful unless every requested id has a recorded verdict.
+MAESTRO_DIR="app/apps/mobile/.maestro"
+SUBFLOW_FILE="results/logs/maestro-subflows.txt"
+: > "$SUBFLOW_FILE"
+
+# Why (tech): a yaml pulled in by another flow with `runFlow:` (or `file:` inside it) is a shared step
+# file, not a journey — import-epub.yaml and import-epub-broken.yaml both include
+# import-epub-steps.yaml. Running it standalone would record a partial journey as a gate. Nested
+# subfolders and `_`-prefixed names are helpers by convention and are never enumerated either.
+if [ -d "$MAESTRO_DIR" ]; then
+  find "$MAESTRO_DIR" -name '*.yaml' -type f -exec \
+    grep -hoE '(runFlow|file):[[:space:]]*"?[^"[:space:]]+\.ya?ml' {} + 2>/dev/null \
+    | sed -E 's#^.*:[[:space:]]*"?##; s#.*/##; s#\.ya?ml$##' \
+    | sort -u > "$SUBFLOW_FILE" || true
+fi
+is_subflow_helper() {
+  [ -s "$SUBFLOW_FILE" ] && grep -qxF -- "$1" "$SUBFLOW_FILE"
+}
+
+flow_has_status() {
+  [ -s "$STATUS_FILE" ] || return 1
+  cut -f1 "$STATUS_FILE" | grep -qxF -- "$1"
+}
+
+# The ids this run must account for: `all` -> every top-level journey yaml; otherwise exactly what
+# was requested in $FLOW (comma separated, whitespace tolerated).
+requested_flow_ids() {
+  if [ "$WANT_FLOWS" = "all" ]; then
+    local file id
+    for file in "$MAESTRO_DIR"/*.yaml; do
+      [ -f "$file" ] || continue
+      id="$(basename "$file" .yaml)"
+      case "$id" in _*) continue ;; esac
+      is_subflow_helper "$id" && continue
+      printf '%s\n' "$id"
+    done
+  else
+    printf '%s\n' "$WANT_FLOWS" | tr ',' '\n' | tr -d ' \t' | sed '/^$/d'
+  fi
+}
+
+echo "==> Generic fallback for requested flows with no dedicated block"
+while IFS= read -r flow_id; do
+  [ -n "$flow_id" ] || continue
+  if flow_has_status "$flow_id"; then
+    continue
+  fi
+  if [ -f "$MAESTRO_DIR/${flow_id}.yaml" ]; then
+    echo "==> (generic) $flow_id"
+    # Every other journey starts from a clean app, so a generic one does too.
+    adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
+    run_flow "$flow_id" || true
+  else
+    echo "ERROR: requested flow '$flow_id' has no $MAESTRO_DIR/${flow_id}.yaml" >&2
+    printf '%s\tFAIL\tno flow file for requested id\n' "$flow_id" >> "$STATUS_FILE"
+    OVERALL_RC=1
+  fi
+done < <(requested_flow_ids)
+
+# Why (tech): this file is a gate, and a gate that reports nothing must not be green. An empty
+# status file, or a requested id with no recorded verdict, is a failure — never a silent success.
+echo "==> Verifying every requested flow recorded a verdict"
+MISSING_RESULTS=0
+if [ ! -s "$STATUS_FILE" ]; then
+  echo "ERROR: $STATUS_FILE is empty — no flow produced a result, so this run proves nothing" >&2
+  MISSING_RESULTS=1
+fi
+if [ "$WANT_FLOWS" != "all" ]; then
+  while IFS= read -r flow_id; do
+    [ -n "$flow_id" ] || continue
+    if flow_has_status "$flow_id"; then continue; fi
+    printf '%s\tFAIL\tno result recorded for requested flow\n' "$flow_id" >> "$STATUS_FILE"
+    echo "ERROR: requested flow '$flow_id' has no result in $STATUS_FILE" >&2
+    MISSING_RESULTS=1
+  done < <(requested_flow_ids)
+fi
+if [ "$MISSING_RESULTS" -ne 0 ]; then
+  OVERALL_RC=1
+  echo "ERROR: at least one requested flow did not run — refusing to report success" >&2
+fi
+
 # Append full logcat at the end as well
 adb logcat -d >> results/logcat.txt 2>/dev/null || true
 
 echo "==> Final flow status:"
-cat results/status.tsv
+cat "$STATUS_FILE"
 exit "$OVERALL_RC"
