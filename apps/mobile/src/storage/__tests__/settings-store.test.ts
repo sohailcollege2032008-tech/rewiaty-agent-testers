@@ -289,6 +289,100 @@ describe('settings-store', () => {
     expect(pref.hasManualTheme).toBe(false);
   });
 
+  it('sanitizes and persists the F31 lighting, auto-theme and eye-rest settings', async () => {
+    const updated = await updateReaderSettings(
+      {
+        dimmer: 0.5,
+        warmth: 0.3,
+        brightnessMode: 'custom',
+        brightness: 0.65,
+        edgeBrightnessSwipe: false,
+        autoThemeMode: 'schedule',
+        dayTheme: 'parchment',
+        nightTheme: 'night-ink',
+        nightStartHour: 20,
+        nightEndHour: 6,
+        eyeRestReminder: false,
+        eyeRestIntervalMinutes: 60,
+      },
+      db,
+    );
+
+    expect(updated.dimmer).toBe(0.5);
+    expect(updated.warmth).toBe(0.3);
+    expect(updated.brightnessMode).toBe('custom');
+    expect(updated.brightness).toBeCloseTo(0.65, 2);
+    expect(updated.edgeBrightnessSwipe).toBe(false);
+    expect(updated.autoThemeMode).toBe('schedule');
+    expect(updated.dayTheme).toBe('parchment');
+    expect(updated.nightTheme).toBe('night-ink');
+    expect(updated.nightStartHour).toBe(20);
+    expect(updated.nightEndHour).toBe(6);
+    expect(updated.eyeRestReminder).toBe(false);
+    expect(updated.eyeRestIntervalMinutes).toBe(60);
+    expect(await loadReaderSettings(db)).toEqual(updated);
+
+    const clamped = await updateReaderSettings(
+      {
+        dimmer: 5,
+        warmth: -1,
+        brightness: 9,
+        nightStartHour: 30,
+        nightEndHour: -4,
+        eyeRestIntervalMinutes: 1000,
+        autoThemeMode: 'lunar',
+        brightnessMode: 'auto',
+        dayTheme: 'nope',
+      } as unknown as Partial<typeof DEFAULT_SETTINGS>,
+      db,
+    );
+    expect(clamped.dimmer).toBe(0.7);
+    expect(clamped.warmth).toBe(0);
+    expect(clamped.brightness).toBe(1);
+    expect(clamped.nightStartHour).toBe(23);
+    expect(clamped.nightEndHour).toBe(0);
+    expect(clamped.eyeRestIntervalMinutes).toBe(120);
+    // Unknown enum values are ignored, never stored.
+    expect(clamped.autoThemeMode).toBe('schedule');
+    expect(clamped.brightnessMode).toBe('custom');
+    expect(clamped.dayTheme).toBe('parchment');
+  });
+
+  it('resets every F31 comfort field with the theme tab («افتراضي»)', async () => {
+    await updateReaderSettings(
+      {
+        dimmer: 0.6,
+        warmth: 0.45,
+        brightnessMode: 'custom',
+        brightness: 0.4,
+        edgeBrightnessSwipe: false,
+        autoThemeMode: 'schedule',
+        dayTheme: 'morning-mist',
+        nightTheme: 'forest-night',
+        nightStartHour: 21,
+        nightEndHour: 5,
+        eyeRestReminder: false,
+        eyeRestIntervalMinutes: 90,
+      },
+      db,
+    );
+
+    const afterReset = await resetSection('theme', db, 'warraq');
+    expect(afterReset.theme).toBe('warraq');
+    expect(afterReset.dimmer).toBe(DEFAULT_SETTINGS.dimmer);
+    expect(afterReset.warmth).toBe(DEFAULT_SETTINGS.warmth);
+    expect(afterReset.brightnessMode).toBe(DEFAULT_SETTINGS.brightnessMode);
+    expect(afterReset.brightness).toBe(DEFAULT_SETTINGS.brightness);
+    expect(afterReset.edgeBrightnessSwipe).toBe(DEFAULT_SETTINGS.edgeBrightnessSwipe);
+    expect(afterReset.autoThemeMode).toBe(DEFAULT_SETTINGS.autoThemeMode);
+    expect(afterReset.dayTheme).toBe(DEFAULT_SETTINGS.dayTheme);
+    expect(afterReset.nightTheme).toBe(DEFAULT_SETTINGS.nightTheme);
+    expect(afterReset.nightStartHour).toBe(DEFAULT_SETTINGS.nightStartHour);
+    expect(afterReset.nightEndHour).toBe(DEFAULT_SETTINGS.nightEndHour);
+    expect(afterReset.eyeRestReminder).toBe(DEFAULT_SETTINGS.eyeRestReminder);
+    expect(afterReset.eyeRestIntervalMinutes).toBe(DEFAULT_SETTINGS.eyeRestIntervalMinutes);
+  });
+
   it('resets back to DEFAULT_SETTINGS', async () => {
     await saveReaderSettings({ ...DEFAULT_SETTINGS, theme: 'oled-crimson', fontSize: 30 }, db);
     const reset = await resetReaderSettings(db);

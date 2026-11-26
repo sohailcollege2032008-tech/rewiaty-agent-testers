@@ -7,6 +7,7 @@ export const oledCrimsonTheme: AppThemeTokens = {
   labelAr: 'عتمة OLED',
   contrastLabel: '١٥.٨:١ AAA',
   isDark: true,
+  category: 'oled',
   deskBg: '#000000',
   boardRim: '#24201F',
   surface: '#0E0C0C',

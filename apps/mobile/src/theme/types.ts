@@ -7,11 +7,16 @@ export type CoverSwatchPalette = {
   spine: string;
 };
 
+/** F31 — «موسوعة الثيمات» browsing buckets. */
+export type ThemeCategory = 'light' | 'warm' | 'dark' | 'oled';
+
 export type AppThemeTokens = ThemeTokens & {
   id: ThemeId;
   labelAr: string;
   contrastLabel: string;
   isDark: boolean;
+  /** F31 — which encyclopedia tab the theme lives under. */
+  category: ThemeCategory;
   deskBg: string;
   boardRim: string;
   surface: string;
@@ -46,6 +51,7 @@ export type ThemeOption = {
   labelAr: string;
   contrastLabel: string;
   isDark: boolean;
+  category: ThemeCategory;
   bg: string;
   text: string;
   accent: string;

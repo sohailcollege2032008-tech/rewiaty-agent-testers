@@ -10,6 +10,7 @@ import { hitTestHighlightAtPoint, renderEngineHighlights } from './highlights.js
 import {
   HIGHLIGHT_COLORS,
   THEMES,
+  isDarkThemeId,
   type EngineHighlight,
   type ReaderInsets,
   type ReaderSettings,
@@ -1969,7 +1970,9 @@ export class Paginator {
     rootStyle.setProperty('--popover-bg', theme.popoverBg);
     rootStyle.setProperty('--popover-border', theme.popoverBorder);
 
-    const isDarkTheme = this.settings.theme === 'burnt-paper' || this.settings.theme === 'oled-crimson';
+    // F31: darkness comes from the theme's own background luminance, so the 9 encyclopedia themes
+    // (night-ink, forest-night, espresso, twilight-plum, oled-amber, …) get their dark fills too.
+    const isDarkTheme = isDarkThemeId(this.settings.theme);
     for (const meta of HIGHLIGHT_COLORS) {
       rootStyle.setProperty(`--hl-${meta.id}`, isDarkTheme ? meta.fillDark : meta.fillLight);
     }

@@ -7,6 +7,7 @@ export const warraqTheme: AppThemeTokens = {
   labelAr: 'ورق دافئ',
   contrastLabel: '١٥.٣:١ AAA',
   isDark: false,
+  category: 'light',
   deskBg: '#EAE1D1',
   boardRim: '#D7CBB7',
   surface: '#F3EDE2',
