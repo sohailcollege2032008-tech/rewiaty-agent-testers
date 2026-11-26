@@ -291,4 +291,32 @@ describe('ReaderScreen F46 scene placeholders bridge', () => {
     expect(lastSceneUpdate()).toBeUndefined();
     expect(saveBookReaderState).not.toHaveBeenCalled();
   });
+
+  it('preserves saved scenes when a subsequent position update saves reader state', async () => {
+    await renderReader();
+
+    await act(async () => {
+      emit({ type: 'scene-toggle-collapse', sceneId: 'scene_1', collapsed: true });
+    });
+    await act(async () => {
+      emit({
+        type: 'position',
+        chapterId: 'ch01',
+        page: 2,
+        pageCount: 5,
+        bookProgress: 0.4,
+        estimated: false,
+      });
+    });
+
+    await waitFor(() =>
+      expect(saveBookReaderState).toHaveBeenLastCalledWith(
+        'book_scene',
+        expect.objectContaining({
+          page: 2,
+          scenes: [expect.objectContaining({ id: 'scene_1', collapsed: true })],
+        }),
+      ),
+    );
+  });
 });
