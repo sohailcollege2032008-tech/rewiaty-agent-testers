@@ -37,20 +37,28 @@ export async function pickAndImportBook(
   }
 
   const asset = result.assets[0]!;
-  if (!isSupportedBookFileName(asset.name)) {
+  const file = asset.file ?? new File(asset.uri);
+
+  // Why (bug #45): with `copyToCacheDirectory`, `asset.uri` points at a cache copy whose file name
+  // is a UUID, so the file's own name is useless for the reader. `asset.name` is the name that was
+  // actually picked ("قصتي.txt"), and it is the one the title is derived from. Only fall back to
+  // the file's own name when the picker offers nothing usable.
+  const pickedName = typeof asset.name === 'string' ? asset.name.trim() : '';
+  const fileSystemName = typeof file.name === 'string' ? file.name.trim() : '';
+  const fileName = pickedName || fileSystemName;
+
+  if (!isSupportedBookFileName(fileName)) {
     throw new Error(UNSUPPORTED_BOOK_FORMAT_MESSAGE);
   }
 
-  const file = asset.file ?? new File(asset.uri);
-
-  if (isArchiveBookFileName(asset.name)) {
+  if (isArchiveBookFileName(fileName)) {
     return importBookArchiveFile(
-      { size: asset.size, name: asset.name, bytes: () => file.bytes() },
-      asset.name,
+      { size: asset.size, name: fileName, bytes: () => file.bytes() },
+      fileName,
       db,
     );
   }
 
   const read = await readBookTextFile(file);
-  return importBookContent(read.text, read.name ?? asset.name, db);
+  return importBookContent(read.text, fileName, db);
 }
