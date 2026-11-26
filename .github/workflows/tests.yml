@@ -29,6 +29,16 @@ jobs:
         run: |
           for f in $(git ls-files '*.sh'); do bash -n "$f"; done
           shellcheck -S warning $(git ls-files '*.sh')
-      - name: Flow selection gate (no emulator)
-        if: matrix.python == '3.13'
+  flows:
+    # Why (tech): the device-flow gate of scripts/run_rewiaty_flows.sh gets its own job so nothing
+    # else in the run can hide whether it is honest. No phone, no emulator, no Maestro: tests/
+    # run_flows_selection.sh stubs adb/maestro/sleep and checks the selection + verdict rules.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Flow selection gate (stubbed adb and maestro, no emulator)
         run: bash tests/run_flows_selection.sh
+      - name: Runner syntax
+        run: |
+          bash -n scripts/run_rewiaty_flows.sh
+          shellcheck -S warning scripts/run_rewiaty_flows.sh tests/run_flows_selection.sh
