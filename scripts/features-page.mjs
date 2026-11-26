@@ -60,10 +60,15 @@ const featHtml = (f) => `
       <span class="gates" aria-label="البوابات">${GATES.map((g, i) => `<span class="gate ${f.gates && f.gates[i] ? 'on' : ''}" title="${g}">${g}</span>`).join('')}</span>
       <span class="count">${f.itemsDone}/${f.items.length}</span>
     </summary>
-    <ul>${f.items.map((i) => `<li class="${i.done ? 'ok' : ''}"><span class="box" aria-hidden="true">${i.done ? '✓' : ''}</span>${inline(i.text)}</li>`).join('')}</ul>
+    <ul>${f.items.map((i) => `<li class="${i.done ? 'ok' : ''}"><span class="box" aria-hidden="true">${i.done ? '✓' : ''}</span><span class="txt">${inline(i.text)}</span></li>`).join('')}</ul>
   </details>`;
 
-const html = `<title>تشيك ليست روايتي</title>
+const html = `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تشيك ليست روايتي</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Readex+Pro:wght@400;500;600&display=swap">
 <style>
@@ -114,8 +119,11 @@ li .box{flex:none;width:1.1em;height:1.1em;margin-top:.3em;border:1.5px solid va
 li.ok .box{background:var(--ok);border-color:var(--ok)}
 li.ok{color:var(--muted)}
 code{font-family:ui-monospace,monospace;font-size:.85em;background:var(--rule);padding:0 4px;border-radius:3px;direction:ltr;unicode-bidi:isolate}
+.txt{min-width:0;overflow-wrap:anywhere}
 @media (prefers-reduced-motion:no-preference){details.feat{transition:background .2s}}
 </style>
+</head>
+<body>
 <div class="wrap">
   <header>
     <h1>تشيك ليست روايتي</h1>
@@ -138,6 +146,8 @@ code{font-family:ui-monospace,monospace;font-size:.85em;background:var(--rule);p
     ${p.features.map(featHtml).join('')}
   </section>`).join('')}
 </div>
+</body>
+</html>
 `;
 fs.writeFileSync(out, html);
 console.log(`wrote ${out}: ${phases.length} phases, ${totFeat} features, ${totDone}/${totItems} items`);
