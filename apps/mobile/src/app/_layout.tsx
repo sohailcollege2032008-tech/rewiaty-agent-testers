@@ -27,6 +27,7 @@ export default function RootLayout() {
         <Stack.Screen name="index" />
         <Stack.Screen name="reader/[id]" />
         <Stack.Screen name="search" />
+        <Stack.Screen name="mission-control" />
       </Stack>
       <ToastOverlay />
     </GestureHandlerRootView>

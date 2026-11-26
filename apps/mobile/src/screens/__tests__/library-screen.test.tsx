@@ -29,6 +29,27 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
+// The global reanimated mock has no `withRepeat`; the Mission Control badge
+// pulses with it while jobs are active.
+jest.mock('react-native-reanimated', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return {
+    __esModule: true,
+    default: { View, createAnimatedComponent: (component: unknown) => component },
+    View,
+    useSharedValue: (initial: number) => {
+      const ref = React.useRef({ value: initial });
+      return ref.current;
+    },
+    useAnimatedStyle: (factory: () => Record<string, unknown>) => factory(),
+    withTiming: (toValue: number) => toValue,
+    withRepeat: (value: number) => value,
+    cubicBezier: () => ({}),
+    Easing: { bezier: () => () => 0 },
+  };
+});
+
 jest.mock('@/storage/bundle', () => ({
   ensureSampleBookSeeded: jest.fn(),
   deleteBookBundle: jest.fn(),

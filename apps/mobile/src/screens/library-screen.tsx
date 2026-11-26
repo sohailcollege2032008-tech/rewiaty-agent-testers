@@ -17,9 +17,11 @@ import Svg, { Circle, Path } from 'react-native-svg';
 import { BookCard } from '@/components/book-card';
 import { BookCover } from '@/components/book-cover';
 import { ImportGuideSheet } from '@/components/import-guide-sheet';
+import { MissionControlBadge } from '@/components/mission-control-badge';
 import { deleteBookBundle, ensureSampleBookSeeded } from '@/storage/bundle';
 import { getKv, listBooks, setKv } from '@/storage/database';
 import { pickAndImportBook } from '@/storage/importer';
+import { useMissionControl } from '@/storage/mission-control-store';
 import { RADIUS, SPACING, TYPOGRAPHY, useResponsiveLayout } from '@/theme/layout';
 import { getAppThemeTokens, resolveSystemTheme } from '@/theme/reader-theme';
 import type { BookLibraryRecord } from '@/types/reader';
@@ -42,6 +44,7 @@ export function LibraryScreen() {
   const colorScheme = useColorScheme();
   const themeId = resolveSystemTheme(colorScheme);
   const palette = getAppThemeTokens(themeId, colorScheme);
+  const missionControl = useMissionControl();
 
   const [books, setBooks] = useState<BookLibraryRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -420,6 +423,7 @@ export function LibraryScreen() {
 
       {/* Editorial Header */}
       <View
+        testID="library-header"
         style={[
           styles.header,
           {
@@ -479,6 +483,8 @@ export function LibraryScreen() {
         </View>
 
         <View style={styles.headerActions}>
+          <MissionControlBadge activeCount={missionControl.activeCount} theme={themeId} />
+
           <Pressable
             testID="library-search-button"
             onPress={() => router.push('/search')}
