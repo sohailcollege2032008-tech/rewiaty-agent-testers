@@ -713,12 +713,19 @@ export function ReaderScreen() {
 
   const handleSettingsChange = useCallback(
     (partial: Partial<ReaderSettings>) => {
-      postToEngine({ type: 'settings', partial });
+      // F32: picking a preset theme from anywhere (settings sheet OR HUD quick popover)
+      // disables an active custom pair so the chosen preset paints immediately.
+      const activeCustom = initialSettingsRef.current.customColors;
+      const effectivePartial: Partial<ReaderSettings> =
+        partial.theme !== undefined && partial.customColors === undefined && activeCustom?.enabled
+          ? { ...partial, customColors: { ...activeCustom, enabled: false } }
+          : partial;
+      postToEngine({ type: 'settings', partial: effectivePartial });
       setSettings((prev) => {
-        const next = mergeReaderSettings(prev, partial);
+        const next = mergeReaderSettings(prev, effectivePartial);
         initialSettingsRef.current = next;
         void saveReaderSettings(next);
-        if (partial.theme !== undefined) {
+        if (effectivePartial.theme !== undefined) {
           hasManualThemeRef.current = true;
           notifyThemeListeners({ theme: next.theme, hasManualTheme: true });
           void selectManualTheme(next.theme);
