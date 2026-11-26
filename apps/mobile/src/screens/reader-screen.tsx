@@ -553,7 +553,15 @@ export function ReaderScreen() {
   useEffect(() => {
     if (hasManualThemeRef.current) return;
     if (autoThemeMode !== 'system') return;
-    const systemTheme = resolveSystemTheme(colorScheme);
+    const systemTheme = resolveAutoTheme({
+      mode: 'system',
+      manualTheme: settingsRef.current.theme,
+      dayTheme,
+      nightTheme,
+      nightStartHour,
+      nightEndHour,
+      systemColorScheme: colorScheme,
+    });
     setSettings((prev) => {
       if (prev.theme === systemTheme) return prev;
       const next = { ...prev, theme: systemTheme };
@@ -561,9 +569,10 @@ export function ReaderScreen() {
       if (hasSentLoadRef.current) {
         postToEngine({ type: 'settings', partial: { theme: systemTheme } });
       }
+      notifyThemeListeners({ theme: systemTheme, hasManualTheme: false });
       return next;
     });
-  }, [colorScheme, autoThemeMode, postToEngine]);
+  }, [colorScheme, autoThemeMode, dayTheme, nightTheme, nightStartHour, nightEndHour, postToEngine]);
 
   // F31 — automatic day/night theme. Applies on load and re-checks every 60 s, so a reader who
   // leaves the app open at 19:00 sees the night paper arrive on its own.
@@ -576,6 +585,7 @@ export function ReaderScreen() {
         if (hasSentLoadRef.current) {
           postToEngine({ type: 'settings', partial: { theme: nextTheme } });
         }
+        notifyThemeListeners({ theme: nextTheme, hasManualTheme: false });
         void saveReaderSettings(next);
         return next;
       });
@@ -617,11 +627,11 @@ export function ReaderScreen() {
     let restored = false;
     const restore = () => {
       if (restored) return;
+      restored = true;
       void Brightness.restoreSystemBrightnessAsync().catch(() => undefined);
     };
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState !== 'active') {
-        restored = true;
         restore();
         return;
       }
@@ -843,11 +853,18 @@ export function ReaderScreen() {
   const handleSettingsChange = useCallback(
     (partial: Partial<ReaderSettings>) => {
       postToEngine({ type: 'settings', partial });
+      const effectivePartial: Partial<ReaderSettings> =
+        partial.theme !== undefined && partial.autoThemeMode === undefined
+          ? { ...partial, autoThemeMode: 'manual' }
+          : partial;
       setSettings((prev) => {
-        const next = mergeReaderSettings(prev, partial);
+        const next = mergeReaderSettings(prev, effectivePartial);
         initialSettingsRef.current = next;
         void saveReaderSettings(next);
-        if (partial.theme !== undefined) {
+        if (effectivePartial.autoThemeMode === 'system') {
+          hasManualThemeRef.current = false;
+        }
+        if (effectivePartial.theme !== undefined) {
           hasManualThemeRef.current = true;
           notifyThemeListeners({ theme: next.theme, hasManualTheme: true });
           void selectManualTheme(next.theme);
