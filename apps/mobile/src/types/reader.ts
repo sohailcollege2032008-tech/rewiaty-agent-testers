@@ -100,6 +100,8 @@ export type BookReaderState = {
   bookmarkItems?: BookmarkItem[];
   /** Text-anchored highlights and notes (F17). */
   highlights?: HighlightItem[];
+  /** F46 scene placeholders. Optional: every state saved before F46 stays readable. */
+  scenes?: import('../../../../packages/reader-engine/src/types').ScenePlaceholder[];
   settings?: Partial<import('../../../../packages/reader-engine/src/types').ReaderSettings>;
   updatedAt: number;
 };
