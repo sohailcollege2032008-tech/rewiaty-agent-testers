@@ -9,6 +9,8 @@ import {
   ArchiveError,
   EPUB_DRM_MESSAGE,
   EPUB_INVALID_MESSAGE,
+  EPUB_SPINE_TOO_LONG_MESSAGE,
+  EPUB_TOO_LARGE_MESSAGE,
   UNREADABLE_ARCHIVE_MESSAGE,
   UNSAFE_ARCHIVE_PATH_MESSAGE,
   isSafeImageSrc,
@@ -65,6 +67,26 @@ function patchFirstCentralUncompressedSize(zip: Uint8Array, declared: number): U
   return out;
 }
 
+/**
+ * Rewrite the declared entry count in the EOCD. A crafted archive can list fewer entries than it
+ * actually contains; the local headers then point at entries the size scan never saw.
+ */
+function patchCentralEntryCount(zip: Uint8Array, declared: number): Uint8Array {
+  const out = new Uint8Array(zip);
+  const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
+  let eocd = -1;
+  for (let i = out.length - 22; i >= 0; i -= 1) {
+    if (view.getUint32(i, true) === 0x06054b50) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) throw new Error('helper: no EOCD in fixture');
+  view.setUint16(eocd + 10, declared, true);
+  view.setUint16(eocd + 8, declared, true);
+  return out;
+}
+
 const CONTAINER_XML = `<?xml version="1.0"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
   <rootfiles>
@@ -95,7 +117,7 @@ const CHAPTER_2 = `<?xml version="1.0" encoding="utf-8"?>
   </body>
 </html>`;
 
-function opf(spineIdrefs: string[], extra = ''): string {
+function opf(spineIdrefs: string[], extra = '', spineAttrs = ''): string {
   return `<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
@@ -111,38 +133,79 @@ function opf(spineIdrefs: string[], extra = ''): string {
     <item id="css" href="style.css" media-type="text/css"/>
     ${extra}
   </manifest>
-  <spine>
+  <spine${spineAttrs ? ` ${spineAttrs}` : ''}>
     ${spineIdrefs.map((id) => `<itemref idref="${id}"/>`).join('\n    ')}
   </spine>
 </package>`;
 }
 
+/** A minimal EPUB wrapper around a given OPF, so each test controls its own spine. */
+function epubWithOpf(contentOpf: string, files: Record<string, string | Uint8Array> = {}): Uint8Array {
+  return zipOf({
+    mimetype: 'application/epub+zip',
+    'META-INF/container.xml': CONTAINER_XML,
+    'OEBPS/content.opf': contentOpf,
+    'OEBPS/ch1.xhtml': CHAPTER_1,
+    'OEBPS/ch2.xhtml': CHAPTER_2,
+    'OEBPS/images/figure.png': TINY_PNG,
+    ...files,
+  });
+}
+
+const EPUB2_NCX = `<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <head><meta name="dtb:uid" content="free-fixture"/></head>
+  <docTitle><text>رِوَايَةٌ تَجْرِيبِيَّةٌ</text></docTitle>
+  <navMap>
+    <navPoint id="np1" playOrder="1">
+      <navLabel><text>البَابُ الأَوَّلُ</text></navLabel>
+      <content src="ch1.xhtml"/>
+    </navPoint>
+    <navPoint id="np2" playOrder="2">
+      <navLabel><text>البَابُ الثَّانِي</text></navLabel>
+      <content src="ch2.xhtml"/>
+    </navPoint>
+  </navMap>
+</ncx>`;
+
 function epub2Fixture(): Uint8Array {
   return zipOf({
     mimetype: 'application/epub+zip',
     'META-INF/container.xml': CONTAINER_XML,
-    'OEBPS/content.opf': opf(['ch1', 'ch2'], '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>').replace(
-      'version="3.0"',
-      'version="2.0"',
-    ),
+    'OEBPS/content.opf': opf(
+      ['ch1', 'ch2'],
+      '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>',
+      'toc="ncx"',
+    ).replace('version="3.0"', 'version="2.0"'),
     'OEBPS/ch1.xhtml': CHAPTER_1,
     'OEBPS/ch2.xhtml': CHAPTER_2,
     'OEBPS/images/figure.png': TINY_PNG,
     'OEBPS/style.css': 'body{color:red}',
-    'OEBPS/toc.ncx': '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/"><navMap/></ncx>',
+    'OEBPS/toc.ncx': EPUB2_NCX,
   });
 }
+
+const EPUB3_NAV_DOCUMENT = `<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head><title>فهرس المحتويات</title></head>
+  <body><nav epub:type="toc">
+    <ol><li><a href="ch2.xhtml">فهرس الباب الثاني</a></li><li><a href="ch1.xhtml">فهرس الباب الأول</a></li></ol>
+  </nav></body>
+</html>`;
 
 function epub3Fixture(): Uint8Array {
   return zipOf({
     mimetype: 'application/epub+zip',
     'META-INF/container.xml': CONTAINER_XML,
-    'OEBPS/content.opf': opf(['ch2', 'ch1'], '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>'),
+    // The nav document is both `properties="nav"` and listed in the spine: a reader must still
+    // treat it as navigation, never as a third chapter.
+    'OEBPS/content.opf': opf(
+      ['nav', 'ch2', 'ch1'],
+      '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>',
+    ),
     'OEBPS/ch1.xhtml': CHAPTER_1,
     'OEBPS/ch2.xhtml': CHAPTER_2,
     'OEBPS/images/figure.png': TINY_PNG,
-    'OEBPS/nav.xhtml':
-      '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body><nav epub:type="toc"><ol><li><a href="ch2.xhtml">٢</a></li><li><a href="ch1.xhtml">١</a></li></ol></nav></body></html>',
+    'OEBPS/nav.xhtml': EPUB3_NAV_DOCUMENT,
   });
 }
 
@@ -233,8 +296,7 @@ describe('zip book import', () => {
     ).toThrow(ARCHIVE_TOO_LARGE_MESSAGE);
   });
 
-  it('matches an NFC image href against a decomposed entry name', () => {
-    const composed = 'café.png'.normalize('NFC');
+  it('matches an NFC image href against a decomposed entry name', () => {    const composed = 'café.png'.normalize('NFC');
     const decomposed = 'café.png'.normalize('NFD');
     const archive = zipOf({
       'ch1.md': `# فصل\n\n![صورة](images/${composed})`,
@@ -258,6 +320,37 @@ describe('zip book import', () => {
     expect(() => readBookArchive(archive, 'many.zip', { limits: { maxEntries: 5 } })).toThrow(
       ARCHIVE_TOO_MANY_FILES_MESSAGE,
     );
+  });
+
+  it('rejects a local entry the central directory never listed', () => {
+    // Declared count says one entry; the archive physically holds two. The second one was never
+    // size-checked, so it must be refused before it is inflated at all.
+    const archive = patchCentralEntryCount(
+      zipOf({ 'ch1.md': '# فصل\n\nنَصٌّ.', 'extra.md': '# إضافي' }),
+      1,
+    );
+    expect(() => readZipEntries(archive)).toThrow(UNREADABLE_ARCHIVE_MESSAGE);
+  });
+
+  it('refuses an unlisted local entry even when the listed one is harmless', () => {
+    // The hidden entry is a 2 MB bomb. Before the central-directory match it would be inflated and
+    // only then caught by the byte counter; now it never reaches the inflater.
+    const archive = patchCentralEntryCount(
+      zipOf({ 'ch1.md': '# فصل', 'bomb.txt': new Uint8Array(2 * 1024 * 1024) }),
+      1,
+    );
+    expect(() =>
+      readZipEntries(archive, { limits: { maxUncompressedBytes: 1024 * 1024 } }),
+    ).toThrow(UNREADABLE_ARCHIVE_MESSAGE);
+  });
+
+  it('reads an entry larger than one push chunk without truncating it', () => {
+    // 300 KB of text spans several 64 KiB slices; chunked feeding must still return every byte.
+    const body = 'ا'.repeat(300 * 1024);
+    const archive = zipOf({ 'big.md': `# فصل\n\n${body}` });
+    const entries = readZipEntries(archive);
+    const text = strFromU8(entries.get('big.md')!);
+    expect(text).toBe(`# فصل\n\n${body}`);
   });
 
   it('reports a non-zip file as unreadable instead of leaking an English error', () => {
@@ -289,6 +382,8 @@ describe('EPUB import', () => {
     expect(parsed.meta.dir).toBe('rtl');
     // The NCX navigation document is metadata, never a third chapter.
     expect(imported.markdown).not.toContain('navMap');
+    expect(imported.markdown).not.toContain('navPoint');
+    expect(imported.markdown).not.toContain('البَابُ الأَوَّلُ');
     expect(parsed.chapters).toHaveLength(2);
   });
 
@@ -319,7 +414,39 @@ describe('EPUB import', () => {
       'الْفَصْلُ الثَّانِي',
       'الْفَصْلُ الأَوَّلُ',
     ]);
+    // The nav document is in the manifest as `properties="nav"` *and* in the spine; it must be
+    // treated as navigation, not appended as a third chapter titled «فهرس المحتويات».
+    expect(parsed.chapters).toHaveLength(2);
+    expect(imported.markdown).not.toContain('فهرس المحتويات');
+    expect(imported.markdown).not.toContain('فهرس الباب');
     expect(imported.assets.map((asset) => asset.path)).toEqual(['assets/figure.png']);
+  });
+
+  it('converts a document repeated in the spine exactly once', () => {
+    const repeated = epubWithOpf(opf(Array.from({ length: 40 }, () => 'ch1')));
+    const imported = readBookArchive(repeated, 'repeat.epub');
+    const parsed = parseBook(imported.markdown, 'book.md');
+    expect(parsed.chapters).toHaveLength(1);
+    expect(parsed.chapters[0]!.title).toBe('الْفَصْلُ الأَوَّلُ');
+    // Exactly one heading, not 40 copies of the chapter body.
+    const headings = imported.markdown
+      .split('\n')
+      .filter((line) => line.startsWith('# '));
+    expect(headings).toEqual(['# الْفَصْلُ الأَوَّلُ']);
+  });
+
+  it('refuses an EPUB whose spine is longer than the cap', () => {
+    const longSpine = epubWithOpf(opf(['ch1', 'ch2', 'ch1', 'ch2']));
+    expect(() => readBookArchive(longSpine, 'long.epub', { maxSpineItems: 3 })).toThrow(
+      EPUB_SPINE_TOO_LONG_MESSAGE,
+    );
+  });
+
+  it('refuses an EPUB whose generated Markdown exceeds the output cap', () => {
+    const book = epubWithOpf(opf(['ch1', 'ch2']));
+    expect(() =>
+      readBookArchive(book, 'huge.epub', { maxGeneratedMarkdownBytes: 100 }),
+    ).toThrow(EPUB_TOO_LARGE_MESSAGE);
   });
 
   it('rejects a DRM-protected EPUB with a clear Arabic message', () => {
@@ -402,9 +529,21 @@ describe('EPUB import', () => {
 
     const parsed = parseBook(imported.markdown, 'book.md');
     const html = parsed.chapters.flatMap((chapter) => chapter.blocks.map((block) => block.html)).join('\n');
-    for (const payload of ['<script', 'onerror', 'javascript:', 'onload', 'url(']) {
+    // The final HTML is what the WebView paints, so the dangerous element families must be absent
+    // there too — not only from the intermediate Markdown.
+    for (const payload of [
+      '<script',
+      '<svg',
+      '<iframe',
+      '<object',
+      'onerror',
+      'javascript:',
+      'onload',
+      'url(',
+    ]) {
       expect(html).not.toContain(payload);
     }
+    expect(html).toContain('رَابِطٌ');
   });
 
   it('turns a <p class="chapter-title"> into the chapter heading (Arabic EPUBs)', () => {

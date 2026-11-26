@@ -25,6 +25,18 @@ export const EPUB_DRM_MESSAGE =
   'الكتاب ده محمي بـ DRM، ومقدرناش نستورده. جرّب نسخة من غير حماية.';
 export const EPUB_INVALID_MESSAGE =
   'ملف EPUB مش سليم: ملقيناش فيه محتوى الكتاب. جرّب ملف تاني أو حوّله لـ .md.';
+export const EPUB_SPINE_TOO_LONG_MESSAGE =
+  'الكتاب ده فيه فصول أكتر من المسموح بيه، ومقدرناش نستورده.';
+export const EPUB_TOO_LARGE_MESSAGE =
+  'الكتاب ده كبير أوي بعد التحويل لنص، ومقدرناش نستورده.';
+
+/**
+ * Ceilings on what one EPUB may generate. Decompression limits bound the *input*; these bound the
+ * *output* so a spine that repeats an item thousands of times cannot multiply a chapter into the
+ * final Markdown after the archive itself passed every check.
+ */
+export const MAX_EPUB_SPINE_ITEMS = 2000;
+export const MAX_EPUB_MARKDOWN_BYTES = 32 * 1024 * 1024;
 
 export type ArchiveAsset = {
   /** Path relative to the book folder, always `assets/<name>`. */
@@ -42,6 +54,10 @@ export type ImportedArchiveBook = {
 
 export type ArchiveImportOptions = {
   limits?: Partial<ArchiveLimits>;
+  /** Max spine `itemref`s an EPUB may declare (before de-duplication). */
+  maxSpineItems?: number;
+  /** Max Markdown bytes an EPUB may generate across all chapters. */
+  maxGeneratedMarkdownBytes?: number;
 };
 
 export function archiveExtension(fileName: string): 'zip' | 'epub' | null {
@@ -344,7 +360,11 @@ function assertNotDrm(entries: Map<string, Uint8Array>): void {
   if (!onlyFonts) throw new ArchiveError(EPUB_DRM_MESSAGE);
 }
 
-function readEpubBook(entries: Map<string, Uint8Array>, fileName: string): ImportedArchiveBook {
+function readEpubBook(
+  entries: Map<string, Uint8Array>,
+  fileName: string,
+  limits: { maxSpineItems: number; maxGeneratedMarkdownBytes: number },
+): ImportedArchiveBook {
   assertNotDrm(entries);
 
   const containerBytes = findEntryBySuffix(entries, 'META-INF/container.xml');
@@ -383,13 +403,26 @@ function readEpubBook(entries: Map<string, Uint8Array>, fileName: string): Impor
     .map((item) => item.attrs.idref ?? '')
     .filter(Boolean);
 
+  // A spine may legally repeat an item, but every repeat would be converted and appended again,
+  // multiplying the output after the decompression budgets were already spent. Convert each
+  // document once, in spine order, and refuse a spine that is absurdly long up front.
+  if (spineIds.length > limits.maxSpineItems) {
+    throw new ArchiveError(EPUB_SPINE_TOO_LONG_MESSAGE);
+  }
+  const uniqueSpineIds = [...new Set(spineIds)];
+
   const images = collectImageAssets(entries);
   const assets = images.assets;
 
   const chapters: string[] = [];
-  for (const [index, idref] of spineIds.entries()) {
+  let generatedBytes = 0;
+  for (const [index, idref] of uniqueSpineIds.entries()) {
     const item = manifestItems.find((candidate) => candidate.id === idref);
     if (!item || !item.href) continue;
+    // EPUB 3 marks the navigation document with `properties="nav"`; it is a table of contents,
+    // never a chapter, even when a broken writer also lists it in the spine.
+    const properties = item.properties.toLowerCase().split(/\s+/).filter(Boolean);
+    if (properties.includes('nav')) continue;
     const isHtml =
       item.mediaType === '' ||
       item.mediaType === 'application/xhtml+xml' ||
@@ -422,6 +455,10 @@ function readEpubBook(entries: Map<string, Uint8Array>, fileName: string): Impor
       const chapterTitle =
         converted.title ?? (rawTitle ? htmlToPlainText(rawTitle) : null) ?? `الفصل ${index + 1}`;
       chapters.push(`# ${chapterTitle}\n\n${markdown}`);
+    }
+    generatedBytes += chapters[chapters.length - 1]!.length;
+    if (generatedBytes > limits.maxGeneratedMarkdownBytes) {
+      throw new ArchiveError(EPUB_TOO_LARGE_MESSAGE);
     }
   }
 
@@ -456,10 +493,14 @@ export function readBookArchive(
   options: ArchiveImportOptions = {},
 ): ImportedArchiveBook {
   const ext = archiveExtension(fileName);
+  const epubLimits = {
+    maxSpineItems: options.maxSpineItems ?? MAX_EPUB_SPINE_ITEMS,
+    maxGeneratedMarkdownBytes: options.maxGeneratedMarkdownBytes ?? MAX_EPUB_MARKDOWN_BYTES,
+  };
 
   if (ext === 'epub') {
     const entries = readZipEntries(data, { limits: options.limits, accept: acceptBookEntry });
-    return readEpubBook(entries, fileName);
+    return readEpubBook(entries, fileName, epubLimits);
   }
   if (ext === 'zip') {
     const entries = readZipEntries(data, { limits: options.limits, accept: acceptBookEntry });
@@ -469,7 +510,7 @@ export function readBookArchive(
   // No usable extension (Android providers sometimes hand over a generic name): sniff the container.
   const entries = readZipEntries(data, { limits: options.limits, accept: acceptBookEntry });
   if (findEntryBySuffix(entries, 'META-INF/container.xml')) {
-    return readEpubBook(entries, fileName);
+    return readEpubBook(entries, fileName, epubLimits);
   }
   return readZipBook(entries, fileName);
 }

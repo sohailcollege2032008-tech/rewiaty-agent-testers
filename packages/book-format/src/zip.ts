@@ -35,6 +35,16 @@ export const MAX_ARCHIVE_ENTRY_BYTES = 64 * 1024 * 1024;
 export const MAX_ARCHIVE_COMPRESSION_RATIO = 200;
 const TINY_ENTRY_BYTES = 1024 * 1024;
 
+/**
+ * How much compressed input is handed to fflate per `push` call.
+ *
+ * Why (tech): `Unzip.push(data, true)` keeps the whole archive alive and lets a single compressed
+ * chunk inflate unchecked until the byte counter throws. Feeding bounded slices means the counter
+ * runs after every 64 KiB of input, so a bomb is stopped within one chunk instead of after the
+ * entry (or the archive) has already been materialised.
+ */
+export const UNZIP_PUSH_CHUNK_BYTES = 64 * 1024;
+
 export type ArchiveLimits = {
   maxUncompressedBytes: number;
   maxEntries: number;
@@ -129,6 +139,9 @@ type DeclaredEntry = {
   uncompressedBytes: number;
 };
 
+/** What the central-directory scan authorised us to inflate, by NFC-normalised name. */
+type CentralDirectory = Set<string>;
+
 /**
  * Walk the central directory without inflating anything and reject an archive whose *declared*
  * shape already exceeds the budget. The local headers are ignored on purpose: a bomb author can
@@ -138,7 +151,7 @@ function readCentralDirectory(
   data: Uint8Array,
   limits: ArchiveLimits,
   accept: (name: string) => boolean,
-): DeclaredEntry[] {
+): CentralDirectory {
   if (data.length < 22) throw new ArchiveError(UNREADABLE_ARCHIVE_MESSAGE);
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
 
@@ -164,6 +177,7 @@ function readCentralDirectory(
   if (centralOffset + centralSize > data.length) throw new ArchiveError(UNREADABLE_ARCHIVE_MESSAGE);
 
   const entries: DeclaredEntry[] = [];
+  const accepted: CentralDirectory = new Set();
   const end = centralOffset + centralSize;
   let cursor = centralOffset;
   let declaredTotal = 0;
@@ -192,6 +206,7 @@ function readCentralDirectory(
     const name = assertSafeArchiveEntryName(rawName);
 
     if (!name.endsWith('/') && accept(name)) {
+      if (accepted.has(name)) throw new ArchiveError(ARCHIVE_TOO_MANY_FILES_MESSAGE);
       if (uncompressedBytes > limits.maxEntryBytes) throw new ArchiveError(ARCHIVE_TOO_LARGE_MESSAGE);
       declaredTotal += uncompressedBytes;
       if (declaredTotal > limits.maxUncompressedBytes) {
@@ -204,12 +219,13 @@ function readCentralDirectory(
       ) {
         throw new ArchiveError(ARCHIVE_TOO_LARGE_MESSAGE);
       }
+      accepted.add(name);
     }
     entries.push({ name, compressedBytes, uncompressedBytes });
     cursor = nameStart + nameLength + extraLength + commentLength;
   }
 
-  return entries;
+  return accepted;
 }
 
 /**
@@ -223,9 +239,10 @@ export function readZipEntries(data: Uint8Array, options: ReadZipOptions = {}): 
   const limits = resolveLimits(options.limits);
   const accept = options.accept ?? (() => true);
 
-  readCentralDirectory(data, limits, accept);
+  const central = readCentralDirectory(data, limits, accept);
 
   const entries = new Map<string, Uint8Array>();
+  const inflated = new Set<string>();
   let actualTotal = 0;
 
   const unzip = new Unzip();
@@ -235,6 +252,14 @@ export function readZipEntries(data: Uint8Array, options: ReadZipOptions = {}): 
     // Skipping means *not* calling `start()`: fflate then walks the compressed bytes without
     // inflating them, so an entry we would discard can never cost the heap anything.
     if (name.endsWith('/') || !accept(name)) return;
+
+    // A local header that the central directory does not list is a hand-crafted archive: the
+    // declared-size scan never saw it, so inflating it would bypass every budget above.
+    if (!central.has(name)) throw new ArchiveError(UNREADABLE_ARCHIVE_MESSAGE);
+    // The entry-count limit must apply to what is actually inflated, not only to the declared count.
+    if (inflated.has(name)) throw new ArchiveError(ARCHIVE_TOO_MANY_FILES_MESSAGE);
+    if (inflated.size >= limits.maxEntries) throw new ArchiveError(ARCHIVE_TOO_MANY_FILES_MESSAGE);
+    inflated.add(name);
 
     const chunks: Uint8Array[] = [];
     let entryBytes = 0;
@@ -268,7 +293,12 @@ export function readZipEntries(data: Uint8Array, options: ReadZipOptions = {}): 
   };
 
   try {
-    unzip.push(data, true);
+    // Bounded input slices: the byte counter above runs between chunks, so a bomb is stopped
+    // without first materialising the whole entry (or keeping the whole archive reachable).
+    for (let offset = 0; offset < data.length; offset += UNZIP_PUSH_CHUNK_BYTES) {
+      const end = Math.min(offset + UNZIP_PUSH_CHUNK_BYTES, data.length);
+      unzip.push(data.subarray(offset, end), end === data.length);
+    }
   } catch (err) {
     if (err instanceof ArchiveError) throw err;
     throw new ArchiveError(UNREADABLE_ARCHIVE_MESSAGE);
