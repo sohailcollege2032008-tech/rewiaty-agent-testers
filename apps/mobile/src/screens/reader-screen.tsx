@@ -83,6 +83,7 @@ import type {
   ReaderInsets,
   ReaderSettings,
   RNToWebMessage,
+  ScenePlaceholder,
   SelectionInfo,
   SelectionRect,
   TocEntry,
@@ -116,6 +117,24 @@ export const HUD_HINT_TEXT = 'اضغط في نص الصفحة عشان تظهر 
 
 // `spread` comes from the engine's ReaderSettings ('auto' | 'single').
 type EngineSettingsPayload = Partial<ReaderSettings>;
+
+/**
+ * F46 — the only wording a queued scene may show. Image generation is offline-first for now:
+ * the placeholder waits in the queue instead of flashing a red provider error.
+ */
+export const SCENE_QUEUED_MESSAGE_AR = 'في قائمة الانتظار';
+
+/** Applies one patch to one scene, keeping the array identity stable for untouched entries. */
+export function applyScenePatch(
+  scenes: readonly ScenePlaceholder[],
+  sceneId: string,
+  patch: Partial<ScenePlaceholder>,
+): { scenes: ScenePlaceholder[]; updated: ScenePlaceholder } | null {
+  const index = scenes.findIndex((scene) => scene.id === sceneId);
+  if (index === -1) return null;
+  const updated: ScenePlaceholder = { ...scenes[index]!, ...patch };
+  return { scenes: scenes.map((scene, i) => (i === index ? updated : scene)), updated };
+}
 
 function isReaderDocumentUrl(url: string, baseUrl: string): boolean {
   if (!url) return false;
@@ -165,6 +184,7 @@ export function ReaderScreen() {
   const currentAnchorRef = useRef<Anchor | null>(null);
   const bookmarkItemsRef = useRef<BookmarkItem[]>([]);
   const highlightsRef = useRef<HighlightItem[]>([]);
+  const scenesRef = useRef<ScenePlaceholder[]>([]);
   const bookRef = useRef<Book | null>(null);
   const readingStatsRef = useRef<ReadingStats | null>(null);
   const readingTrackerRef = useRef<ReadingSessionTracker | null>(null);
@@ -394,6 +414,8 @@ export function ReaderScreen() {
         bookmarkItemsRef.current = initialBookmarks;
         const initialHighlights = normalizeHighlightItems(bundle.state.highlights, bundle.book);
         highlightsRef.current = initialHighlights;
+        // F46: scene placeholders are optional in every saved state written before them.
+        scenesRef.current = bundle.state.scenes ?? [];
         readingTrackerRef.current = new ReadingSessionTracker({
           chapters: bundle.book.chapters.map((chapter) => ({
             id: chapter.id,
@@ -463,6 +485,7 @@ export function ReaderScreen() {
     };
     const initialInsets = engineInsetsRef.current;
     prevSentInsetsRef.current = initialInsets;
+    const scenes = scenesRef.current;
     postToEngine({
       type: 'load',
       book,
@@ -470,6 +493,7 @@ export function ReaderScreen() {
       settings: loadSettings,
       insets: initialInsets,
       highlights: resolveHighlightsForBook(book, highlightsRef.current),
+      ...(scenes.length > 0 ? { scenePlaceholders: scenes } : {}),
       ...(fontBaseUrlRef.current ? { fontBaseUrl: fontBaseUrlRef.current } : {}),
     });
   }, [webLoaded, book, effectiveMaxWidth, layout.isTabletLandscape, postToEngine]);
@@ -543,6 +567,30 @@ export function ReaderScreen() {
     suppressTapUntilRef.current = Date.now() + SETTINGS_CLOSE_TAP_COOLDOWN_MS;
     postToEngine({ type: 'suppress-taps', durationMs: SETTINGS_CLOSE_TAP_COOLDOWN_MS });
   }, [postToEngine]);
+
+  /**
+   * F46 — every scene interaction (prompt edit, collapse, generate) follows the same path:
+   * update the in-memory model, echo the placeholder back to the engine so the frame repaints,
+   * and persist the whole state so the change survives closing the book.
+   */
+  const persistScenes = useCallback(
+    (nextScenes: ScenePlaceholder[], updated: ScenePlaceholder) => {
+      scenesRef.current = nextScenes;
+      postToEngine({ type: 'scene-update', placeholder: updated });
+
+      if (!bookId) return;
+      const base = latestStateRef.current;
+      if (!base) return;
+      const nextState: BookReaderState = {
+        ...base,
+        scenes: nextScenes,
+        updatedAt: Date.now(),
+      };
+      latestStateRef.current = nextState;
+      debouncedSave(bookId, nextState);
+    },
+    [bookId, debouncedSave, postToEngine],
+  );
 
   const handleWebViewMessage = useCallback(
     (event: WebViewMessageEvent) => {
@@ -663,12 +711,38 @@ export function ReaderScreen() {
         case 'image-rendered':
           setImageProof({ count: parsed.count, width: parsed.width, height: parsed.height });
           break;
+        case 'scene-prompt-edit': {
+          const result = applyScenePatch(scenesRef.current, parsed.sceneId, {
+            prompt: parsed.prompt,
+          });
+          if (result) persistScenes(result.scenes, result.updated);
+          break;
+        }
+        case 'scene-toggle-collapse': {
+          const result = applyScenePatch(scenesRef.current, parsed.sceneId, {
+            collapsed: parsed.collapsed,
+          });
+          if (result) persistScenes(result.scenes, result.updated);
+          break;
+        }
+        case 'scene-generate': {
+          // Offline-first: the scene waits in the queue. No red error, no provider text.
+          const result = applyScenePatch(scenesRef.current, parsed.sceneId, {
+            status: 'queued',
+            errorMessage: undefined,
+          });
+          if (result) {
+            persistScenes(result.scenes, result.updated);
+            showToast(SCENE_QUEUED_MESSAGE_AR);
+          }
+          break;
+        }
         case 'error':
           setLoadError(readerErrorMessage(parsed.message));
           break;
       }
     },
-    [bookId, debouncedSave, handleCloseSettings],
+    [bookId, debouncedSave, handleCloseSettings, persistScenes],
   );
 
   const handleBack = useCallback(() => {

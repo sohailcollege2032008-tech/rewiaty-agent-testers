@@ -486,6 +486,30 @@ export function LibraryScreen() {
           <MissionControlBadge activeCount={missionControl.activeCount} theme={themeId} />
 
           <Pressable
+            testID="library-ai-settings-button"
+            onPress={() => router.push('/ai-settings')}
+            hitSlop={4}
+            style={({ pressed }) => [
+              styles.aiSettingsBtn,
+              {
+                borderColor: palette.border,
+                backgroundColor: pressed ? palette.accentSoft : palette.surface,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="إعدادات الذكاء الاصطناعي"
+          >
+            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M12 3.2l1.9 5.1 5.1 1.9-5.1 1.9L12 17.2l-1.9-5.1L5 10.2l5.1-1.9L12 3.2z"
+                stroke={palette.accent}
+                strokeWidth={1.6}
+                strokeLinejoin="round"
+              />
+            </Svg>
+          </Pressable>
+
+          <Pressable
             testID="library-search-button"
             onPress={() => router.push('/search')}
             hitSlop={6}
@@ -760,6 +784,15 @@ const styles = StyleSheet.create({
   searchBtn: {
     width: 38,
     height: 38,
+    borderRadius: RADIUS.button,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiSettingsBtn: {
+    // 40 × 40 + 4 hitSlop on each side = a 48dp effective touch target.
+    width: 40,
+    height: 40,
     borderRadius: RADIUS.button,
     borderWidth: 1,
     alignItems: 'center',

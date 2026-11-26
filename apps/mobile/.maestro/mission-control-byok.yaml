@@ -1,0 +1,67 @@
+appId: com.rewiaty.app
+---
+# Phase 4 — Mission Control + BYOK settings.
+# The journey proves the two calm entry points exist and that the not-yet-shipped server
+# save option is honestly labelled «قريباً» instead of pretending to work.
+- launchApp
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+- takeScreenshot: "01-library"
+
+# 1) Mission Control: badge -> screen -> pause a running demo job -> resume it -> back.
+- assertVisible:
+    id: "mission-control-badge"
+- takeScreenshot: "02-mission-badge"
+- tapOn:
+    id: "mission-control-badge"
+- extendedWaitUntil:
+    visible:
+      id: "mission-control-screen"
+    timeout: 10000
+- takeScreenshot: "03-mission-control"
+# The demo seed always carries one running tashkeel job on «حجر الماء».
+- assertVisible:
+    id: "job-pause-job_tashkeel_water"
+- tapOn:
+    id: "job-pause-job_tashkeel_water"
+- extendedWaitUntil:
+    visible:
+      id: "job-resume-job_tashkeel_water"
+    timeout: 5000
+- takeScreenshot: "04-job-paused"
+- tapOn:
+    id: "job-resume-job_tashkeel_water"
+- extendedWaitUntil:
+    visible:
+      id: "job-pause-job_tashkeel_water"
+    timeout: 5000
+- takeScreenshot: "05-job-resumed"
+- tapOn:
+    id: "mission-control-back-button"
+- extendedWaitUntil:
+    visible:
+      id: "library-screen"
+    timeout: 10000
+
+# 2) AI settings (BYOK): library entry point -> card visible -> server save is «قريباً».
+- assertVisible:
+    id: "library-ai-settings-button"
+- takeScreenshot: "06-library-ai-entry"
+- tapOn:
+    id: "library-ai-settings-button"
+- extendedWaitUntil:
+    visible:
+      id: "byok-settings-card"
+    timeout: 10000
+- assertVisible:
+    id: "byok-mode-server-saved"
+- assertVisible: "قريباً"
+- takeScreenshot: "07-byok-settings"
+- tapOn:
+    id: "ai-settings-back"
+- extendedWaitUntil:
+    visible:
+      id: "library-screen"
+    timeout: 10000
+- takeScreenshot: "08-back-to-library"

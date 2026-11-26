@@ -88,3 +88,9 @@ flows:
     target: release-apk
     run: "bash scripts/ci-flows.sh highlight-add"
     artifact: ".factory/evidence/latest/apk/app.apk"
+  - id: mission-control-byok
+    who: "قارئ عايز يشوف شغل الـ AI ويربط مفتاحه"
+    steps: "المكتبة ← بادج مركز المهام ← شاشة المهام ← إيقاف مهمة جارية ثم استئنافها ← رجوع ← زر إعدادات الذكاء الاصطناعي ← كارت BYOK ظاهر ← خيار الحفظ على السيرفر مكتوب عليه «قريباً» ومش شغال"
+    target: release-apk
+    run: "bash scripts/ci-flows.sh mission-control-byok"
+    artifact: ".factory/evidence/latest/apk/app.apk"

@@ -379,6 +379,25 @@ describe('LibraryScreen', () => {
     });
   });
 
+  it('opens AI settings from the library header (BYOK entry point)', async () => {
+    const { getByTestId } = await render(<LibraryScreen />);
+
+    await waitFor(() => {
+      expect(getByTestId('library-ai-settings-button')).toBeTruthy();
+    });
+
+    const button = getByTestId('library-ai-settings-button');
+    expect(button.props.accessibilityLabel).toBe('إعدادات الذكاء الاصطناعي');
+    expect(button.props.accessibilityRole).toBe('button');
+
+    await fireEvent.press(button);
+
+    expect(mockPush).toHaveBeenCalledWith('/ai-settings');
+    // The sample-book import invariant must survive the extra header action.
+    expect(getByTestId('import-book-button')).toBeTruthy();
+    expect(getByTestId('library-brand-name')).toBeTruthy();
+  });
+
   it('gives primary library buttons >= 48dp effective touch targets', async () => {
     const { getByTestId } = await render(<LibraryScreen />);
 
@@ -404,7 +423,7 @@ describe('LibraryScreen', () => {
       return { width: w + left + right, height: h + top + bottom };
     };
 
-    for (const id of ['import-book-button', 'continue-reading-button']) {
+    for (const id of ['import-book-button', 'continue-reading-button', 'library-ai-settings-button']) {
       const box = measureTouchBox(getByTestId(id));
       expect(box.height).toBeGreaterThanOrEqual(48);
       expect(box.width).toBeGreaterThanOrEqual(48);
