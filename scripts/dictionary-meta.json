@@ -1,0 +1,19 @@
+{
+  "source": "arwiktionary",
+  "source_url": "https://dumps.wikimedia.org/arwiktionary/20261101/arwiktionary-20261101-pages-articles.xml.bz2",
+  "dump_date": "2026-11-01",
+  "dump_sha256": "e5330840bb4650e3708b8f45c5f020ce79934a8cba8ec8b6fdf55d73fe22c63f",
+  "license": "CC BY-SA 4.0",
+  "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "attribution_ar": "بيانات القاموس من مساهمي ويكاموس العربي، مرخّصة بموجب المشاع الإبداعي CC BY-SA 4.0.",
+  "attribution_en": "Dictionary data by Arabic Wiktionary contributors, licensed under CC BY-SA 4.0.",
+  "entry_count": 15735,
+  "sqlite_size_bytes": 2592768,
+  "gzip_size_bytes": 873070,
+  "delivery_mode": "bundled",
+  "quality_gate": {
+    "distinct_word_coverage_pct": 57.5,
+    "token_coverage_pct": 72.1,
+    "passed": true
+  }
+}

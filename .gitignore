@@ -12,3 +12,9 @@ samples/long-ar.md
 .factory/evidence/
 
 .factory/features.html
+
+# F49 offline dictionary dumps & generated SQLite DBs
+*.sqlite
+*.sqlite3
+*.xml.bz2
+apps/mobile/assets/dictionary/*.sqlite
