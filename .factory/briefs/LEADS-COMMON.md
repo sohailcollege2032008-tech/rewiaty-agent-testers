@@ -21,6 +21,12 @@
 7. **الجهاز:** أي حاجة بتظهر في التطبيق لازم رحلة Maestro في `.factory/flows.yaml` وتعدّي على release APK في ريبو `rewiaty-agent-testers` (GitHub Actions). ممنوع build موبايل على السيرفر غير بـ `mobile-run`، ومرة واحدة في الوقت.
 8. PR صغير لكل فيتشر أو جزء منطقي (أقل من ~800 سطر لو ينفع). فرع `feat/<lane>-<feature>`.
 
+## الاختبارات الزمنية (قرار وحدة التحكم في السيرفر 2026-11-27)
+- الفشل العشوائي في اختبارات reader-engine الزمنية (s5/s6، وr3-*، وengine (a)، وhighlights long-press، وsearch-index في jest) كان سببه **حمل السيرفر**: 3 worktrees بيشغّلوا الـ suite مع بعض + سكربت `t3-cache-warm` كان عالق. ده اتصلّح.
+- **ممنوع تعديل أي budget زمني** (ms، timeout، سقف) بسبب فشل من النوع ده. أي PR بيوسّع حد زمني من غير دليل إن الكود نفسه اتغيّر ← مرفوض.
+- `gates` بقى بيشغّل الـ e2e جوه قفل واحد لكل worktrees روايتي. ولو شغّلت بإيدك: `with-e2e-lock npm run test:e2e` (أو `with-e2e-lock npx playwright test ...`). ممنوع تشغيل Playwright للمحرك من غير القفل.
+- اختبار زمني فشل؟ أعد تشغيله جوه القفل. لو فشل تاني على الـ PR وعدّى على `main` بنفس الطريقة، يبقى regression حقيقي.
+
 ## حدود
 - ممنوع push على `main` مباشرة. وممنوع دمج.
 - ممنوع أسرار في git أو في البريف. المفاتيح من `vault_search` / `vault_run`.
