@@ -745,6 +745,8 @@ describe('ReaderScreen', () => {
     expect(hudChapter.props.ellipsizeMode).toBe('tail');
     const hudCounter = getByTestId('reader-page-counter');
     expect(hudCounter.props.numberOfLines).toBe(1);
+    // P2 a11y (QA r1) Issue #50: a page turn is announced once the counter settles.
+    expect(hudCounter.props.accessibilityLiveRegion).toBe('polite');
     expect(
       (ReactNative.StyleSheet.flatten(hudCounter.props.style) as Record<string, unknown>).flexShrink,
     ).toBe(0);

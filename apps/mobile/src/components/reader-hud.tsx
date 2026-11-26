@@ -419,6 +419,7 @@ export function ReaderHud({
             <Text
               testID="reader-page-counter"
               numberOfLines={1}
+              accessibilityLiveRegion="polite"
               style={[
                 styles.pageCounter,
                 { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },

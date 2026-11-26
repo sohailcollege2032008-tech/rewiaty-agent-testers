@@ -74,6 +74,19 @@ body {
   touch-action: pan-y;
 }
 
+/* Announced by TalkBack (Android) / VoiceOver (iOS) but never painted. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .reader-stage {
   position: relative;
   width: var(--stage-width, min(100%, var(--max-width)));
@@ -248,9 +261,22 @@ body {
   color: var(--accent-color);
   font-size: 0.95em;
   line-height: 1.6;
+  /* A scene break is a single decorative line. It must never be split, and it must never
+     pull a column break right after itself: that is what left `✦ ✦ ✦` alone on an otherwise
+     empty page when the break landed near the bottom of a column. */
   break-inside: avoid;
+  break-after: avoid;
+  -webkit-column-break-inside: avoid;
+  -webkit-column-break-after: avoid;
   text-indent: 0;
   opacity: 0.8;
+}
+
+/* When the scene break closes a chapter there is nothing after it to carry the page, so the
+   break itself has to stay with the paragraph before it instead of opening a new column. */
+.block-break:last-child {
+  break-before: avoid;
+  -webkit-column-break-before: avoid;
 }
 
 .block-quote {
@@ -419,8 +445,21 @@ body {
   color: var(--muted-color);
   font-size: 22px;
   line-height: 1;
+  /* Accessibility: the dismiss control has to be reachable with a thumb, not just a cursor. */
+  min-width: 48px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 4px 8px;
+  border-radius: 12px;
   cursor: pointer;
+}
+
+.footnote-close:focus-visible,
+.footnote-popover:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
 }
 
 .footnote-body p {

@@ -302,4 +302,81 @@ test.describe('Footnote popover', () => {
       .poll(async () => latestPage(page), { timeout: 5_000 })
       .toBe((pageBefore as number) + 1);
   });
+
+  test('the dialog traps focus, has an Arabic label, a 48px close target and restores focus', async ({
+    page,
+  }) => {
+    await mountEngine(page);
+    await placeRefMidPage(page);
+
+    // Focus the reference first so "restore focus" has an observable destination.
+    const opened = await page.evaluate(() => {
+      const link = document.querySelector<HTMLElement>('sup.fn-ref a');
+      if (!link) return false;
+      link.setAttribute('tabindex', '0');
+      link.focus();
+      const rect = link.getBoundingClientRect();
+      const fire = (type: string, buttons: number) =>
+        link.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            pointerId: 31,
+            pointerType: 'touch',
+            isPrimary: true,
+            clientX: rect.x + rect.width / 2,
+            clientY: rect.y + rect.height / 2,
+            button: 0,
+            buttons,
+          }),
+        );
+      fire('pointerdown', 1);
+      fire('pointerup', 0);
+      return true;
+    });
+    expect(opened).toBe(true);
+
+    await expect(page.locator('#footnote-backdrop')).toBeVisible();
+    // The dialog owns focus while open, and the dismiss control speaks Arabic to TalkBack.
+    await expect(page.locator('#footnote-popover')).toHaveAttribute('tabindex', '-1');
+    await expect(page.locator('#footnote-close')).toHaveAttribute('aria-label', 'إغلاق الحاشية');
+    expect(
+      await page.evaluate(() => document.activeElement?.id ?? ''),
+    ).toBe('footnote-close');
+
+    const closeBox = await page.locator('#footnote-close').boundingBox();
+    expect(closeBox?.width ?? 0).toBeGreaterThanOrEqual(44);
+    expect(closeBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#footnote-backdrop')).toBeHidden();
+    // Focus went back to the element the reader was on, not to the document body.
+    expect(
+      await page.evaluate(() => {
+        const active = document.activeElement as HTMLElement | null;
+        return { tag: active?.tagName ?? '', isFnRef: Boolean(active?.closest('[data-fn]')) };
+      }),
+    ).toEqual({ tag: 'A', isFnRef: true });
+  });
+
+  test('the live region announces the settled page, once per page', async ({ page }) => {
+    await mountEngine(page);
+    const before = await messageCount(page);
+    await loadBook(page, buildFootnoteBook(40, 40), before);
+    await expect(page.locator('#reader-live-region')).toHaveAttribute('aria-live', 'polite');
+    await expect(page.locator('#reader-live-region')).toHaveAttribute('role', 'status');
+
+    const firstPage = await latestPage(page);
+    expect(firstPage).not.toBeNull();
+    await expect(page.locator('#reader-live-region')).toHaveText(
+      new RegExp(`^صفحة ${firstPage} من \\d+$`),
+    );
+
+    // Settle onto page 2 through the bridge (the same path a TOC tap uses).
+    await page.evaluate(() => {
+      window.postMessage(JSON.stringify({ type: 'goto', page: 2 }), '*');
+    });
+    await expect.poll(async () => latestPage(page), { timeout: 5_000 }).toBe(2);
+    await expect(page.locator('#reader-live-region')).toHaveText(/^صفحة 2 من \d+$/);
+  });
 });

@@ -65,9 +65,12 @@ export class ReaderEngine {
   private readonly stageEl: HTMLElement;
   private readonly trackEl: HTMLElement;
   private readonly footnoteBackdrop: HTMLElement;
+  private readonly footnotePopover: HTMLElement;
   private readonly footnoteTitle: HTMLElement;
   private readonly footnoteBody: HTMLElement;
   private readonly footnoteCloseBtn: HTMLElement;
+  /** Visually hidden live region that announces settled page turns to TalkBack/VoiceOver. */
+  private readonly liveRegion: HTMLElement;
 
   private readonly paginator: Paginator;
   /** F46 — the structured prompt editor, mounted on #reader-root (never in the page flow). */
@@ -123,6 +126,13 @@ export class ReaderEngine {
    * real dismiss, because any new gesture starts with a fresh `pointerdown` that clears it.
    */
   private footnoteOpenPointerId: number | null = null;
+  /** Element that had focus when the footnote dialog opened; restored when it closes. */
+  private footnoteReturnFocus: HTMLElement | null = null;
+  /**
+   * Last page announced through `#reader-live-region`. Background pagination re-emits the same
+   * position many times while it measures; deduping keeps TalkBack from repeating the page.
+   */
+  private lastAnnouncedPage = '';
   /**
    * The first position of a book is withheld until the paginator knows the exact page
    * map, so the reader never sees a page number (or a total) that is about to move.
@@ -134,9 +144,11 @@ export class ReaderEngine {
     this.stageEl = document.getElementById('reader-stage')!;
     this.trackEl = document.getElementById('reader-track')!;
     this.footnoteBackdrop = document.getElementById('footnote-backdrop')!;
+    this.footnotePopover = document.getElementById('footnote-popover')!;
     this.footnoteTitle = document.getElementById('footnote-title')!;
     this.footnoteBody = document.getElementById('footnote-body')!;
     this.footnoteCloseBtn = document.getElementById('footnote-close')!;
+    this.liveRegion = document.getElementById('reader-live-region')!;
 
     this.paginator = new Paginator(this.rootEl, this.stageEl, this.trackEl, DEFAULT_SETTINGS, {
       onBackgroundProgress: () => {
@@ -939,10 +951,26 @@ export class ReaderEngine {
     if (!pos) return;
     // A number is on screen now; stop withholding the rest of the session's reports.
     this.awaitingExactPosition = false;
+    this.announcePosition(pos.page, pos.pageCount);
     postToHost({
       type: 'position',
       ...pos,
     });
+  }
+
+  /**
+   * Tell assistive tech which page the reader landed on.
+   *
+   * Called from `emitPosition`, which only fires on a *settled* move (a drag release, a
+   * keyboard turn, a goto) — never per pointermove — so a swipe announces once. The key
+   * dedupes the stream of identical positions the background paginator emits while it
+   * refines the page map, so TalkBack does not repeat the same page.
+   */
+  private announcePosition(page: number, pageCount: number): void {
+    const key = `${page}/${pageCount}`;
+    if (key === this.lastAnnouncedPage) return;
+    this.lastAnnouncedPage = key;
+    this.liveRegion.textContent = `صفحة ${page} من ${pageCount}`;
   }
 
   private emitToc(): void {
@@ -1030,11 +1058,26 @@ export class ReaderEngine {
     this.footnoteBackdrop.setAttribute('dir', dir);
     this.footnoteTitle.textContent = dir === 'rtl' ? `حاشية [${fnId}]` : `Footnote [${fnId}]`;
     this.footnoteBody.innerHTML = blocks.map((b) => `<p>${b.html}</p>`).join('');
+    // A dialog is a focus context: remember where the reader was so closing it puts the
+    // caret back exactly there (keyboard/Switch Access users otherwise lose their place).
+    const active = document.activeElement;
+    this.footnoteReturnFocus = active instanceof HTMLElement && active !== document.body ? active : null;
     this.footnoteBackdrop.hidden = false;
+    this.footnoteCloseBtn.focus();
   }
 
   private closeFootnote(): void {
+    if (this.footnoteBackdrop.hidden) return;
     this.footnoteBackdrop.hidden = true;
+    const target = this.footnoteReturnFocus;
+    this.footnoteReturnFocus = null;
+    if (target && target.isConnected) {
+      target.focus();
+    } else if (this.footnotePopover.contains(document.activeElement)) {
+      // The remembered node may be gone (a page turn remounted the chapter). Never leave
+      // focus on a hidden dialog: hand it back to the document instead.
+      this.footnoteCloseBtn.blur();
+    }
   }
 }
 

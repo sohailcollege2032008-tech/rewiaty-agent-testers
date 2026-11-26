@@ -178,7 +178,7 @@ describe('HighlightToolbar RTL physical coordinate isolation', () => {
 
     expect(containerStyle.direction).toBe('ltr');
     expect(toolbarStyle.direction).toBeUndefined();
-    // centerX = 300, toolbarWidth = 264 -> left = min(400-264-12=124, 300-132=168) = 124
-    expect(toolbarStyle.left).toBe(124);
+    // centerX = 300, toolbarWidth = 292 -> left = min(400-292-12=96, 300-146=154) = 96
+    expect(toolbarStyle.left).toBe(96);
   });
 });

@@ -154,4 +154,16 @@ describe('reader-theme registry, migration & responsive layout', () => {
       }
     }
   });
+
+  it('keeps onAccent readable on accent (and danger) in every theme — WCAG AA ≥ 4.5:1', () => {
+    // P2 a11y (QA r1): burnt-paper drew #FAF3EA on #DF7863 = 2.72:1 and oled-crimson drew
+    // #F8EFE8 on #D46A5A = 3.08:1 for the 11.5px active-calendar day. Small text needs 4.5:1.
+    for (const opt of THEME_OPTIONS) {
+      const tokens = getAppThemeTokens(opt.id);
+      const accentRatio = contrastRatio(tokens.onAccent, tokens.accent);
+      expect(accentRatio).toBeGreaterThanOrEqual(4.5);
+      // The other onAccent caller (BYOK delete confirmation) paints it on `danger`.
+      expect(contrastRatio(tokens.onAccent, tokens.danger)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
 });
