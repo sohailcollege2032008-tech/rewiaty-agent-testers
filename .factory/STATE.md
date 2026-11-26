@@ -1,5 +1,5 @@
 # STATE — روايتي
-- **المرحلة:** 1 (القارئ) · Build · آخر تحديث 2026-11-24
+- **المرحلة:** 1 (القارئ) · Build · آخر تحديث 2026-11-26
 - **الموديلات:** التنفيذ على Hydrogen، والمهام الأقل على OpenCode deepseek، والمراجعة على Codex، والدمج على Claude
 | Milestone | الحالة | الثريد / PR |
 |---|---|---|
@@ -10,6 +10,17 @@
 | M3 Settings | ✅ مدموج #6 (64d4566) | Hydrogen + إصلاحات deepseek، Codex approve |
 | M4 Release+QA | ⏳ | |
 | Book Lab (أمواج PDF → bundle، تجربة pipeline المرحلة 4) | 🟡 Neon (sohailcollege) + deepseek | ثريد Book Lab · ~/workspace/rewiaty-book-lab |
+
+## المسارات المتوازية (من 2026-11-26، قرار سهيل: «اشتغل بكميات هائلة، والجودة متتأثرش»)
+القادة على Neon (`antigravity_sohail6`)، والعمّال deepseek (OpenCode) وHydrogen، والمراجعة النهائية Codex، والدمج Claude. القواعد: `.factory/briefs/LEADS-COMMON.md`.
+| المسار | النطاق | الريبو |
+|---|---|---|
+| L1 Backend core | F38 وF40 وF41 وF48 (السيرفر) + `contracts/openapi.yaml` | rewiaty-backend |
+| L2 PDF pipeline | F39 وF39T (من Book Lab) | rewiaty-backend `pipeline/` |
+| L3 App phase-4 | الرفع وBYOK وF42 وF46 وF48 UI وF49 | rewiaty |
+| L4 UX | F22 وF21 والمرحلة 3 | rewiaty |
+| L5 Release + QA | APK وموجة QA وmobile-agent-testers وissues | rewiaty + rewiaty-agent-testers |
+| PR #25 (F20 zip/epub) | إصلاحات مراجعة Codex الثانية (deepseek) | rewiaty |
 
 ## الخطة لحد التسليم (قرار سهيل 2026-11-25: «خلّص السيستم كله من غير ما حاجة توقفك»)
 1. ✅ M3 اتدمج (#6). المرحلة 1: 81% بنود، 46% بوابات.
