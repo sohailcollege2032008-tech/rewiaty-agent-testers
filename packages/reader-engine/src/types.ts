@@ -8,6 +8,80 @@ export type IndentMode = 'classic' | 'block';
 
 export type TapZone = 'prev' | 'next' | 'center';
 
+export type HighlightColor = 'gold' | 'sage' | 'sky' | 'rose';
+
+export type HighlightColorMeta = {
+  id: HighlightColor;
+  labelAr: string;
+  swatchLight: string;
+  swatchDark: string;
+  fillLight: string;
+  fillDark: string;
+};
+
+export const HIGHLIGHT_COLORS: readonly HighlightColorMeta[] = [
+  {
+    id: 'gold',
+    labelAr: 'تظليل ذهبي',
+    swatchLight: '#E5B842',
+    swatchDark: '#D6A93B',
+    fillLight: 'rgba(229, 184, 66, 0.36)',
+    fillDark: 'rgba(214, 169, 59, 0.30)',
+  },
+  {
+    id: 'sage',
+    labelAr: 'تظليل أخضر',
+    swatchLight: '#7BA87C',
+    swatchDark: '#6E9C70',
+    fillLight: 'rgba(123, 168, 124, 0.34)',
+    fillDark: 'rgba(110, 156, 112, 0.30)',
+  },
+  {
+    id: 'sky',
+    labelAr: 'تظليل سماوي',
+    swatchLight: '#6BA3C4',
+    swatchDark: '#5E94B5',
+    fillLight: 'rgba(107, 163, 196, 0.34)',
+    fillDark: 'rgba(94, 148, 181, 0.30)',
+  },
+  {
+    id: 'rose',
+    labelAr: 'تظليل وردي',
+    swatchLight: '#C97A7E',
+    swatchDark: '#BE6E73',
+    fillLight: 'rgba(201, 122, 126, 0.34)',
+    fillDark: 'rgba(190, 110, 115, 0.30)',
+  },
+] as const;
+
+export type EngineHighlight = {
+  id: string;
+  blockId: string;
+  charOffset: number;
+  length: number;
+  color: HighlightColor;
+  hasNote?: boolean;
+};
+
+export type SelectionRect = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+};
+
+export type SelectionInfo = {
+  anchor: Anchor;
+  length: number;
+  quote: string;
+  contextBefore: string;
+  contextAfter: string;
+  chapterId: string;
+  rect: SelectionRect;
+};
+
 export type ReaderSettings = {
   fontFamily: string;
   fontSize: number; // 14..36 px
@@ -118,6 +192,7 @@ export type RNToWebMessage =
       settings?: Partial<ReaderSettings>;
       insets?: ReaderInsets;
       fontBaseUrl?: string;
+      highlights?: EngineHighlight[];
     }
   | {
       type: 'settings';
@@ -143,6 +218,13 @@ export type RNToWebMessage =
   | {
       type: 'suppress-taps';
       durationMs: number;
+    }
+  | {
+      type: 'highlights';
+      highlights: EngineHighlight[];
+    }
+  | {
+      type: 'clear-selection';
     };
 
 export type TocEntry = {
@@ -194,6 +276,15 @@ export type WebToRNMessage =
       count: number;
       width: number;
       height: number;
+    }
+  | {
+      type: 'selection';
+      selection: SelectionInfo | null;
+    }
+  | {
+      type: 'highlight-tap';
+      highlightId: string;
+      rect: SelectionRect;
     }
   | {
       type: 'error';

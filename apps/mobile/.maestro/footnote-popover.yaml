@@ -1,0 +1,80 @@
+appId: com.rewiaty.app
+---
+# F10: footnote popover. The bundled novel keeps footnote [^1] in chapter 4; the
+# reference renders as a bare "1" link inside the reader WebView. Turning pages
+# until that link is on screen keeps the journey independent of page metrics.
+# Timeouts are generous on purpose: one hierarchy fetch of this WebView takes ~2-4s
+# on the CPU-only CI emulator, so a 5s wait could expire while the popover was in
+# fact already open (run 45614321052).
+- launchApp
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 40000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 40000
+- waitForAnimationToEnd
+- takeScreenshot: "01-book-open"
+# Jump to the chapter that carries the footnote.
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-toc-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-toc-button"
+    timeout: 15000
+- tapOn:
+    id: "reader-toc-button"
+- extendedWaitUntil:
+    visible:
+      id: "toc-item-ch04"
+    timeout: 15000
+- tapOn:
+    id: "toc-item-ch04"
+- waitForAnimationToEnd
+- takeScreenshot: "02-chapter-4-start"
+# R5: page turns are made with the finger now — in RTL a swipe to the right advances.
+# The SWIPE is required: after R5 an edge tap no longer turns anything (run 45688359714
+# stopped on page 21/26 with the reference one page away, `Assertion is false: "^1$" is
+# visible`). The search is bounded to five pages instead of assuming a fixed page number,
+# because exact pagination decides which page the chapter heading lands on.
+- repeat:
+    times: 5
+    while:
+      notVisible: "^1$"
+    commands:
+      - swipe:
+          start: "20%,50%"
+          end: "80%,50%"
+          duration: 500
+      - waitForAnimationToEnd
+- assertVisible: "^1$"
+- takeScreenshot: "03-footnote-reference-visible"
+- tapOn: "^1$"
+- extendedWaitUntil:
+    visible:
+      id: "footnote-title"
+    timeout: 20000
+- assertVisible:
+    id: "footnote-title"
+    text: ".*حاشية.*"
+- assertVisible: ".*الصَّدَفَةُ الْبَيْضَاءُ.*"
+- takeScreenshot: "04-footnote-popover"
+# The popover closes on a backdrop tap and the page underneath must stay the same.
+# 50%,35% is inside the backdrop but away from the HUD bars: the HUD buttons are
+# native views painted on top of the WebView, so a corner tap (8%,8%) lands on the
+# font-size button and opens the settings sheet instead of closing the popover.
+- tapOn:
+    point: "50%,35%"
+- extendedWaitUntil:
+    notVisible:
+      id: "footnote-title"
+    timeout: 20000
+- assertVisible: "^1$"
+- takeScreenshot: "05-back-to-same-page"

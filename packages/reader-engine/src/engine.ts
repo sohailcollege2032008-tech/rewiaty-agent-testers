@@ -1,9 +1,18 @@
 import type { Block, Book } from '@rewiaty/book-format';
 import { postToHost, subscribeHostMessages } from './bridge.js';
 import { buildFontFaceCss } from './fonts.js';
+import {
+  clearDomSelection,
+  extendSelectionToPoint,
+  extractSelectionInfo,
+  hasNonCollapsedSelection,
+  selectWordAtPoint,
+  type SelectionWordAnchor,
+} from './highlights.js';
 import { Paginator } from './paginator.js';
 import { DEFAULT_SETTINGS, type ReaderSettings, type RNToWebMessage } from './types.js';
 
+const LONG_PRESS_MS = 350;
 /**
  * Movement (px) after which a touch is a drag, not a tap. A tap on the page centre
  * toggles the bars; a drag turns the page with the finger.
@@ -61,8 +70,24 @@ export class ReaderEngine {
 
   private readonly paginator: Paginator;
   private book: Book | null = null;
+  private pointerStart: { x: number; y: number; time: number } | null = null;
+  private longPressTimer: number | null = null;
+  private isSelecting = false;
+  private selectionAnchor: SelectionWordAnchor | null = null;
+  private hadSelectionOnDown = false;
   private gesture: {
     pointerId: number;
+    /**
+     * What the finger actually landed on, captured at `pointerdown`.
+     *
+     * Why (bug, found after R5): `pointerdown` calls `setPointerCapture` on the reader root, so
+     * every later pointer event of that gesture — `pointerup` included — is retargeted to the
+     * root. Reading `e.target` at `pointerup` therefore never sees the footnote link any more,
+     * and a real touch stopped opening the sheet at all. (Measured with a real touch on the
+     * merged tree: `pointerdown target=a.fn-ref` → `pointerup target=div#reader-root`.) The
+     * landing element is only trustworthy at pointerdown, so that is where it is kept.
+     */
+    downTarget: EventTarget | null;
     startX: number;
     startY: number;
     lastX: number;
@@ -83,6 +108,18 @@ export class ReaderEngine {
   /** Bumped on every `load`, so a settle pass for an old book can't report over a new one. */
   private settleToken = 0;
   private suppressTapUntil = 0;
+  /**
+   * Pointer id of the gesture that opened the footnote popover.
+   *
+   * Why (bug): the popover opens on `pointerup`, so the `click` the browser synthesises for
+   * that same tap is dispatched *after* the backdrop is already on screen. When the tap point
+   * sits above the sheet panel (anything in the top ~55% of the page), the browser hit-tests
+   * that trailing click against the backdrop and it closed the popover in the same gesture
+   * (CI runs 45654469093, 45661209279, 45668376498). The fix is to remember which pointer
+   * opened the sheet and drop exactly that click. No timer: a stale id can never swallow a
+   * real dismiss, because any new gesture starts with a fresh `pointerdown` that clears it.
+   */
+  private footnoteOpenPointerId: number | null = null;
   /**
    * The first position of a book is withheld until the paginator knows the exact page
    * map, so the reader never sees a page number (or a total) that is about to move.
@@ -122,8 +159,14 @@ export class ReaderEngine {
     this.rootEl.addEventListener('pointerdown', (e) => {
       if (!this.footnoteBackdrop.hidden) return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
+      this.cancelLongPress();
+      this.hadSelectionOnDown = hasNonCollapsedSelection();
+      this.isSelecting = false;
+      this.selectionAnchor = null;
+      this.pointerStart = { x: e.clientX, y: e.clientY, time: Date.now() };
       this.gesture = {
         pointerId: e.pointerId,
+        downTarget: e.target,
         startX: e.clientX,
         startY: e.clientY,
         lastX: e.clientX,
@@ -135,9 +178,46 @@ export class ReaderEngine {
       } catch {
         // Synthetic pointer events (tests) have no capturable pointer id.
       }
+
+      const target = e.target as HTMLElement | null;
+      const onSelectableText = Boolean(
+        target?.closest('.block-p, .block-quote, .block-h2') && !target.closest('.fn-ref'),
+      );
+      if (onSelectableText) {
+        const startX = e.clientX;
+        const startY = e.clientY;
+        this.longPressTimer = window.setTimeout(() => {
+          this.longPressTimer = null;
+          if (!this.pointerStart) return;
+          // Why (product, F17): a hold is a selection, never a page turn. Dropping the
+          // gesture here means the drag pipeline cannot claim the same finger, even if
+          // the reader keeps moving it to extend the selection.
+          this.pointerStart = null;
+          this.gesture = null;
+          this.paginator.cancelDrag();
+          this.rootEl.classList.add('is-selecting');
+          const anchor = selectWordAtPoint(startX, startY);
+          if (anchor) {
+            this.isSelecting = true;
+            this.selectionAnchor = anchor;
+          } else {
+            this.rootEl.classList.remove('is-selecting');
+          }
+        }, LONG_PRESS_MS);
+      }
     });
 
     this.rootEl.addEventListener('pointermove', (e) => {
+      // Why (product, F17): an active selection owns the finger. Extending it must never
+      // slide the page, which is the one thing that separates a hold from a drag.
+      if (this.isSelecting) {
+        e.preventDefault();
+        if (this.selectionAnchor) {
+          extendSelectionToPoint(this.selectionAnchor, e.clientX, e.clientY);
+        }
+        return;
+      }
+
       const gesture = this.gesture;
       if (!gesture) return;
 
@@ -154,6 +234,14 @@ export class ReaderEngine {
           this.gesture = null;
           return;
         }
+        // Text selected before this touch keeps the gesture: the finger extends the
+        // selection instead of starting a drag.
+        if (this.hadSelectionOnDown || hasNonCollapsedSelection()) {
+          this.cancelLongPress();
+          this.gesture = null;
+          return;
+        }
+        this.cancelLongPress();
         gesture.dragging = true;
         this.paginator.beginDrag();
       }
@@ -161,18 +249,49 @@ export class ReaderEngine {
       this.paginator.dragBy(e.clientX - gesture.startX);
     });
 
-    this.rootEl.addEventListener('pointerup', (e) => {
-      const gesture = this.gesture;
-      if (!gesture) return;
-      this.gesture = null;
+    this.rootEl.addEventListener(
+      'touchmove',
+      (e) => {
+        if (this.isSelecting) {
+          e.preventDefault();
+        }
+      },
+      { passive: false },
+    );
 
-      // Ignore taps on footnote links
+    this.rootEl.addEventListener('contextmenu', (e) => {
       const target = e.target as HTMLElement | null;
-      const fnLink = target?.closest<HTMLElement>('[data-fn]');
+      if (target?.closest('.chapter')) {
+        e.preventDefault();
+      }
+    });
+
+    this.rootEl.addEventListener('pointerup', (e) => {
+      this.cancelLongPress();
+
+      if (this.isSelecting) {
+        this.finishSelectionGesture();
+        return;
+      }
+
+      const gesture = this.gesture;
+      this.gesture = null;
+      this.pointerStart = null;
+      if (!gesture) return;
+
+      // Ignore taps on footnote links. The element has to come from the gesture's own landing
+      // target: pointer capture retargets this event to the root (see gesture.downTarget).
+      const target = (gesture.downTarget ?? e.target) as HTMLElement | null;
+      const fnLink = target?.closest?.<HTMLElement>('[data-fn]') ?? null;
       if (fnLink && !gesture.dragging) {
         e.preventDefault();
         const fnId = fnLink.getAttribute('data-fn');
-        if (fnId) this.openFootnote(fnId);
+        if (fnId) {
+          // The click that follows this pointerup belongs to the same gesture: opening the
+          // sheet must not also dismiss it. See footnoteOpenPointerId.
+          this.footnoteOpenPointerId = e.pointerId;
+          this.openFootnote(fnId);
+        }
         return;
       }
 
@@ -184,16 +303,54 @@ export class ReaderEngine {
         return;
       }
 
-      const dx = Math.abs(e.clientX - gesture.startX);
-      const dy = Math.abs(e.clientY - gesture.startY);
-      if (dx <= DRAG_START_PX && dy <= DRAG_START_PX) {
+      const absX = Math.abs(e.clientX - gesture.startX);
+      const absY = Math.abs(e.clientY - gesture.startY);
+
+      if (this.hadSelectionOnDown || hasNonCollapsedSelection()) {
+        // Dismiss active selection cleanly without turning the page or toggling HUD.
+        if (absX <= DRAG_START_PX && absY <= DRAG_START_PX) {
+          this.clearSelection();
+          postToHost({ type: 'selection', selection: null });
+        } else {
+          const selection = extractSelectionInfo();
+          if (selection) {
+            postToHost({ type: 'selection', selection });
+          }
+        }
+        return;
+      }
+
+      if (absX <= DRAG_START_PX && absY <= DRAG_START_PX) {
+        const hitHl = this.paginator.hitTestHighlight(e.clientX, e.clientY);
+        if (hitHl) {
+          postToHost({ type: 'highlight-tap', highlightId: hitHl.highlight.id, rect: hitHl.rect });
+          return;
+        }
         this.handleTap();
       }
     });
 
     this.rootEl.addEventListener('pointercancel', () => {
+      this.cancelLongPress();
+      this.pointerStart = null;
       this.gesture = null;
       this.paginator.cancelDrag();
+      this.finishSelectionGesture();
+    });
+
+    // Why (product, F17): Android can end a touch without a matching pointerup when the
+    // selection magnifier takes the pointer, which would leave `isSelecting` stuck on.
+    window.addEventListener('touchend', () => {
+      this.cancelLongPress();
+      this.finishSelectionGesture();
+    });
+
+    window.addEventListener('touchcancel', () => {
+      this.cancelLongPress();
+      this.pointerStart = null;
+      this.gesture = null;
+      this.paginator.cancelDrag();
+      this.finishSelectionGesture();
     });
 
     this.rootEl.addEventListener('click', (e) => {
@@ -205,7 +362,22 @@ export class ReaderEngine {
     });
 
     this.footnoteCloseBtn.addEventListener('click', () => this.closeFootnote());
+    // A fresh gesture that starts on the backdrop is a real dismiss request; whatever click it
+    // produces is not the tail of the opening tap.
+    this.footnoteBackdrop.addEventListener('pointerdown', () => {
+      this.footnoteOpenPointerId = null;
+    });
     this.footnoteBackdrop.addEventListener('click', (e) => {
+      const pointerId = (e as PointerEvent).pointerId;
+      if (
+        this.footnoteOpenPointerId !== null &&
+        (pointerId === undefined || pointerId === this.footnoteOpenPointerId)
+      ) {
+        // The click synthesised right after the opening pointerup, not a user dismiss.
+        this.footnoteOpenPointerId = null;
+        return;
+      }
+      this.footnoteOpenPointerId = null;
       if (e.target === this.footnoteBackdrop) {
         this.closeFootnote();
       }
@@ -480,12 +652,13 @@ export class ReaderEngine {
           lineHeight: msg.book.meta.dir === 'ltr' ? 1.7 : 1.95,
           ...(msg.settings ?? {}),
         };
+        this.clearSelection();
         this.closeFootnote();
         this.gesture = null;
         this.paginator.cancelDrag();
         this.awaitingExactPosition = true;
         this.resetImageProof();
-        this.paginator.setBook(msg.book, merged, msg.anchor, msg.insets);
+        this.paginator.setBook(msg.book, merged, msg.anchor, msg.insets, msg.highlights);
         postToHost({ type: 'ready' });
         this.paginator.scheduleBackgroundWork();
         this.emitAfterSettle();
@@ -512,6 +685,7 @@ export class ReaderEngine {
         break;
       }
       case 'goto': {
+        this.clearSelection();
         this.closeFootnote();
         if (this.paginator.goto(msg)) {
           this.emitPosition();
@@ -522,10 +696,12 @@ export class ReaderEngine {
         break;
       }
       case 'next': {
+        this.clearSelection();
         this.goNext();
         break;
       }
       case 'prev': {
+        this.clearSelection();
         this.goPrev();
         break;
       }
@@ -537,7 +713,42 @@ export class ReaderEngine {
         this.suppressTapUntil = Date.now() + duration;
         break;
       }
+      case 'highlights': {
+        this.paginator.setHighlights(msg.highlights ?? []);
+        break;
+      }
+      case 'clear-selection': {
+        this.clearSelection();
+        break;
+      }
     }
+  }
+
+  private finishSelectionGesture(): void {
+    if (!this.isSelecting) return;
+    this.isSelecting = false;
+    this.selectionAnchor = null;
+    this.pointerStart = null;
+    const selection = extractSelectionInfo();
+    if (!selection) {
+      this.rootEl.classList.remove('is-selecting');
+    }
+    postToHost({ type: 'selection', selection });
+  }
+
+  private cancelLongPress(): void {
+    if (this.longPressTimer !== null) {
+      window.clearTimeout(this.longPressTimer);
+      this.longPressTimer = null;
+    }
+  }
+
+  private clearSelection(): void {
+    this.cancelLongPress();
+    this.isSelecting = false;
+    this.selectionAnchor = null;
+    clearDomSelection();
+    this.rootEl.classList.remove('is-selecting');
   }
 
   private goNext(): void {

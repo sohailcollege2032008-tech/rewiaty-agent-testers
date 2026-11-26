@@ -1,0 +1,77 @@
+appId: com.rewiaty.app
+---
+# F3: the reading position survives a screen rotation.
+#
+# STATUS: موقوف على قرار منتج. اللف ممكن يبقى للتابلت بس (`app.json` فيه
+# "orientation": "portrait" لحد دلوقتي)، فـ `scripts/ci-flows.sh` مش بيحسب الرحلة دي
+# بوابة. سبناها بتشتغل في الـ sweep علشان الدليل يفضل طازج لما القرار ينزل.
+#
+# What it proves, deterministically:
+#   * landscape must really reflow the page: the same text needs a different number
+#     of pages at a different width, so the HUD counter string MUST change.
+#     A portrait-locked activity keeps the WebView at portrait width, the copied
+#     string comes back identical, and the journey fails on purpose — that is the bug.
+#   * rotating back to portrait must land on the same page (±1 for anchor drift).
+# No literal page total is hardcoded: the total is an estimate that moves while
+# background pagination settles ("~25" in one run, "26" in the next at the same page),
+# which is exactly how an earlier version of this journey failed on its own selector.
+- launchApp
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 40000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 40000
+- waitForAnimationToEnd
+# R5: page turns are made with the finger — in RTL a swipe to the right advances.
+- swipe:
+    start: "20%,50%"
+    end: "80%,50%"
+    duration: 500
+- waitForAnimationToEnd
+- swipe:
+    start: "20%,50%"
+    end: "80%,50%"
+    duration: 500
+- waitForAnimationToEnd
+# The counter lives in the HUD bar, which a centre tap toggles.
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-page-counter"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+      - extendedWaitUntil:
+          visible:
+            id: "reader-page-counter"
+          timeout: 15000
+- copyTextFrom:
+    id: "reader-page-counter"
+- evalScript: ${output.portraitText = maestro.copiedText}
+- evalScript: ${output.portraitPage = (maestro.copiedText.match(/[0-9]+/) || [])[0]}
+- takeScreenshot: "01-portrait-before-rotation"
+- setOrientation: LANDSCAPE_LEFT
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "reader-page-counter"
+    timeout: 30000
+- copyTextFrom:
+    id: "reader-page-counter"
+# The whole point: the layout reflowed, so the counter text is not the same string.
+- assertTrue: ${maestro.copiedText != output.portraitText}
+- takeScreenshot: "02-landscape-reflowed"
+- setOrientation: PORTRAIT
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "reader-page-counter"
+    timeout: 30000
+- copyTextFrom:
+    id: "reader-page-counter"
+- evalScript: ${output.backPage = (maestro.copiedText.match(/[0-9]+/) || [])[0]}
+- assertTrue: ${output.backPage == output.portraitPage || output.backPage - output.portraitPage == 1 || output.portraitPage - output.backPage == 1}
+- takeScreenshot: "03-portrait-same-page-again"

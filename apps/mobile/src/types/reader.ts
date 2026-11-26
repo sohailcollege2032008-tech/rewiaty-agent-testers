@@ -1,10 +1,16 @@
 import type { Anchor } from '@rewiaty/book-format';
 
+export { HIGHLIGHT_COLORS } from '../../../../packages/reader-engine/src/types';
 export type {
+  EngineHighlight,
+  HighlightColor,
+  HighlightColorMeta,
   IndentMode,
   RNToWebMessage,
   ReaderInsets,
   ReaderSettings,
+  SelectionInfo,
+  SelectionRect,
   TapZone,
   TextAlignMode,
   ThemeId,
@@ -30,6 +36,27 @@ export type BookmarkItem = {
   contextAfter: string;
   page?: number;
   createdAt: number;
+};
+
+/**
+ * A text highlight with an optional note, stored with a fuzzy anchor (blockId + charOffset +
+ * length + exact quote + 20 chars before/after) so it survives file edits and layout changes.
+ */
+export type HighlightItem = {
+  id: string;
+  anchor: Anchor;
+  length: number;
+  color: import('../../../../packages/reader-engine/src/types').HighlightColor;
+  quote: string;
+  /** Up to 20 characters immediately before the quote. */
+  contextBefore: string;
+  /** Up to 20 characters immediately after the quote. */
+  contextAfter: string;
+  chapterId: string;
+  chapterTitle: string;
+  note?: string;
+  createdAt: number;
+  updatedAt: number;
 };
 
 export type BookLibraryRecord = {
@@ -66,6 +93,8 @@ export type BookReaderState = {
   bookmarks?: number[];
   /** Text-anchored bookmarks (F16). `bookmarks` stays for older saved states. */
   bookmarkItems?: BookmarkItem[];
+  /** Text-anchored highlights and notes (F17). */
+  highlights?: HighlightItem[];
   settings?: Partial<import('../../../../packages/reader-engine/src/types').ReaderSettings>;
   updatedAt: number;
 };
