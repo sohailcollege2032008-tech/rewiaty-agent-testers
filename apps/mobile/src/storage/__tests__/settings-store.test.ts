@@ -235,6 +235,43 @@ describe('settings-store', () => {
     expect(afterFontReset.fontSize).toBe(DEFAULT_SETTINGS.fontSize);
   });
 
+  it('persists scroll reading mode and its progress bar, ignores unknown modes, and resets both with the layout tab (F22)', async () => {
+    // The classic paginated layout is the default, with the progress bar ready for scroll.
+    expect(DEFAULT_SETTINGS.readingMode).toBe('paginated');
+    expect(DEFAULT_SETTINGS.showScrollProgressBar).toBe(true);
+
+    const scroll = await updateReaderSettings(
+      { readingMode: 'scroll', showScrollProgressBar: false },
+      db,
+    );
+    expect(scroll.readingMode).toBe('scroll');
+    expect(scroll.showScrollProgressBar).toBe(false);
+    const reloaded = await loadReaderSettings(db);
+    expect(reloaded.readingMode).toBe('scroll');
+    expect(reloaded.showScrollProgressBar).toBe(false);
+
+    // A mode this build does not know must not replace the reader's choice…
+    const ignored = await updateReaderSettings(
+      { readingMode: 'infinite' } as unknown as Partial<typeof DEFAULT_SETTINGS>,
+      db,
+    );
+    expect(ignored.readingMode).toBe('scroll');
+
+    // …and a stored value alone falls back to the paginated default.
+    const staleDb = createKvTestDb();
+    await staleDb.runAsync(
+      'INSERT INTO kv (key, value) VALUES (?, ?)',
+      SETTINGS_KV_KEY,
+      JSON.stringify({ readingMode: 'infinite' }),
+    );
+    expect((await loadReaderSettings(staleDb)).readingMode).toBe('paginated');
+
+    // Both controls live in the layout tab, so its reset restores them.
+    const afterLayoutReset = await resetSection('layout', db);
+    expect(afterLayoutReset.readingMode).toBe('paginated');
+    expect(afterLayoutReset.showScrollProgressBar).toBe(true);
+  });
+
   it('resets only the requested tab fields in resetSection(tab) (A11)', async () => {
     await updateReaderSettings(
       {

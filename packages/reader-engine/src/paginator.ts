@@ -13,6 +13,7 @@ import {
   type EngineHighlight,
   type ReaderInsets,
   type ReaderSettings,
+  type ReadingMode,
   type SelectionRect,
   type TocEntry,
 } from './types.js';
@@ -115,6 +116,10 @@ export type PositionSnapshot = {
   chapterPageCount: number;
   bookProgress: number; // 0..1
   spread: boolean;
+  /** F22 — 0..1 position inside the current chapter (`scroll` mode only). */
+  chapterProgress?: number;
+  /** F22 — the presentation this snapshot came from. */
+  readingMode?: ReadingMode;
   /**
    * true while at least one chapter's page count is still an estimate (virtualized
    * chapters are measured lazily). While this is true `pageCount` is pinned for the
@@ -364,6 +369,16 @@ export class Paginator {
   private dragRaf: number | null = null;
   private dragSettleTimer: number | null = null;
 
+  // --- F22 continuous scroll mode ---
+  /** One `.scroll-chapter-slot` per chapter, in book order (index === chapter index). */
+  private scrollSlots: HTMLElement[] = [];
+  private scrollRaf: number | null = null;
+  /**
+   * Books above this chapter count get estimated `min-height` spacers for unmounted
+   * slots, so the scrollbar and the thumb position stay honest while chapters mount.
+   */
+  private readonly scrollSpacerThreshold = 20;
+
 
   constructor(
     rootEl: HTMLElement,
@@ -390,6 +405,11 @@ export class Paginator {
   /** true when the current layout is a two-page open-book spread. */
   isSpreadActive(): boolean {
     return this.metrics.spread;
+  }
+
+  /** F22 — true while the reader is in continuous vertical scroll mode. */
+  isScrollMode(): boolean {
+    return this.settings.readingMode === 'scroll';
   }
 
   getCurrentChapterIndex(): number {
@@ -859,6 +879,17 @@ export class Paginator {
     this.currentChapterIdx = targetChapterIdx;
     this.currentChapterPage = 0;
 
+    // F22: a book opened in scroll mode never builds the paginated track; chapters are
+    // stacked into their slots and the normal reflow/mount lifecycle takes over from
+    // there. The exact offscreen pass still measures columns for the page map.
+    if (this.isScrollMode()) {
+      this.enterScrollLayout(
+        targetBlockId ? { blockId: targetBlockId, charOffset: targetOffset } : null,
+      );
+      this.renderHighlights();
+      return;
+    }
+
     // Mount ONLY the current chapter up to anchor + INITIAL_WORD_BUDGET before `ready`.
     const currChapter = book.chapters[this.currentChapterIdx];
     if (currChapter) {
@@ -938,9 +969,16 @@ export class Paginator {
     clientX: number,
     clientY: number,
   ): { highlight: EngineHighlight; rect: SelectionRect } | null {
-    const active = this.rendered.get(this.currentChapterIdx);
-    if (!active) return null;
-    return hitTestHighlightAtPoint([active], this.displayHighlights(), clientX, clientY);
+    // Scroll mode keeps several chapters live at once, so every mounted chapter can own
+    // the point. Paginated mode only ever shows one.
+    const targets = this.isScrollMode()
+      ? Array.from(this.rendered.values())
+      : (() => {
+          const active = this.rendered.get(this.currentChapterIdx);
+          return active ? [active] : [];
+        })();
+    if (targets.length === 0) return null;
+    return hitTestHighlightAtPoint(targets, this.displayHighlights(), clientX, clientY);
   }
 
   /**
@@ -958,6 +996,10 @@ export class Paginator {
   scheduleBackgroundWork(): void {
     this.cancelIdleWork();
     if (!this.book) return;
+    if (this.isScrollMode()) {
+      this.scheduleScrollMountWork();
+      return;
+    }
     this.backgroundWanted = true;
     if (this.isPageMapExact()) {
       this.runBackgroundWork();
@@ -1063,6 +1105,7 @@ export class Paginator {
     this.dragging = false;
     this.layoutGeneration++;
 
+    const wasScroll = this.isScrollMode();
     // Captured *before* the new mode rewrites any text node, so the anchor is already in
     // original-text coordinates and can be re-resolved against the new display text.
     const anchorBefore = this.book ? this.captureCurrentAnchor() : null;
@@ -1086,6 +1129,23 @@ export class Paginator {
     this.applyStylesAndMeasureViewport();
 
     if (!this.book) return;
+
+    const nowScroll = this.isScrollMode();
+    if (nowScroll) {
+      if (wasScroll) {
+        this.reflowScrollLayout(anchorBefore);
+      } else {
+        this.enterScrollLayout(anchorBefore);
+      }
+      this.renderHighlights();
+      this.scheduleBackgroundWork();
+      return;
+    }
+
+    if (wasScroll) {
+      this.leaveScrollLayout(anchorBefore);
+      return;
+    }
 
     // Ensure anchor's chapter is mounted enough to cover anchor, then re-measure mounted chapters
     for (const entry of this.rendered.values()) {
@@ -1123,6 +1183,16 @@ export class Paginator {
     this.layoutGeneration++;
     this.rememberRestoredAnchor(anchorBefore);
 
+    if (this.isScrollMode()) {
+      if (anchorBefore) {
+        this.positionScrollAtAnchor(anchorBefore);
+      }
+      this.updateScrollProgressFill();
+      this.renderHighlights();
+      this.scheduleBackgroundWork();
+      return true;
+    }
+
     for (const entry of this.rendered.values()) {
       this.remeasureChapter(entry);
     }
@@ -1138,6 +1208,9 @@ export class Paginator {
   }
 
   handleFontLoad(): boolean {
+    // Scroll mode has no columns to re-measure; the exact offscreen pass owns the page map
+    // and `settleLayout` already measured against the faces that applied.
+    if (this.isScrollMode()) return false;
     if (!this.book || this.rendered.size === 0) return false;
     const anchorBefore = this.captureCurrentAnchor();
     let changed = false;
@@ -1189,6 +1262,13 @@ export class Paginator {
    */
   settleLayout(): boolean {
     if (!this.book || this.rendered.size === 0) return false;
+    if (this.isScrollMode()) {
+      // Scroll chapters are laid out in flow, not columns, so there is nothing to re-measure
+      // in place. Trusting the layout here unlocks the position/TOC the exact pass fills in.
+      this.metricsTrusted = true;
+      this.startExactPagination();
+      return false;
+    }
     const signature = this.layoutSignature();
     const firstForSignature = this.settledSignature !== signature;
     this.settledSignature = signature;
@@ -1231,6 +1311,7 @@ export class Paginator {
 
   nextPage(): boolean {
     if (!this.book) return false;
+    if (this.isScrollMode()) return this.scrollByViewport(1);
     const curr = this.rendered.get(this.currentChapterIdx);
     if (!curr) return false;
     const step = this.pageStep();
@@ -1275,6 +1356,7 @@ export class Paginator {
 
   prevPage(): boolean {
     if (!this.book) return false;
+    if (this.isScrollMode()) return this.scrollByViewport(-1);
     const step = this.pageStep();
 
     if (this.currentChapterPage > 0) {
@@ -1320,6 +1402,7 @@ export class Paginator {
 
   goto(target: { anchor?: Anchor; chapterId?: string; page?: number }): boolean {
     if (!this.book) return false;
+    if (this.isScrollMode()) return this.gotoScroll(target);
 
     if (target.anchor) {
       let chIdx = -1;
@@ -1426,6 +1509,7 @@ export class Paginator {
     if (!this.book) return null;
     // Nothing is quotable before the layout settled (see `metricsTrusted`).
     if (!this.metricsTrusted) return null;
+    if (this.isScrollMode()) return this.getScrollPositionSnapshot();
     const chapter = this.book.chapters[this.currentChapterIdx];
     const curr = this.rendered.get(this.currentChapterIdx);
     if (!chapter || !curr) return null;
@@ -1455,6 +1539,7 @@ export class Paginator {
       chapterPageCount,
       bookProgress: Math.max(0, Math.min(1, Number(bookProgress.toFixed(6)))),
       spread: this.metrics.spread,
+      readingMode: 'paginated',
       estimated: map.estimated,
     };
   }
@@ -1514,6 +1599,10 @@ export class Paginator {
     }
     if (this.restoredAnchor) {
       this.clearRestoredAnchor();
+    }
+
+    if (this.isScrollMode()) {
+      return this.captureScrollAnchor();
     }
 
     const curr = this.rendered.get(this.currentChapterIdx);
@@ -1678,8 +1767,12 @@ export class Paginator {
     const rootRect = this.rootEl.getBoundingClientRect();
     const viewportW = Math.floor(rootRect.width || this.rootEl.clientWidth || window.innerWidth || 390);
     const viewportH = Math.floor(rootRect.height || this.rootEl.clientHeight || window.innerHeight || 844);
+    // F22: a continuous column has no facing page, so scroll mode is always single.
     const spread =
-      this.settings.spread !== 'single' && viewportW >= SPREAD_MIN_VIEWPORT_PX && viewportW > viewportH;
+      !this.isScrollMode() &&
+      this.settings.spread !== 'single' &&
+      viewportW >= SPREAD_MIN_VIEWPORT_PX &&
+      viewportW > viewportH;
 
     // Cap the open book so one column never exceeds the design's line measure (54ch).
     const bookMaxPx = measureChToPx(maxCh, fontSize) * 2 + SPREAD_GUTTER_PX;
@@ -1745,6 +1838,14 @@ export class Paginator {
     document.documentElement.setAttribute('data-theme', this.settings.theme);
     this.rootEl.setAttribute('dir', this.dir);
     this.rootEl.classList.toggle('spread-mode', spread);
+    // F22: the root class drives the whole scroll layout in CSS, so it has to follow the
+    // setting even before `setBook` renders anything.
+    const scrollMode = this.isScrollMode();
+    this.rootEl.classList.toggle('scroll-mode', scrollMode);
+    this.rootEl.classList.toggle(
+      'scroll-progress-hidden',
+      scrollMode && this.settings.showScrollProgressBar === false,
+    );
 
     rootStyle.setProperty('--bg-color', theme.bg);
     rootStyle.setProperty('--text-color', theme.text);
@@ -1993,7 +2094,9 @@ export class Paginator {
 
   private remeasureChapter(entry: RenderedChapter): void {
     this.applyChapterMeasurements(entry);
-    if (entry.isComplete) {
+    // F22: a scroll-mode chapter is laid out in flow, so measuring it here would report one
+    // page and poison the column cache the paginated mode shares.
+    if (entry.isComplete && !this.isScrollMode()) {
       this.pageCache.set(this.cacheKey(entry.chapter), entry.pageCount);
     }
   }
@@ -2029,6 +2132,17 @@ export class Paginator {
   }
 
   private applyChapterMeasurements(entry: RenderedChapter): void {
+    if (this.isScrollMode()) {
+      // Columns are off in scroll mode, so the chapter's own width says nothing about how
+      // many pages it would take. Reuse the shared column cache, else the same frozen
+      // density estimate the page map uses. Never write back (see `remeasureChapter`).
+      const cached = this.pageCache.get(this.cacheKey(entry.chapter));
+      const estimate = Math.max(1, Math.ceil(entry.chapter.wordCount / 220));
+      entry.pageCount = cached !== undefined && cached > 0 ? cached : estimate;
+      entry.padPageCount = 0;
+      entry.layoutPageCount = entry.pageCount;
+      return;
+    }
     const { pages, padPages } = this.measureChapterPages(entry);
     entry.pageCount = pages;
     entry.padPageCount = padPages;
@@ -2046,6 +2160,10 @@ export class Paginator {
   }
 
   private layoutVirtualizedChapterOffsets(): void {
+    if (this.isScrollMode()) {
+      this.layoutScrollChaptersAria();
+      return;
+    }
     const pageW = Math.round(this.metrics.pageWidth);
     const curr = this.rendered.get(this.currentChapterIdx);
     const prev = this.rendered.get(this.currentChapterIdx - 1);
@@ -2072,6 +2190,11 @@ export class Paginator {
   }
 
   private applyTrackTransform(animate: boolean): void {
+    if (this.isScrollMode()) {
+      this.trackEl.style.transition = 'none';
+      this.trackEl.style.transform = 'none';
+      return;
+    }
     if (this.transitionResetRaf !== null) {
       window.cancelAnimationFrame(this.transitionResetRaf);
       this.transitionResetRaf = null;
@@ -2292,6 +2415,566 @@ export class Paginator {
       }
       if (!moved) break;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // F22 — continuous scroll mode
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Rebuild the track as one vertical stack of chapter slots, mount the chapter the
+   * reader is on (plus its neighbours) and put the reading line back on `anchor`.
+   *
+   * Every chapter keeps its slot in DOM order even while unmounted, so the scrollbar
+   * spans the whole book and a jump to chapter 30 does not need chapters 1..29 mounted.
+   */
+  private enterScrollLayout(anchor: Anchor | null): void {
+    const book = this.book;
+    if (!book) return;
+    this.cancelIdleWork();
+    this.clearRenderedDom();
+    this.clearScrollSlots();
+    this.trackEl.style.transform = 'none';
+    this.trackEl.style.transition = 'none';
+    this.stageEl.scrollTop = 0;
+
+    const startIdx = anchor ? this.chapterIndexForAnchor(anchor) : this.currentChapterIdx;
+    this.currentChapterIdx = Math.max(0, Math.min(book.chapters.length - 1, startIdx));
+    this.currentChapterPage = 0;
+
+    for (let i = 0; i < book.chapters.length; i++) {
+      const slot = document.createElement('div');
+      slot.className = 'scroll-chapter-slot';
+      slot.setAttribute('data-scroll-index', String(i));
+      slot.setAttribute('data-chapter-id', book.chapters[i]!.id);
+      this.trackEl.appendChild(slot);
+      this.scrollSlots.push(slot);
+    }
+    this.updateScrollSpacers();
+
+    this.mountScrollChapter(this.currentChapterIdx, false);
+    this.mountScrollChapter(this.currentChapterIdx - 1, false);
+    this.mountScrollChapter(this.currentChapterIdx + 1, false);
+
+    if (anchor) {
+      this.positionScrollAtAnchor(anchor);
+      this.rememberRestoredAnchor(anchor);
+    } else {
+      this.stageEl.scrollTop = 0;
+      this.clearRestoredAnchor();
+    }
+    this.updateScrollProgressFill();
+  }
+
+  /** Put the paginated track back together around `anchor` (the current reading line). */
+  private leaveScrollLayout(anchor: Anchor | null): void {
+    this.cancelIdleWork();
+    this.clearRenderedDom();
+    this.clearScrollSlots();
+    this.stageEl.scrollTop = 0;
+    const book = this.book;
+    if (!book) return;
+
+    const rawIdx = anchor ? this.chapterIndexForAnchor(anchor) : this.currentChapterIdx;
+    const idx = Math.max(0, Math.min(book.chapters.length - 1, rawIdx));
+    this.currentChapterIdx = idx;
+    const chapter = book.chapters[idx]!;
+    const blockIdx = anchor
+      ? Math.max(0, chapter.blocks.findIndex((b) => b.id === anchor.blockId))
+      : 0;
+
+    const entry = this.mountChapterInitial(idx, chapter, blockIdx);
+    this.rendered.set(idx, entry);
+    if (entry.isComplete) {
+      this.pageCache.set(this.cacheKey(chapter), entry.pageCount);
+    }
+    while (!entry.isComplete && blockIdx >= entry.mountedBlockCount) {
+      this.appendNextBatch(entry, BATCH_WORD_BUDGET);
+    }
+
+    if (anchor) {
+      this.currentChapterPage = this.alignToSpread(
+        this.resolveAnchorPageInCurrentChapter(anchor),
+      );
+      this.rememberRestoredAnchor(anchor);
+    } else {
+      this.currentChapterPage = 0;
+      this.clearRestoredAnchor();
+    }
+
+    this.applyTrackTransform(false);
+    this.renderHighlights();
+    this.updateScrollProgressFill();
+    this.scheduleBackgroundWork();
+  }
+
+  /** A typography/margin change while staying in scroll mode: re-anchor, never re-column. */
+  private reflowScrollLayout(anchor: Anchor | null): void {
+    for (const entry of this.rendered.values()) {
+      this.applyChapterMeasurements(entry);
+    }
+    this.layoutScrollChaptersAria();
+    if (anchor) {
+      this.positionScrollAtAnchor(anchor);
+      this.rememberRestoredAnchor(anchor);
+    }
+    this.updateScrollProgressFill();
+  }
+
+  private clearScrollSlots(): void {
+    for (const slot of this.scrollSlots) slot.remove();
+    this.scrollSlots = [];
+  }
+
+  private layoutScrollChaptersAria(): void {
+    for (const entry of this.rendered.values()) {
+      entry.el.style.transform = 'none';
+      entry.el.setAttribute('dir', this.dir);
+      entry.el.setAttribute('aria-hidden', 'false');
+    }
+  }
+
+  private chapterIndexForAnchor(anchor: Anchor): number {
+    const book = this.book;
+    if (!book) return 0;
+    for (let i = 0; i < book.chapters.length; i++) {
+      if (book.chapters[i]!.blocks.some((b) => b.id === anchor.blockId)) return i;
+    }
+    return Math.max(0, Math.min(book.chapters.length - 1, this.currentChapterIdx));
+  }
+
+  /** Document-space top of a chapter slot (independent of the current scroll offset). */
+  private chapterSlotTop(idx: number): number {
+    const slot = this.scrollSlots[idx];
+    if (!slot) return 0;
+    const rect = slot.getBoundingClientRect();
+    const stageRect = this.stageEl.getBoundingClientRect();
+    return rect.top - stageRect.top + this.stageEl.scrollTop;
+  }
+
+  private chapterSlotHeight(idx: number): number {
+    const slot = this.scrollSlots[idx];
+    return slot ? slot.getBoundingClientRect().height : 0;
+  }
+
+  /** Mount one whole chapter into its slot (idempotent). */
+  private mountScrollChapter(idx: number, compensate: boolean): void {
+    const book = this.book;
+    if (!book) return;
+    if (idx < 0 || idx >= book.chapters.length) return;
+    if (this.rendered.has(idx)) return;
+    const slot = this.scrollSlots[idx];
+    if (!slot) return;
+
+    const chapter = book.chapters[idx]!;
+    const stageRect = this.stageEl.getBoundingClientRect();
+    const lineY = stageRect.top + this.metrics.paddingTop;
+    const beforeRect = slot.getBoundingClientRect();
+    const beforeHeight = beforeRect.height;
+
+    const el = document.createElement('article');
+    el.className = 'chapter';
+    el.setAttribute('data-chapter-id', chapter.id);
+    el.setAttribute('dir', this.dir);
+    el.setAttribute('aria-hidden', 'false');
+    el.innerHTML = this.chapterInnerHtml(chapter);
+    // F18: hide diacritics before the (flow) layout is read.
+    applyTashkeelToElement(el, this.settings.tashkeel);
+    slot.style.minHeight = '';
+    slot.appendChild(el);
+
+    const blockEls: HTMLElement[] = [];
+    const blockById = new Map<string, HTMLElement>();
+    let child = el.firstElementChild as HTMLElement | null;
+    while (child) {
+      const id = child.getAttribute('data-block-id');
+      if (id) {
+        blockEls.push(child);
+        blockById.set(id, child);
+      }
+      child = child.nextElementSibling as HTMLElement | null;
+    }
+
+    const entry: RenderedChapter = {
+      index: idx,
+      chapter,
+      el,
+      pageCount: 1,
+      layoutPageCount: 1,
+      padPageCount: 0,
+      mountedBlockCount: chapter.blocks.length,
+      mountedWordCount: chapter.wordCount,
+      isComplete: true,
+      blockEls,
+      blockById,
+    };
+    this.applyChapterMeasurements(entry);
+    this.rendered.set(idx, entry);
+
+    // Reserving the slot's estimate and then filling it changes the height of everything
+    // below. When that slot sat above the reading line, keep the reader's line still.
+    if (compensate && beforeRect.top < lineY) {
+      const afterHeight = slot.getBoundingClientRect().height;
+      const delta = afterHeight - beforeHeight;
+      if (delta !== 0) {
+        this.stageEl.scrollTop = Math.max(0, this.stageEl.scrollTop + delta);
+      }
+    }
+  }
+
+  private ensureScrollChapterMounted(idx: number): void {
+    if (!this.book) return;
+    if (idx < 0 || idx >= this.book.chapters.length) return;
+    if (this.rendered.has(idx)) return;
+    this.mountScrollChapter(idx, true);
+  }
+
+  /** Give every unmounted slot a height that keeps the scrollbar honest (large books only). */
+  private updateScrollSpacers(): void {
+    const book = this.book;
+    if (!book || book.chapters.length <= this.scrollSpacerThreshold) return;
+    const stageH = Math.max(200, this.metrics.height);
+    for (let i = 0; i < this.scrollSlots.length; i++) {
+      const slot = this.scrollSlots[i]!;
+      if (this.rendered.has(i)) {
+        slot.style.minHeight = '';
+        continue;
+      }
+      const chapter = book.chapters[i]!;
+      const cached = this.pageCache.get(this.cacheKey(chapter));
+      const pages = cached !== undefined && cached > 0 ? cached : Math.max(1, Math.ceil(chapter.wordCount / 220));
+      slot.style.minHeight = `${Math.max(stageH, pages * stageH)}px`;
+    }
+  }
+
+  /** Idle-mount the remaining chapters nearest-first (the scroll list is the whole book). */
+  private scheduleScrollMountWork(): void {
+    this.cancelIdleWork();
+    const book = this.book;
+    if (!book || !this.isScrollMode()) return;
+    const gen = this.layoutGeneration;
+
+    const scheduleNext = (fn: () => void) => {
+      const win = window as unknown as {
+        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      };
+      if (typeof win.requestIdleCallback === 'function') {
+        const id = win.requestIdleCallback(() => fn(), { timeout: 60 });
+        this.idleHandle = { kind: 'idle', id };
+      } else {
+        const id = window.setTimeout(fn, 0);
+        this.idleHandle = { kind: 'timeout', id };
+      }
+    };
+
+    const step = () => {
+      this.idleHandle = null;
+      if (gen !== this.layoutGeneration || !this.isScrollMode() || !this.book) return;
+      let best = -1;
+      let bestDistance = Infinity;
+      for (let i = 0; i < this.book.chapters.length; i++) {
+        if (this.rendered.has(i)) continue;
+        const distance = Math.abs(i - this.currentChapterIdx);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = i;
+        }
+      }
+      if (best < 0) {
+        this.updateScrollSpacers();
+        return;
+      }
+      this.mountScrollChapter(best, true);
+      this.layoutScrollChaptersAria();
+      this.updateScrollSpacers();
+      this.renderHighlights();
+      this.callbacks.onBackgroundProgress?.();
+      scheduleNext(step);
+    };
+
+    scheduleNext(step);
+  }
+
+  /** Scroll mode: 0..1 position of the reading line inside the current chapter. */
+  private getScrollChapterProgress(): number {
+    if (!this.book) return 0;
+    const top = this.chapterSlotTop(this.currentChapterIdx);
+    const height = this.chapterSlotHeight(this.currentChapterIdx);
+    if (height <= 0) return 0;
+    const progress = (this.stageEl.scrollTop + this.metrics.paddingTop - top) / height;
+    return Math.max(0, Math.min(1, progress));
+  }
+
+  /** Which mounted chapter currently owns the reading line. */
+  private syncScrollChapter(): void {
+    if (!this.book) return;
+    const stageRect = this.stageEl.getBoundingClientRect();
+    const lineY = stageRect.top + this.metrics.paddingTop;
+    let best = this.currentChapterIdx;
+    let bestTop = -Infinity;
+    for (const [idx, entry] of this.rendered.entries()) {
+      // Measure the chapter's slot, not the chapter element: the slot is the unit the
+      // scroll positions are computed from, and `article.chapter` starts a pixel lower
+      // (its divider border), which made a chapter jumped to exactly on the line read
+      // as "still in the previous chapter, at 100%".
+      const box = this.scrollSlots[idx] ?? entry.el;
+      const rect = box.getBoundingClientRect();
+      if (rect.top <= lineY + 0.5 && rect.top > bestTop) {
+        bestTop = rect.top;
+        best = idx;
+      }
+    }
+    if (best !== this.currentChapterIdx) {
+      this.currentChapterIdx = best;
+      this.currentChapterPage = 0;
+    }
+  }
+
+  /** The block (and original-text offset) sitting on the top reading line right now. */
+  private captureScrollAnchor(): Anchor {
+    const entry = this.rendered.get(this.currentChapterIdx);
+    const fallbackId = entry?.chapter.blocks[0]?.id ?? entry?.chapter.id ?? 'ch01_p0001';
+    if (!entry || entry.blockEls.length === 0) {
+      return { blockId: fallbackId, charOffset: 0 };
+    }
+
+    const stageRect = this.stageEl.getBoundingClientRect();
+    const lineY = stageRect.top + this.metrics.paddingTop;
+    const els = entry.blockEls;
+
+    // First block whose bottom edge reaches past the reading line: the block on screen.
+    let lo = 0;
+    let hi = els.length - 1;
+    let target = els.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const rect = els[mid]!.getBoundingClientRect();
+      if (rect.bottom > lineY) {
+        target = mid;
+        hi = mid - 1;
+      } else {
+        lo = mid + 1;
+      }
+    }
+
+    const blockEl = els[target]!;
+    const blockId = blockEl.getAttribute('data-block-id') ?? entry.chapter.id;
+    const displayOffset = this.characterOffsetAtY(blockEl, lineY);
+    return { blockId, charOffset: this.toOriginalAnchorOffset(blockEl, displayOffset) };
+  }
+
+  /** First displayed character whose line bottom sits past `lineY` (0 if above the block). */
+  private characterOffsetAtY(blockEl: HTMLElement, lineY: number): number {
+    const textLen = blockEl.textContent?.length ?? 0;
+    if (textLen === 0) return 0;
+    const blockRect = blockEl.getBoundingClientRect();
+    if (blockRect.bottom <= lineY) return Math.max(0, textLen - 1);
+    if (blockRect.top >= lineY) return 0;
+
+    let lo = 0;
+    let hi = textLen - 1;
+    let found = 0;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const rect = getCharacterRect(blockEl, mid);
+      if (!rect) break;
+      if (rect.bottom > lineY) {
+        found = mid;
+        hi = mid - 1;
+      } else {
+        lo = mid + 1;
+      }
+    }
+    return found;
+  }
+
+  private positionScrollAtChapter(idx: number): void {
+    this.ensureScrollChapterMounted(idx);
+    this.currentChapterIdx = idx;
+    const top = this.chapterSlotTop(idx);
+    this.stageEl.scrollTop = Math.max(0, Math.round(top - this.metrics.paddingTop));
+    this.updateScrollProgressFill();
+  }
+
+  /** Put `anchor` on the top reading line, character-precise. */
+  private positionScrollAtAnchor(anchor: Anchor): void {
+    const idx = this.chapterIndexForAnchor(anchor);
+    this.ensureScrollChapterMounted(idx);
+    this.currentChapterIdx = idx;
+
+    const entry = this.rendered.get(idx);
+    const blockEl = entry?.blockById.get(anchor.blockId);
+    if (!entry || !blockEl) {
+      this.positionScrollAtChapter(idx);
+      return;
+    }
+
+    const stageRect = this.stageEl.getBoundingClientRect();
+    const blockRect = blockEl.getBoundingClientRect();
+    const blockDocTop = blockRect.top - stageRect.top + this.stageEl.scrollTop;
+    let charTop = 0;
+    const displayOffset = this.toDisplayAnchorOffset(blockEl, anchor.charOffset);
+    if (displayOffset > 0) {
+      const charRect = getCharacterRect(blockEl, displayOffset);
+      if (charRect) charTop = charRect.top - blockRect.top;
+    }
+
+    this.stageEl.scrollTop = Math.max(0, Math.round(blockDocTop + charTop - this.metrics.paddingTop));
+    this.updateScrollProgressFill();
+  }
+
+  private gotoScroll(target: { anchor?: Anchor; chapterId?: string; page?: number }): boolean {
+    const book = this.book;
+    if (!book) return false;
+
+    if (target.anchor) {
+      const idx = this.chapterIndexForAnchor(target.anchor);
+      this.ensureScrollChapterMounted(idx);
+      this.positionScrollAtAnchor(target.anchor);
+      this.rememberRestoredAnchor(target.anchor);
+      this.renderHighlights();
+      this.scheduleBackgroundWork();
+      return true;
+    }
+
+    if (target.chapterId) {
+      const idx = book.chapters.findIndex((ch) => ch.id === target.chapterId);
+      if (idx < 0) return false;
+      this.ensureScrollChapterMounted(idx);
+      this.currentChapterIdx = idx;
+      if (target.page !== undefined) {
+        this.scrollToPageWithinChapter(idx, Math.max(0, Math.floor(target.page) - 1));
+      } else {
+        this.currentChapterPage = 0;
+        this.positionScrollAtChapter(idx);
+      }
+      this.clearRestoredAnchor();
+      this.renderHighlights();
+      this.scheduleBackgroundWork();
+      return true;
+    }
+
+    if (typeof target.page === 'number' && Number.isFinite(target.page)) {
+      const desiredGlobalZero = Math.max(0, Math.floor(target.page) - 1);
+      const counts = this.refreshPageMap().counts;
+      let offset = 0;
+      let targetIdx = book.chapters.length - 1;
+      let pageInChapter = 0;
+      for (let i = 0; i < counts.length; i++) {
+        const c = counts[i] ?? 1;
+        if (desiredGlobalZero < offset + c || i === counts.length - 1) {
+          targetIdx = i;
+          pageInChapter = Math.max(0, desiredGlobalZero - offset);
+          break;
+        }
+        offset += c;
+      }
+      this.ensureScrollChapterMounted(targetIdx);
+      this.currentChapterIdx = targetIdx;
+      this.scrollToPageWithinChapter(targetIdx, pageInChapter);
+      this.clearRestoredAnchor();
+      this.renderHighlights();
+      this.scheduleBackgroundWork();
+      return true;
+    }
+
+    return false;
+  }
+
+  /** Scroll so the middle of `pageIndex` (0-based, in-chapter) is under the reading line. */
+  private scrollToPageWithinChapter(idx: number, pageIndex: number): void {
+    const count = Math.max(1, this.rendered.get(idx)?.pageCount ?? 1);
+    const clamped = Math.max(0, Math.min(count - 1, pageIndex));
+    const fraction = (clamped + 0.5) / count;
+    this.currentChapterPage = clamped;
+    const top = this.chapterSlotTop(idx);
+    const height = this.chapterSlotHeight(idx);
+    const target = top + fraction * height - this.metrics.paddingTop;
+    this.stageEl.scrollTop = Math.max(0, Math.round(target));
+    this.updateScrollProgressFill();
+  }
+
+  /** `next`/`prev` in scroll mode: one comfortable screenful, never past the ends. */
+  private scrollByViewport(direction: 1 | -1): boolean {
+    const stage = this.stageEl;
+    const max = Math.max(0, stage.scrollHeight - stage.clientHeight);
+    const step = Math.max(1, Math.round(stage.clientHeight * 0.85));
+    const before = stage.scrollTop;
+    const next = Math.max(0, Math.min(max, before + direction * step));
+    if (next === before) return false;
+    stage.scrollTop = next;
+    this.syncScrollChapter();
+    this.updateScrollProgressFill();
+    this.scheduleBackgroundWork();
+    return true;
+  }
+
+  /** Called on every scroll frame (rAF-coalesced) by the engine. */
+  handleScrollFrame(): void {
+    if (!this.isScrollMode()) return;
+    if (this.scrollRaf !== null) return;
+    this.scrollRaf = window.requestAnimationFrame(() => {
+      this.scrollRaf = null;
+      if (!this.isScrollMode()) return;
+      this.updateScrollProgressFill();
+    });
+  }
+
+  /** Called ~100 ms after the last scroll event, once the reading line has settled. */
+  handleScrollSettled(): void {
+    if (!this.isScrollMode() || !this.book) return;
+    this.syncScrollChapter();
+    // Geometry is authoritative again: the reader moved the page under the line.
+    this.clearRestoredAnchor();
+    this.updateScrollProgressFill();
+    this.scheduleBackgroundWork();
+  }
+
+  private updateScrollProgressFill(): void {
+    if (!this.book) return;
+    const fill = this.rootEl.querySelector<HTMLElement>('.scroll-progress-fill');
+    if (!fill) return;
+    const scrollable = this.stageEl.scrollHeight - this.stageEl.clientHeight;
+    const progress = scrollable > 0 ? this.stageEl.scrollTop / scrollable : 0;
+    fill.style.transform = `scaleX(${Math.max(0, Math.min(1, progress)).toFixed(4)})`;
+  }
+
+  private getScrollPositionSnapshot(): PositionSnapshot | null {
+    const book = this.book;
+    if (!book) return null;
+    this.syncScrollChapter();
+    const chapter = book.chapters[this.currentChapterIdx];
+    if (!chapter) return null;
+
+    const map = this.refreshPageMap();
+    const counts = map.counts;
+    let pagesBefore = 0;
+    for (let i = 0; i < this.currentChapterIdx; i++) {
+      pagesBefore += counts[i] ?? 1;
+    }
+    const totalPages = Math.max(1, map.total);
+    const chapterPageCount = Math.max(1, counts[this.currentChapterIdx] ?? 1);
+    const progress = this.getScrollChapterProgress();
+    const chapterPageIndex = Math.max(
+      0,
+      Math.min(chapterPageCount - 1, Math.floor(progress * chapterPageCount)),
+    );
+    const globalPage = Math.max(1, Math.min(totalPages, pagesBefore + chapterPageIndex + 1));
+    const bookProgress = totalPages <= 1 ? 1 : (globalPage - 1) / (totalPages - 1);
+
+    return {
+      anchor: this.captureCurrentAnchor(),
+      chapterId: chapter.id,
+      page: globalPage,
+      pageCount: totalPages,
+      chapterPage: chapterPageIndex + 1,
+      chapterPageCount,
+      bookProgress: Math.max(0, Math.min(1, Number(bookProgress.toFixed(6)))),
+      spread: false,
+      estimated: map.estimated,
+      chapterProgress: Number(progress.toFixed(6)),
+      readingMode: 'scroll',
+    };
   }
 
   private cancelIdleWork(): void {

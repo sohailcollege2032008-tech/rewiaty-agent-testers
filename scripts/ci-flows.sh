@@ -2,7 +2,7 @@
 set -euo pipefail
 
 FLOW_TARGET="${1:-}"
-VALID_FLOWS=("first-launch-sample" "import-md" "import-epub" "import-epub-broken" "resume-position" "settings-live" "open-with-telegram" "drag-page-direction" "highlight-add" "scrubber-direction" "footnote-popover" "rotate-position" "keep-awake" "long-book-open")
+VALID_FLOWS=("first-launch-sample" "import-md" "import-epub" "import-epub-broken" "resume-position" "settings-live" "open-with-telegram" "drag-page-direction" "highlight-add" "scrubber-direction" "footnote-popover" "rotate-position" "keep-awake" "long-book-open" "scroll-mode")
 # Why: F3 rotation is blocked on a product decision (landscape may end up tablet-only, and app.json
 # still locks the phone to portrait). The journey stays in the sweep so its evidence stays fresh, but
 # it is NOT a gate: its FAIL is reported and does not turn the run red. Remove it from this list the
@@ -176,6 +176,7 @@ flows = [
     "rotate-position",
     "keep-awake",
     "long-book-open",
+    "scroll-mode",
 ]
 
 status_map = {}
