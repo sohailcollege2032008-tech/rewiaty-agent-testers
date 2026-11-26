@@ -3,7 +3,25 @@ import type { TashkeelMode } from './tashkeel.js';
 
 export type { TashkeelMode };
 
-export type ThemeId = 'warraq' | 'sepia' | 'burnt-paper' | 'oled-crimson';
+/**
+ * F31 — «موسوعة الثيمات». The four core themes stay the quick-select row; the nine encyclopedia
+ * themes live behind the encyclopedia sheet. Every id here must have a `THEMES` entry so the
+ * engine can render it without a fallback.
+ */
+export type ThemeId =
+  | 'warraq'
+  | 'sepia'
+  | 'burnt-paper'
+  | 'oled-crimson'
+  | 'night-ink'
+  | 'parchment'
+  | 'sage-paper'
+  | 'desert-sand'
+  | 'morning-mist'
+  | 'forest-night'
+  | 'espresso'
+  | 'twilight-plum'
+  | 'oled-amber';
 
 export type TextAlignMode = 'start' | 'justify';
 
@@ -115,6 +133,25 @@ export type ReaderSettings = {
    * - 'single': never spread, even on a tablet in landscape.
    */
   spread?: 'auto' | 'single';
+  /**
+   * F31 — الإضاءة. `dimmer` is a plain black veil over the page (0..0.7) and `warmth` an amber
+   * blue-light filter (0..0.6). Both are native overlay layers, never a live CSS/SVG filter.
+   */
+  dimmer?: number;
+  warmth?: number;
+  /** F31 — real screen brightness. `system` leaves the device alone, `custom` applies `brightness`. */
+  brightnessMode?: 'system' | 'custom';
+  brightness?: number; // 0.05..1
+  edgeBrightnessSwipe?: boolean;
+  /** F31 — theme follows the clock / the system scheme / the reader's hand. */
+  autoThemeMode?: 'system' | 'schedule' | 'manual';
+  dayTheme?: ThemeId;
+  nightTheme?: ThemeId;
+  nightStartHour?: number; // 0..23
+  nightEndHour?: number; // 0..23
+  /** F31 — the gentle 45-minute eye-rest reminder. */
+  eyeRestReminder?: boolean;
+  eyeRestIntervalMinutes?: number; // 15..120
 };
 
 export type ThemeTokens = {
@@ -171,7 +208,126 @@ export const THEMES: Record<ThemeId, ThemeTokens> = {
     popoverBg: '#171414',
     popoverBorder: '#262120',
   },
+  // F31 — «حِبْر اللَّيْل»: palette copied 1:1 from
+  // `.factory/design/warraq/dark-2-night-ink/tokens.json` (bg/text/accent/ctaBg are the contract).
+  'night-ink': {
+    bg: '#10151E',
+    text: '#D4D8DF',
+    muted: '#939EAE',
+    quoteBg: 'rgba(212, 216, 223, 0.04)',
+    quoteBorder: '#C26269',
+    accent: '#DB7B7C',
+    popoverBg: '#1F2838',
+    popoverBorder: '#283347',
+  },
+  parchment: {
+    bg: '#F6F0E2',
+    text: '#2A2418',
+    muted: '#6F6552',
+    quoteBg: 'rgba(42, 36, 24, 0.04)',
+    quoteBorder: '#8A6A3C',
+    accent: '#8A6A3C',
+    popoverBg: '#FFFCF3',
+    popoverBorder: '#E3D9C4',
+  },
+  'sage-paper': {
+    bg: '#EDF1E6',
+    text: '#25301F',
+    muted: '#5F6E55',
+    quoteBg: 'rgba(37, 48, 31, 0.04)',
+    quoteBorder: '#4F6B45',
+    accent: '#4F6B45',
+    popoverBg: '#F7FAF2',
+    popoverBorder: '#D6DFCA',
+  },
+  'desert-sand': {
+    bg: '#F0E3CD',
+    text: '#3A2D1C',
+    muted: '#7A6749',
+    quoteBg: 'rgba(58, 45, 28, 0.045)',
+    quoteBorder: '#96602A',
+    accent: '#96602A',
+    popoverBg: '#F8EEDB',
+    popoverBorder: '#DDCBAE',
+  },
+  'morning-mist': {
+    bg: '#EFF2F5',
+    text: '#23303A',
+    muted: '#5D6E7A',
+    quoteBg: 'rgba(35, 48, 58, 0.04)',
+    quoteBorder: '#3D6E8C',
+    accent: '#3D6E8C',
+    popoverBg: '#F8FAFC',
+    popoverBorder: '#D5DDE4',
+  },
+  'forest-night': {
+    bg: '#101A15',
+    text: '#D6E4DA',
+    muted: '#91A697',
+    quoteBg: 'rgba(214, 228, 218, 0.045)',
+    quoteBorder: '#6E9C7D',
+    accent: '#82B392',
+    popoverBg: '#1B2922',
+    popoverBorder: '#26382E',
+  },
+  espresso: {
+    bg: '#221812',
+    text: '#E4D3C3',
+    muted: '#AC9784',
+    quoteBg: 'rgba(228, 211, 195, 0.045)',
+    quoteBorder: '#C08A5E',
+    accent: '#D69A6A',
+    popoverBg: '#2E211A',
+    popoverBorder: '#3B2C22',
+  },
+  'twilight-plum': {
+    bg: '#17111F',
+    text: '#DDD2E6',
+    muted: '#A296AF',
+    quoteBg: 'rgba(221, 210, 230, 0.045)',
+    quoteBorder: '#9A7FBF',
+    accent: '#B79BD8',
+    popoverBg: '#241A2F',
+    popoverBorder: '#32243F',
+  },
+  'oled-amber': {
+    bg: '#000000',
+    text: '#D8CDBB',
+    muted: '#9C927F',
+    quoteBg: 'rgba(216, 205, 187, 0.05)',
+    quoteBorder: '#B98A33',
+    accent: '#E0A640',
+    popoverBg: '#141110',
+    popoverBorder: '#241F1B',
+  },
 };
+
+/** Relative luminance (WCAG 2.1) of a `#rrggbb` colour. */
+export function relativeLuminance(hex: string): number {
+  const clean = hex.replace('#', '');
+  const channel = (offset: number) => parseInt(clean.slice(offset, offset + 2), 16) / 255;
+  const toLinear = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+  return 0.2126 * toLinear(channel(0)) + 0.7152 * toLinear(channel(2)) + 0.0722 * toLinear(channel(4));
+}
+
+/** WCAG contrast ratio between two `#rrggbb` colours (1..21). */
+export function contrastRatio(hexA: string, hexB: string): number {
+  const l1 = relativeLuminance(hexA);
+  const l2 = relativeLuminance(hexB);
+  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+}
+
+/**
+ * Why (tech): the paginator used to hard-code `burnt-paper | oled-crimson` for dark-mode highlight
+ * fills. With 13 themes that list rots on the next theme added, so darkness is derived from the
+ * background's luminance instead: a paper with a luminance under 0.2 is a night paper.
+ */
+export const DARK_LUMINANCE_THRESHOLD = 0.2;
+
+export function isDarkThemeId(themeId: ThemeId | string | null | undefined): boolean {
+  if (typeof themeId !== 'string' || !Object.hasOwn(THEMES, themeId)) return false;
+  return relativeLuminance(THEMES[themeId as ThemeId].bg) < DARK_LUMINANCE_THRESHOLD;
+}
 
 export const DEFAULT_SETTINGS: ReaderSettings = {
   fontFamily: 'Noto Naskh Arabic',
@@ -190,6 +346,19 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   maxReadingWidth: 68,
   dirOverride: 'auto',
   spread: 'auto',
+  // F31 — lighting, auto theme and eye-rest defaults.
+  dimmer: 0,
+  warmth: 0,
+  brightnessMode: 'system',
+  brightness: 0.8,
+  edgeBrightnessSwipe: true,
+  autoThemeMode: 'system',
+  dayTheme: 'warraq',
+  nightTheme: 'burnt-paper',
+  nightStartHour: 19,
+  nightEndHour: 6,
+  eyeRestReminder: true,
+  eyeRestIntervalMinutes: 45,
 };
 
 export type ReaderInsets = {

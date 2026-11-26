@@ -7,6 +7,7 @@ export const burntPaperTheme: AppThemeTokens = {
   labelAr: 'ورق محروق',
   contrastLabel: '١٢.١:١ AAA',
   isDark: true,
+  category: 'dark',
   deskBg: '#100C0A',
   boardRim: '#2D231C',
   surface: '#221B17',

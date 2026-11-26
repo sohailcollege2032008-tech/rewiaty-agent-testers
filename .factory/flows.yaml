@@ -88,3 +88,9 @@ flows:
     target: release-apk
     run: "bash scripts/ci-flows.sh highlight-add"
     artifact: ".factory/evidence/latest/apk/app.apk"
+  - id: lighting-themes
+    who: "قارئ بيقرا بالليل وعايز الشاشة تريح عينه"
+    steps: "يفتح الرواية ← الإعدادات ← المظهر ← موسوعة الثيمات ← «داكن» ← «حِبْر اللَّيْل» يتطبّق (✓ عليه لما يفتح الموسوعة تاني) ← التعتيم ٢٠٪ ودفء الشاشة ١٠٪ والسطوع ٨٥٪ ← «تلقائيًا: بالوقت» يوضّح ميعاد الليل والنهار ← مفاتيح سحب الحافة وتذكير راحة العين بتشتغل ← الصفحة لسه مقروءة"
+    target: release-apk
+    run: "bash scripts/ci-flows.sh lighting-themes"
+    artifact: ".factory/evidence/latest/apk/app.apk"

@@ -7,6 +7,7 @@ export const sepiaTheme: AppThemeTokens = {
   labelAr: 'سيبيا',
   contrastLabel: '١١.٨:١ AAA',
   isDark: false,
+  category: 'warm',
   deskBg: '#E4D7BE',
   boardRim: '#CEBE9E',
   surface: '#EAE0C6',

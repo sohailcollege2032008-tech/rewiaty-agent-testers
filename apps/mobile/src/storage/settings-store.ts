@@ -25,6 +25,13 @@ const VALID_ALIGNS = new Set<TextAlignMode>(['start', 'justify']);
 const VALID_INDENTS = new Set<IndentMode>(['classic', 'block']);
 const VALID_TASHKEEL = new Set<TashkeelMode>(['full', 'none', 'shadda-tanween']);
 const VALID_DIRS = new Set<'auto' | 'rtl' | 'ltr'>(['auto', 'rtl', 'ltr']);
+// F31 — lighting, auto-theme and eye-rest enums.
+const VALID_BRIGHTNESS_MODES = new Set<'system' | 'custom'>(['system', 'custom']);
+const VALID_AUTO_THEME_MODES = new Set<'system' | 'schedule' | 'manual'>([
+  'system',
+  'schedule',
+  'manual',
+]);
 
 type RawStoredSettings = Partial<Omit<ReaderSettings, 'theme'>> & {
   theme?: string;
@@ -104,6 +111,55 @@ export function sanitizeSettingsPartial(
   }
   if (partial.dirOverride !== undefined && VALID_DIRS.has(partial.dirOverride)) {
     next.dirOverride = partial.dirOverride;
+  }
+
+  // F31 — الإضاءة وراحة العين.
+  if (partial.dimmer !== undefined) {
+    const clamped = clampNumber(partial.dimmer, 0, 0.7, current.dimmer ?? 0);
+    next.dimmer = Number(roundToStep(clamped, 0.05).toFixed(2));
+  }
+  if (partial.warmth !== undefined) {
+    const clamped = clampNumber(partial.warmth, 0, 0.6, current.warmth ?? 0);
+    next.warmth = Number(roundToStep(clamped, 0.05).toFixed(2));
+  }
+  if (partial.brightnessMode !== undefined && VALID_BRIGHTNESS_MODES.has(partial.brightnessMode)) {
+    next.brightnessMode = partial.brightnessMode;
+  }
+  if (partial.brightness !== undefined) {
+    const clamped = clampNumber(partial.brightness, 0.05, 1, current.brightness ?? 0.8);
+    next.brightness = Number(roundToStep(clamped, 0.05).toFixed(2));
+  }
+  if (typeof partial.edgeBrightnessSwipe === 'boolean') {
+    next.edgeBrightnessSwipe = partial.edgeBrightnessSwipe;
+  }
+  if (partial.autoThemeMode !== undefined && VALID_AUTO_THEME_MODES.has(partial.autoThemeMode)) {
+    next.autoThemeMode = partial.autoThemeMode;
+  }
+  if (partial.dayTheme !== undefined) {
+    const migrated = migrateThemeId(partial.dayTheme);
+    if (migrated) next.dayTheme = migrated;
+  }
+  if (partial.nightTheme !== undefined) {
+    const migrated = migrateThemeId(partial.nightTheme);
+    if (migrated) next.nightTheme = migrated;
+  }
+  if (partial.nightStartHour !== undefined) {
+    next.nightStartHour = Math.round(
+      clampNumber(partial.nightStartHour, 0, 23, current.nightStartHour ?? 19),
+    );
+  }
+  if (partial.nightEndHour !== undefined) {
+    next.nightEndHour = Math.round(
+      clampNumber(partial.nightEndHour, 0, 23, current.nightEndHour ?? 6),
+    );
+  }
+  if (typeof partial.eyeRestReminder === 'boolean') {
+    next.eyeRestReminder = partial.eyeRestReminder;
+  }
+  if (partial.eyeRestIntervalMinutes !== undefined) {
+    next.eyeRestIntervalMinutes = Math.round(
+      clampNumber(partial.eyeRestIntervalMinutes, 15, 120, current.eyeRestIntervalMinutes ?? 45),
+    );
   }
 
   return next;
@@ -234,8 +290,22 @@ export function getSectionResetPartial(
         disableAnimation: DEFAULT_SETTINGS.disableAnimation,
       };
     case 'theme':
+      // F31: «المظهر» owns the lighting/auto-theme/eye-rest comfort settings too, so «افتراضي»
+      // must put all of them back — otherwise a reader is stuck with 60% warmth forever.
       return {
         theme: systemTheme,
+        dimmer: DEFAULT_SETTINGS.dimmer,
+        warmth: DEFAULT_SETTINGS.warmth,
+        brightnessMode: DEFAULT_SETTINGS.brightnessMode,
+        brightness: DEFAULT_SETTINGS.brightness,
+        edgeBrightnessSwipe: DEFAULT_SETTINGS.edgeBrightnessSwipe,
+        autoThemeMode: DEFAULT_SETTINGS.autoThemeMode,
+        dayTheme: DEFAULT_SETTINGS.dayTheme,
+        nightTheme: DEFAULT_SETTINGS.nightTheme,
+        nightStartHour: DEFAULT_SETTINGS.nightStartHour,
+        nightEndHour: DEFAULT_SETTINGS.nightEndHour,
+        eyeRestReminder: DEFAULT_SETTINGS.eyeRestReminder,
+        eyeRestIntervalMinutes: DEFAULT_SETTINGS.eyeRestIntervalMinutes,
       };
   }
 }

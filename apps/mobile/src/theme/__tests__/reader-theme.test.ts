@@ -1,6 +1,8 @@
 import { resolveCoverPalette } from '@/storage/cover';
 import { computeResponsiveLayout } from '@/theme/layout';
 import {
+  CORE_THEME_IDS,
+  THEME_REGISTRY,
   getAppThemeTokens,
   migrateThemeId,
   resolveAppTheme,
@@ -141,6 +143,28 @@ describe('reader-theme registry, migration & responsive layout', () => {
       expect(migrateThemeId(bad)).toBeNull();
     }
     expect(getAppThemeTokens('toString', 'dark').id).toBe('burnt-paper');
+  });
+
+  it('registers all 13 F31 themes while the quick-select row stays the 4 core ones', () => {
+    expect(Object.keys(THEME_REGISTRY)).toHaveLength(13);
+    expect(THEME_OPTIONS).toHaveLength(4);
+    expect(THEME_OPTIONS.map((t) => t.id)).toEqual([...CORE_THEME_IDS]);
+
+    for (const [id, theme] of Object.entries(THEME_REGISTRY)) {
+      expect(theme.id).toBe(id);
+      expect(getAppThemeTokens(id).id).toBe(id);
+      expect(['light', 'warm', 'dark', 'oled']).toContain(theme.category);
+    }
+
+    // A theme from the encyclopedia is addressable through the same registry lookup the reader uses.
+    expect(getAppThemeTokens('night-ink').labelAr).toBe('حِبْر اللَّيْل');
+    expect(migrateThemeId('night-ink')).toBe('night-ink');
+  });
+
+  it('keeps every theme’s text on its own paper at WCAG AAA (≥ 7:1)', () => {
+    for (const theme of Object.values(THEME_REGISTRY)) {
+      expect(contrastRatio(theme.text, theme.bg)).toBeGreaterThanOrEqual(7);
+    }
   });
 
   it('uses fully opaque sheetBg tokens for every theme (no text bleed-through)', () => {

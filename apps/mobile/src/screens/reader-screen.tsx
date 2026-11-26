@@ -14,16 +14,21 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import type { Anchor, Book } from '@rewiaty/book-format';
+import * as Brightness from 'expo-brightness';
 import { useKeepAwake } from 'expo-keep-awake';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { scheduleOnRN } from 'react-native-worklets';
 import Svg, { Path } from 'react-native-svg';
 import WebView, { type WebViewMessageEvent, type WebViewNavigation } from 'react-native-webview';
 
+import { EyeRestBanner } from '@/components/eye-rest-banner';
 import { HighlightNoteModal } from '@/components/highlight-note-modal';
 import { HighlightToolbar } from '@/components/highlight-toolbar';
+import { LightingOverlay } from '@/components/lighting-overlay';
 import { ReaderHud } from '@/components/reader-hud';
 import { ReaderSettingsSheet } from '@/components/reader-settings-sheet';
 import { TocModal } from '@/components/toc-modal';
@@ -73,7 +78,9 @@ import {
   type SettingsTabId,
 } from '@/storage/settings-store';
 import { RADIUS, TYPOGRAPHY, useResponsiveLayout } from '@/theme/layout';
+import { resolveAutoTheme } from '@/theme/auto-theme';
 import { getAppThemeTokens, resolveAppTheme, resolveSystemTheme } from '@/theme/reader-theme';
+import { toArabicDigits } from '@/theme/themes/build-theme';
 import { notifyThemeListeners } from '@/theme/use-app-theme';
 import type {
   BookmarkItem,
@@ -85,10 +92,12 @@ import type {
   RNToWebMessage,
   SelectionInfo,
   SelectionRect,
+  ThemeId,
   TocEntry,
   WebToRNMessage,
 } from '@/types/reader';
 import { debounce } from '@/utils/debounce';
+import { EyeRestTracker } from '@/utils/eye-rest';
 import { progressToPercent } from '@/utils/progress';
 import { showToast } from '@/utils/toast';
 
@@ -201,6 +210,9 @@ export function ReaderScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [webLoaded, setWebLoaded] = useState(false);
   const [engineReady, setEngineReady] = useState(false);
+  // F31 — التنعيم/دفء الشاشة pill readout while the edge strip is dragged, and the eye-rest banner.
+  const [brightnessPill, setBrightnessPill] = useState<number | null>(null);
+  const [eyeRestVisible, setEyeRestVisible] = useState(false);
 
   const readerBaseUrl = bookBaseUrl ?? READER_FALLBACK_BASE_URL;
   const readerBaseUrlRef = useRef(readerBaseUrl);
@@ -241,6 +253,24 @@ export function ReaderScreen() {
   );
 
   const themeTokens = useMemo(() => getAppThemeTokens(settings.theme), [settings.theme]);
+
+  // F31 — every comfort field is optional in ReaderSettings, so read it defensively; an older
+  // saved row (or a test that builds a partial settings object) must never render `undefined`.
+  const dimmer = settings.dimmer ?? 0;
+  const warmth = settings.warmth ?? 0;
+  const brightnessMode = settings.brightnessMode ?? 'system';
+  const brightness = settings.brightness ?? 0.8;
+  const edgeBrightnessSwipe = settings.edgeBrightnessSwipe ?? true;
+  const autoThemeMode = settings.autoThemeMode ?? 'system';
+  const dayTheme = settings.dayTheme ?? 'warraq';
+  const nightTheme = settings.nightTheme ?? 'burnt-paper';
+  const nightStartHour = settings.nightStartHour ?? 19;
+  const nightEndHour = settings.nightEndHour ?? 6;
+
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const eyeRestTrackerRef = useRef<EyeRestTracker | null>(null);
+  const brightnessDragRef = useRef<{ start: number; latest: number } | null>(null);
 
   bookRef.current = book;
   bookmarkItemsRef.current = bookmarkItems;
@@ -310,7 +340,11 @@ export function ReaderScreen() {
         debouncedSave.flush();
         // Backgrounding ends the current reading stretch: the idle gap is never counted.
         readingTrackerRef.current?.pause();
+        // F31: the 45-minute eye-rest clock only counts foreground reading.
+        eyeRestTrackerRef.current?.pause();
         flushReadingStats();
+      } else {
+        eyeRestTrackerRef.current?.resume();
       }
     });
     return () => {
@@ -514,9 +548,11 @@ export function ReaderScreen() {
     postToEngine({ type: 'settings', partial });
   }, [effectiveMaxWidth, layout.isTabletLandscape, postToEngine]);
 
-  // Follow system colorScheme automatically unless the user chose a theme manually
+  // Follow system colorScheme automatically unless the user chose a theme manually.
+  // F31: the clock-driven mode (`schedule`) and `manual` own the theme, so this only runs in `system`.
   useEffect(() => {
     if (hasManualThemeRef.current) return;
+    if (autoThemeMode !== 'system') return;
     const systemTheme = resolveSystemTheme(colorScheme);
     setSettings((prev) => {
       if (prev.theme === systemTheme) return prev;
@@ -527,7 +563,109 @@ export function ReaderScreen() {
       }
       return next;
     });
-  }, [colorScheme, postToEngine]);
+  }, [colorScheme, autoThemeMode, postToEngine]);
+
+  // F31 — automatic day/night theme. Applies on load and re-checks every 60 s, so a reader who
+  // leaves the app open at 19:00 sees the night paper arrive on its own.
+  const applyAutoTheme = useCallback(
+    (nextTheme: ThemeId) => {
+      setSettings((prev) => {
+        if (prev.theme === nextTheme) return prev;
+        const next = { ...prev, theme: nextTheme };
+        initialSettingsRef.current = next;
+        if (hasSentLoadRef.current) {
+          postToEngine({ type: 'settings', partial: { theme: nextTheme } });
+        }
+        void saveReaderSettings(next);
+        return next;
+      });
+    },
+    [postToEngine],
+  );
+
+  useEffect(() => {
+    if (autoThemeMode !== 'schedule') return;
+    const applyNow = () => {
+      const current = settingsRef.current;
+      const resolved = resolveAutoTheme({
+        mode: 'schedule',
+        manualTheme: current.theme,
+        dayTheme: current.dayTheme ?? DEFAULT_SETTINGS.dayTheme ?? 'warraq',
+        nightTheme: current.nightTheme ?? DEFAULT_SETTINGS.nightTheme ?? 'burnt-paper',
+        nightStartHour: current.nightStartHour ?? 19,
+        nightEndHour: current.nightEndHour ?? 6,
+        systemColorScheme: colorSchemeRef.current,
+      });
+      applyAutoTheme(resolved);
+    };
+    applyNow();
+    const timer = setInterval(applyNow, 60_000);
+    return () => clearInterval(timer);
+  }, [autoThemeMode, dayTheme, nightTheme, nightStartHour, nightEndHour, applyAutoTheme]);
+
+  // F31 — real screen brightness via expo-brightness. Every call is guarded: non-native / web /
+  // test environments reject or throw, and a reader must never see a crash because of a light bulb.
+  useEffect(() => {
+    if (brightnessMode !== 'custom') {
+      void Brightness.restoreSystemBrightnessAsync().catch(() => undefined);
+      return;
+    }
+    void Brightness.setBrightnessAsync(brightness).catch(() => undefined);
+  }, [brightnessMode, brightness]);
+
+  useEffect(() => {
+    let restored = false;
+    const restore = () => {
+      if (restored) return;
+      void Brightness.restoreSystemBrightnessAsync().catch(() => undefined);
+    };
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active') {
+        restored = true;
+        restore();
+        return;
+      }
+      restored = false;
+      const current = settingsRef.current;
+      if ((current.brightnessMode ?? 'system') === 'custom') {
+        void Brightness.setBrightnessAsync(current.brightness ?? 0.8).catch(() => undefined);
+      }
+    });
+    return () => {
+      subscription.remove();
+      // Leaving the reader must hand the screen brightness back to the device.
+      restore();
+    };
+  }, []);
+
+  // F31 — the gentle eye-rest reminder: one second heartbeat over the tracker.
+  useEffect(() => {
+    if (!book) return;
+    eyeRestTrackerRef.current = new EyeRestTracker({
+      intervalMinutes: settingsRef.current.eyeRestIntervalMinutes ?? 45,
+      enabled: settingsRef.current.eyeRestReminder ?? true,
+    });
+    setEyeRestVisible(false);
+  }, [book]);
+
+  useEffect(() => {
+    const tracker = eyeRestTrackerRef.current;
+    if (!tracker) return;
+    tracker.setIntervalMinutes(settings.eyeRestIntervalMinutes ?? 45);
+    tracker.setEnabled(settings.eyeRestReminder ?? true);
+  }, [settings.eyeRestIntervalMinutes, settings.eyeRestReminder]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const tracker = eyeRestTrackerRef.current;
+      if (!tracker) return;
+      if (AppState.currentState !== 'active') return;
+      if (tracker.tick(Date.now())) {
+        setEyeRestVisible(true);
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const handleOpenSettings = useCallback(() => {
     hudBeforeSettingsRef.current = hudVisible;
@@ -719,6 +857,59 @@ export function ReaderScreen() {
     },
     [postToEngine],
   );
+
+  // F31 — the left-edge brightness strip. Dragging up brightens, down dims; the pill shows the
+  // live percentage and the value is written to settings only once, on release.
+  const beginBrightnessDrag = useCallback(() => {
+    const current = settingsRef.current.brightness ?? 0.8;
+    brightnessDragRef.current = { start: current, latest: current };
+    setBrightnessPill(current);
+  }, []);
+
+  const updateBrightnessDrag = useCallback((deltaRatio: number) => {
+    const drag = brightnessDragRef.current;
+    if (!drag) return;
+    const next = Math.max(0.05, Math.min(1, drag.start + deltaRatio));
+    drag.latest = next;
+    setBrightnessPill(next);
+    // Live feedback: the screen reacts under the finger, not after it lifts.
+    void Brightness.setBrightnessAsync(next).catch(() => undefined);
+  }, []);
+
+  const endBrightnessDrag = useCallback(() => {
+    const drag = brightnessDragRef.current;
+    brightnessDragRef.current = null;
+    setBrightnessPill(null);
+    if (!drag) return;
+    const rounded = Math.round(drag.latest * 100) / 100;
+    handleSettingsChange({ brightness: rounded, brightnessMode: 'custom' });
+  }, [handleSettingsChange]);
+
+  // Why (product): a full-height edge strip would fight every page swipe; 15%..85% keeps it clear
+  // of the HUD and the running foot, and the offsets let a horizontal page swipe win.
+  const brightnessStripPan = usePanGesture({
+    activeOffsetY: [-14, 14],
+    failOffsetX: [-12, 12],
+    onActivate: () => {
+      'worklet';
+      scheduleOnRN(beginBrightnessDrag);
+    },
+    onUpdate: (e) => {
+      'worklet';
+      const travel = Math.max(1, vesselSize.height * 0.6);
+      scheduleOnRN(updateBrightnessDrag, -e.translationY / travel);
+    },
+    onDeactivate: () => {
+      'worklet';
+      scheduleOnRN(endBrightnessDrag);
+    },
+  });
+
+  // F31 — «تم» on the eye-rest banner starts a fresh stretch and hides it.
+  const handleDismissEyeRest = useCallback(() => {
+    eyeRestTrackerRef.current?.acknowledge(Date.now());
+    setEyeRestVisible(false);
+  }, []);
 
   useEffect(() => {
     if (!showHudHint || !hudVisible) {
@@ -1094,6 +1285,9 @@ export function ReaderScreen() {
           },
         ]}
       >
+        {/* F31 — dimmer + warmth sit above the page and below every control. */}
+        <LightingOverlay dimmer={dimmer} warmth={warmth} />
+
         {/* Living page-edge thickness indicators */}
         <View
           pointerEvents="none"
@@ -1207,6 +1401,37 @@ export function ReaderScreen() {
                 {'الصورة مش ظاهرة'}
               </Text>
             )}
+          </View>
+        ) : null}
+
+        {/* F31 — 22px left-edge brightness strip + live readout pill. */}
+        {edgeBrightnessSwipe && book ? (
+          <GestureDetector gesture={brightnessStripPan}>
+            <View
+              testID="reader-brightness-edge-strip"
+              style={styles.brightnessEdgeStrip}
+              accessibilityLabel="اسحب لأعلى أو لأسفل لتغيير سطوع الشاشة"
+            />
+          </GestureDetector>
+        ) : null}
+
+        {brightnessPill !== null ? (
+          <View
+            testID="brightness-readout-pill"
+            pointerEvents="none"
+            style={[
+              styles.brightnessPill,
+              { backgroundColor: themeTokens.surface, borderColor: themeTokens.border },
+            ]}
+          >
+            <Text
+              style={[
+                styles.brightnessPillText,
+                { color: themeTokens.text, fontFamily: TYPOGRAPHY.uiFont },
+              ]}
+            >
+              {`السطوع ${toArabicDigits(String(Math.round(brightnessPill * 100)))}٪`}
+            </Text>
           </View>
         ) : null}
 
@@ -1330,6 +1555,12 @@ export function ReaderScreen() {
 
         {book ? (
           <>
+            <EyeRestBanner
+              visible={eyeRestVisible}
+              topInset={insets.top}
+              palette={themeTokens}
+              onDismiss={handleDismissEyeRest}
+            />
             {showHudHint && hudVisible ? (
               <Animated.View
                 testID="reader-hud-hint"
@@ -1473,6 +1704,30 @@ const styles = StyleSheet.create({
   },
   webview: {
     flex: 1,
+  },
+  brightnessEdgeStrip: {
+    position: 'absolute',
+    left: 0,
+    top: '15%',
+    bottom: '15%',
+    width: 22,
+    zIndex: 22,
+  },
+  brightnessPill: {
+    position: 'absolute',
+    left: 22,
+    alignSelf: 'center',
+    top: '46%',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    zIndex: 23,
+  },
+  brightnessPillText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
   },
   edgeStack: {
     position: 'absolute',

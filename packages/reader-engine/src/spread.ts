@@ -36,8 +36,8 @@ export type SpineTokens = {
 };
 
 /**
- * Warraq theme → spine tokens. `warraq` and `sepia` are paper-light,
- * `burnt-paper` is the warm dark and `oled-crimson` the true-black OLED family.
+ * Warraq theme → spine tokens. `warraq`, `sepia`, `parchment`, `sage-paper`, `desert-sand` and
+ * `morning-mist` are paper-light; the rest are night papers (see `isDarkThemeId`).
  */
 const SPINE_BY_THEME: Record<ThemeId, SpineTokens> = {
   warraq: {
@@ -67,6 +67,70 @@ const SPINE_BY_THEME: Record<ThemeId, SpineTokens> = {
     mid: 'rgba(0, 0, 0, 0)',
     sheen: 'rgba(255, 255, 255, 0.02)',
     pageEdge: 'rgba(185, 178, 167, 0.15)',
+  },
+  // F31 — حِبْر اللَّيْل: spine shadow from `tokens.palette.spineShadow`.
+  'night-ink': {
+    crease: 'rgba(4, 7, 13, 0.68)',
+    inner: 'rgba(4, 7, 13, 0.4)',
+    mid: 'rgba(4, 7, 13, 0.16)',
+    sheen: 'rgba(212, 216, 223, 0.04)',
+    pageEdge: 'rgba(212, 216, 223, 0.16)',
+  },
+  parchment: {
+    crease: 'rgba(66, 52, 30, 0.22)',
+    inner: 'rgba(66, 52, 30, 0.1)',
+    mid: 'rgba(66, 52, 30, 0.04)',
+    sheen: 'rgba(255, 253, 245, 0.5)',
+    pageEdge: 'rgba(126, 108, 76, 0.26)',
+  },
+  'sage-paper': {
+    crease: 'rgba(40, 54, 34, 0.22)',
+    inner: 'rgba(40, 54, 34, 0.1)',
+    mid: 'rgba(40, 54, 34, 0.04)',
+    sheen: 'rgba(249, 252, 245, 0.48)',
+    pageEdge: 'rgba(96, 112, 88, 0.26)',
+  },
+  'desert-sand': {
+    crease: 'rgba(76, 54, 28, 0.24)',
+    inner: 'rgba(76, 54, 28, 0.11)',
+    mid: 'rgba(76, 54, 28, 0.045)',
+    sheen: 'rgba(255, 248, 232, 0.46)',
+    pageEdge: 'rgba(140, 108, 66, 0.28)',
+  },
+  'morning-mist': {
+    crease: 'rgba(40, 54, 66, 0.2)',
+    inner: 'rgba(40, 54, 66, 0.09)',
+    mid: 'rgba(40, 54, 66, 0.035)',
+    sheen: 'rgba(252, 254, 255, 0.5)',
+    pageEdge: 'rgba(96, 118, 136, 0.24)',
+  },
+  'forest-night': {
+    crease: 'rgba(2, 8, 5, 0.7)',
+    inner: 'rgba(2, 8, 5, 0.4)',
+    mid: 'rgba(2, 8, 5, 0.15)',
+    sheen: 'rgba(214, 228, 218, 0.035)',
+    pageEdge: 'rgba(214, 228, 218, 0.16)',
+  },
+  espresso: {
+    crease: 'rgba(8, 4, 2, 0.72)',
+    inner: 'rgba(8, 4, 2, 0.42)',
+    mid: 'rgba(8, 4, 2, 0.16)',
+    sheen: 'rgba(228, 211, 195, 0.035)',
+    pageEdge: 'rgba(228, 211, 195, 0.18)',
+  },
+  'twilight-plum': {
+    crease: 'rgba(6, 3, 10, 0.7)',
+    inner: 'rgba(6, 3, 10, 0.4)',
+    mid: 'rgba(6, 3, 10, 0.15)',
+    sheen: 'rgba(221, 210, 230, 0.035)',
+    pageEdge: 'rgba(221, 210, 230, 0.16)',
+  },
+  'oled-amber': {
+    crease: 'rgba(216, 205, 187, 0.14)',
+    inner: 'rgba(216, 205, 187, 0.03)',
+    mid: 'rgba(0, 0, 0, 0)',
+    sheen: 'rgba(255, 255, 255, 0.02)',
+    pageEdge: 'rgba(205, 190, 165, 0.14)',
   },
 };
 
