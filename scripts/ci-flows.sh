@@ -2,7 +2,47 @@
 set -euo pipefail
 
 FLOW_TARGET="${1:-}"
-VALID_FLOWS=("first-launch-sample" "import-md" "import-epub" "import-epub-broken" "resume-position" "settings-live" "open-with-telegram" "drag-page-direction" "highlight-add" "scrubber-direction" "footnote-popover" "rotate-position" "keep-awake" "long-book-open")
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The journeys that exist are defined in exactly one place — `.factory/flows.yaml`, the same file
+# `proof check` reads to decide what "done" means. Overridable so the list-builder test can point
+# it at a temp file.
+FLOWS_YAML="${CI_FLOWS_YAML:-$ROOT_DIR/.factory/flows.yaml}"
+# Why (tech): this used to be a hard-coded array, and it drifted. Every journey added to
+# `.factory/flows.yaml` (scroll-mode, lighting-themes, the F46/F48/F42 journeys) stayed out of
+# "all" — so `all` never ran it — and a named new id was rejected with a usage error until someone
+# remembered to edit the array. Derive the list instead: one `- id: <x>` entry per line under
+# `flows:`, nothing else. No new dependency (no yaml package in node_modules): the entries are
+# single-line scalars by contract, so awk over the `flows:` block is exact.
+flows_yaml_ids() {
+  local file="$1"
+  [ -f "$file" ] || return 1
+  awk '
+    # A new top-level key closes the flows block, so a future section cannot leak ids into the list.
+    /^[^[:space:]#]/ { in_flows = ($0 ~ /^flows:[[:space:]]*(#.*)?$/) ; item_indent = 0 ; next }
+    in_flows && /^[[:space:]]*-[[:space:]]/ {
+      # Only the list items that sit at the flows list own indentation are journeys; anything
+      # deeper is the body of a previous item (a `steps: |` block can legally contain "- id: ...").
+      match($0, /^[[:space:]]*/)
+      if (item_indent == 0) item_indent = RLENGTH
+      if (RLENGTH != item_indent) next
+      if ($0 !~ /^[[:space:]]*-[[:space:]]+id:/) next
+      sub(/^[[:space:]]*-[[:space:]]+id:[[:space:]]*/, "")
+      sub(/[[:space:]]+#.*$/, "")
+      if ($0 != "") print
+    }
+  ' "$file" | sed -e "s/^[\"']//" -e "s/[\"']\$//" | awk '!seen[$0]++'
+}
+mapfile -t VALID_FLOWS < <(flows_yaml_ids "$FLOWS_YAML")
+if [ "${#VALID_FLOWS[@]}" -eq 0 ]; then
+  echo "ERROR: no flow ids found in $FLOWS_YAML (expected '- id: <flow-id>' entries under 'flows:')." >&2
+  exit 1
+fi
+# Plumbing surface for the list-builder test (scripts/__tests__/ci-flows-list.sh) and for eyeballing
+# the sweep: print the derived ids and stop before any git/push/CI work.
+if [ "$FLOW_TARGET" = "--list-flows" ]; then
+  printf '%s\n' "${VALID_FLOWS[@]}"
+  exit 0
+fi
 # Why: F3 rotation is blocked on a product decision (landscape may end up tablet-only, and app.json
 # still locks the phone to portrait). The journey stays in the sweep so its evidence stays fresh, but
 # it is NOT a gate: its FAIL is reported and does not turn the run red. Remove it from this list the
@@ -44,14 +84,27 @@ is_valid_target() {
 
 if [ -z "$FLOW_TARGET" ] || ! is_valid_target "$FLOW_TARGET"; then
   echo "Usage: bash scripts/ci-flows.sh <flow-id|all>" >&2
-  echo "Valid flow IDs: all ${VALID_FLOWS[*]}" >&2
+  echo "Valid flow IDs (from .factory/flows.yaml): all ${VALID_FLOWS[*]}" >&2
+  if [ -n "$FLOW_TARGET" ]; then
+    echo "ERROR: '$FLOW_TARGET' is not an id in .factory/flows.yaml." >&2
+  fi
   exit 2
 fi
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TESTERS_REPO="sohailcollege2032008-tech/rewiaty-agent-testers"
 WORKFLOW_NAME="rewiaty-flows.yml"
 cd "$ROOT_DIR"
+
+# A flow declared in the yaml with no Maestro journey cannot run at all: the runner treats a missing
+# journey file as an error, so the summary names it and counts it as FAIL instead of leaving it as a
+# quiet MISSING that looks like a flaky artifact download.
+MISSING_JOURNEYS=()
+for _flow in ${VALID_FLOWS[@]+"${VALID_FLOWS[@]}"}; do
+  if [ ! -f "$ROOT_DIR/apps/mobile/.maestro/${_flow}.yaml" ]; then
+    MISSING_JOURNEYS+=("$_flow")
+    echo "WARNING: '$_flow' is in .factory/flows.yaml but apps/mobile/.maestro/${_flow}.yaml is missing (counted as FAIL)." >&2
+  fi
+done
 
 # Why (Sohail's decision): the build AND the device tests run on the public repo's free GitHub Actions,
 # never on the server. We push the committed source as a src/<sha12> branch there; the workflow builds the
@@ -134,7 +187,9 @@ SUMMARY_PATH="$EVIDENCE_DIR/summary.md"
 TARGET_RC=0
 BLOCKED_LIST="${BLOCKED_FLOWS[*]}"
 MEASURE_LIST="${MEASURE_ONLY_FLOWS[*]}"
-python3 - "$EVIDENCE_DIR" "$SUMMARY_PATH" "$RUN_ID" "$RUN_URL" "$SHA256" "$ARM64_SIZE" "$ARM64_SHA256" "$SHA12" "$FLOW_TARGET" "$WATCH_RC" "$BLOCKED_LIST" "$MEASURE_LIST" "$MEASURE_ONLY_ASSERT_TIMEOUT" <<'PY' || TARGET_RC=$?
+FLOWS_LIST="${VALID_FLOWS[*]}"
+MISSING_LIST="${MISSING_JOURNEYS[*]:-}"
+python3 - "$EVIDENCE_DIR" "$SUMMARY_PATH" "$RUN_ID" "$RUN_URL" "$SHA256" "$ARM64_SIZE" "$ARM64_SHA256" "$SHA12" "$FLOW_TARGET" "$WATCH_RC" "$BLOCKED_LIST" "$MEASURE_LIST" "$MEASURE_ONLY_ASSERT_TIMEOUT" "$FLOWS_LIST" "$MISSING_LIST" <<'PY' || TARGET_RC=$?
 import json
 import os
 import sys
@@ -154,29 +209,20 @@ import xml.etree.ElementTree as ET
     blocked_list,
     measure_list,
     measure_assert_timeout,
-) = sys.argv[1:14]
+    flows_list,
+    missing_list,
+) = sys.argv[1:16]
 watch_rc = int(watch_rc_str)
 blocked = {f for f in blocked_list.split() if f}
 measure_only = {f for f in measure_list.split() if f}
+missing_journeys = {f for f in missing_list.split() if f}
 arm64_size = int(arm64_size_str or 0)
 arm64_mb = f"{arm64_size / (1024 * 1024):.2f} MB ({arm64_size} bytes)" if arm64_size > 0 else "missing"
 
-flows = [
-    "first-launch-sample",
-    "import-md",
-    "import-epub",
-    "import-epub-broken",
-    "resume-position",
-    "settings-live",
-    "open-with-telegram",
-    "drag-page-direction",
-    "scrubber-direction",
-    "highlight-add",
-    "footnote-popover",
-    "rotate-position",
-    "keep-awake",
-    "long-book-open",
-]
+# The journeys and their order come from `.factory/flows.yaml` (the script derives them once and
+# passes them in); this summary must report exactly what was dispatched, not a second copy of the
+# list that can drift.
+flows = [f for f in flows_list.split() if f]
 
 status_map = {}
 status_file = os.path.join(evidence_dir, "status.tsv")
@@ -204,6 +250,13 @@ for fid in flows:
             status_map[fid] = (res, f"junit failures={failures} errors={errors}")
         except Exception as exc:
             status_map[fid] = ("FAIL", f"junit parse error: {exc}")
+
+# A journey declared in `.factory/flows.yaml` with no Maestro file never ran. That is a broken
+# source, not a flaky artifact download, so it is recorded as an explicit FAIL with its reason —
+# it can never be mistaken for "no evidence yet" and it can never turn the sweep green.
+for fid in flows:
+    if fid in missing_journeys:
+        status_map[fid] = ("FAIL", f"no journey file: apps/mobile/.maestro/{fid}.yaml")
 
 csp_status = "UNKNOWN"
 csp_file = os.path.join(evidence_dir, "logs", "csp-check.txt")
@@ -305,6 +358,12 @@ if measure_only:
         + f" — the {measure_assert_timeout} ms open budget is a product target and the emulator "
         "runner's load moves it by seconds between runs, so the journey measures and prints the "
         "number instead of deciding red/green. Speeding the open up is its own ticket."
+    )
+if missing_journeys:
+    notes.append(
+        "- ⚠️ WARNING: declared in `.factory/flows.yaml` with no `apps/mobile/.maestro/<id>.yaml` "
+        "(counted as FAIL, never as a pass): "
+        + ", ".join(f"`{m}`" for m in sorted(missing_journeys))
     )
 if notes:
     lines.append("")
