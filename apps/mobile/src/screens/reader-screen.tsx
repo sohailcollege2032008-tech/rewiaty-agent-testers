@@ -686,6 +686,7 @@ export function ReaderScreen() {
               bookmarks: latestStateRef.current?.bookmarks,
               bookmarkItems: bookmarkItemsRef.current,
               highlights: highlightsRef.current,
+              ...(scenesRef.current.length > 0 ? { scenes: scenesRef.current } : {}),
               updatedAt: Date.now(),
             };
             latestStateRef.current = nextState;
