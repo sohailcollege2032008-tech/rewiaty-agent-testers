@@ -1,0 +1,42 @@
+appId: com.rewiaty.app
+---
+# F28 — «فين كنا واقفين؟». On a real device this journey proves the NEGATIVE control: a freshly
+# opened sample book (its saved `updatedAt` is "now") must never pop the welcome-back card, and
+# reading normally must stay unobstructed. The > 3-day trigger itself is covered exhaustively by
+# the unit/component tests — no production backdoor is added just to age a book on the device.
+- launchApp
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 20000
+- waitForAnimationToEnd
+- assertNotVisible:
+    id: "welcome-back-card"
+- takeScreenshot: "01-fresh-open-no-recap"
+# Turn one page with the finger (RTL: swipe right = next page). The card must not appear mid-read.
+- swipe:
+    start: "20%,50%"
+    end: "80%,50%"
+    duration: 400
+- waitForAnimationToEnd
+- assertNotVisible:
+    id: "welcome-back-card"
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-page-counter"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-page-counter"
+    timeout: 5000
+- assertVisible:
+    id: "reader-page-counter"
+    text: "صفحة 2 من .*"
+- takeScreenshot: "02-fresh-open-reads-normally"

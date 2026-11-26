@@ -1,0 +1,120 @@
+import { fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
+
+import { WelcomeBackCard } from '@/components/welcome-back-card';
+import { getAppThemeTokens } from '@/theme/reader-theme';
+import type { WelcomeBackRecap } from '@/utils/welcome-back';
+
+const RECAP: WelcomeBackRecap = {
+  awayMs: 4 * 24 * 60 * 60 * 1000,
+  awayLabel: 'غبت ٤ أيام',
+  chapterTitle: 'الفصل الأول',
+  paragraphs: [
+    'وَعَادَ الصَّيَّادُونَ يَجُرُّونَ شِبَاكَهُمْ إِلَى الشَّاطِئِ.',
+    'ثُمَّ أَشْرَقَتِ الشَّمْسُ عَلَى الْمَدِينَةِ الْقَدِيمَةِ.',
+  ],
+  mark: {
+    kind: 'note',
+    label: 'آخر ملاحظة',
+    quote: 'وَعَادَ الصَّيَّادُونَ',
+    note: 'جملة تستاهل الوقفة',
+    chapterTitle: 'الفصل الأول',
+  },
+};
+
+const RECAP_WITHOUT_MARK: WelcomeBackRecap = { ...RECAP, mark: null };
+
+describe('WelcomeBackCard', () => {
+  it('renders the Arabic header, away duration, chapter and last paragraphs', async () => {
+    const { getByTestId, getByText } = await render(
+      <WelcomeBackCard recap={RECAP} theme="warraq" onDismiss={jest.fn()} />,
+    );
+
+    expect(getByTestId('welcome-back-card')).toBeTruthy();
+    expect(getByText('فين كنا واقفين؟')).toBeTruthy();
+    expect(getByText('غبت ٤ أيام · الفصل الأول')).toBeTruthy();
+    expect(getByText(RECAP.paragraphs[0]!)).toBeTruthy();
+    expect(getByText(RECAP.paragraphs[1]!)).toBeTruthy();
+  });
+
+  it('renders the latest mark callout with its quote and note', async () => {
+    const { getByTestId, getByText } = await render(
+      <WelcomeBackCard recap={RECAP} theme="warraq" onDismiss={jest.fn()} />,
+    );
+
+    expect(getByTestId('welcome-back-mark')).toBeTruthy();
+    expect(getByText('آخر ملاحظة')).toBeTruthy();
+    expect(getByText('«وَعَادَ الصَّيَّادُونَ»')).toBeTruthy();
+    expect(getByText('جملة تستاهل الوقفة')).toBeTruthy();
+  });
+
+  it('omits the callout when there is no bookmark or highlight', async () => {
+    const { queryByTestId } = await render(
+      <WelcomeBackCard recap={RECAP_WITHOUT_MARK} theme="warraq" onDismiss={jest.fn()} />,
+    );
+    expect(queryByTestId('welcome-back-mark')).toBeNull();
+  });
+
+  it('dismisses on a single tap anywhere on the card', async () => {
+    const onDismiss = jest.fn();
+    const { getByTestId } = await render(
+      <WelcomeBackCard recap={RECAP} theme="warraq" onDismiss={onDismiss} />,
+    );
+    await fireEvent.press(getByTestId('welcome-back-card'));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('dismisses on a single tap on the «كمّل القراية» button', async () => {
+    const onDismiss = jest.fn();
+    const { getByTestId, getByText } = await render(
+      <WelcomeBackCard recap={RECAP} theme="warraq" onDismiss={onDismiss} />,
+    );
+    expect(getByText('كمّل القراية')).toBeTruthy();
+    await fireEvent.press(getByTestId('welcome-back-dismiss'));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('dismisses on a single tap on the backdrop', async () => {
+    const onDismiss = jest.fn();
+    const { getByTestId } = await render(
+      <WelcomeBackCard recap={RECAP} theme="warraq" onDismiss={onDismiss} />,
+    );
+    await fireEvent.press(getByTestId('welcome-back-backdrop'));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('stays readable in the dark theme without Arabic letterSpacing', async () => {
+    const dark = getAppThemeTokens('burnt-paper');
+    const { getByTestId, getByText } = await render(
+      <WelcomeBackCard recap={RECAP} theme="burnt-paper" onDismiss={jest.fn()} />,
+    );
+
+    const cardStyle = StyleSheet.flatten(getByTestId('welcome-back-card').props.style) as Record<
+      string,
+      unknown
+    >;
+    expect(cardStyle.backgroundColor).toBe(dark.surfaceElevated);
+
+    const titleStyle = StyleSheet.flatten(getByText('فين كنا واقفين؟').props.style) as Record<
+      string,
+      unknown
+    >;
+    expect(titleStyle.writingDirection).toBe('rtl');
+    expect(titleStyle.textAlign).toBe('right');
+    expect(titleStyle.letterSpacing).toBeUndefined();
+
+    const paragraphStyle = StyleSheet.flatten(getByText(RECAP.paragraphs[0]!).props.style) as Record<
+      string,
+      unknown
+    >;
+    expect(paragraphStyle.writingDirection).toBe('rtl');
+    expect(paragraphStyle.letterSpacing).toBeUndefined();
+  });
+
+  it('renders immediately when animation is disabled', async () => {
+    const { getByTestId } = await render(
+      <WelcomeBackCard recap={RECAP} theme="warraq" disableAnimation onDismiss={jest.fn()} />,
+    );
+    expect(getByTestId('welcome-back-card')).toBeTruthy();
+  });
+});
