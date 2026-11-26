@@ -430,3 +430,409 @@ body {
 .footnote-body p:last-child {
   margin-bottom: 0;
 }
+
+/* =====================================================================
+   F46 — Scene placeholder (Warraq sketchbook frame)
+   ---------------------------------------------------------------------
+   The frame is sized by ONE aspect-ratio box. Every state (caption, status, shimmer,
+   image, action bar) lives absolutely inside it, so idle → queued → generating →
+   ready can never change the outer box or re-paginate the chapter.
+   ===================================================================== */
+
+.scene-placeholder {
+  position: relative;
+  z-index: 1;
+  margin: 0.9em 0;
+  padding: 0;
+  text-indent: 0;
+  font-family: var(--font-family);
+  line-height: 1.5;
+  text-align: start;
+  break-inside: avoid;
+  page-break-inside: avoid;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.scene-placeholder[hidden] {
+  display: none;
+}
+
+.scene-frame {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: var(--scene-aspect-ratio, 1.6);
+  max-height: calc(var(--page-height) - var(--padding-top) - var(--padding-bottom) - 32px);
+  overflow: hidden;
+  border: 1.5px dashed var(--popover-border);
+  border-radius: 10px;
+  background-color: var(--popover-bg);
+  background-image: linear-gradient(
+    180deg,
+    rgba(158, 62, 47, 0.035) 0%,
+    rgba(158, 62, 47, 0) 42%
+  );
+}
+
+/* Sketchbook inner line + a faint pencil mark, both pure decoration. */
+.scene-sketch {
+  position: absolute;
+  inset: 6px;
+  border: 1px dashed var(--popover-border);
+  border-radius: 6px;
+  opacity: 0.45;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.scene-sketch-mark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 2.2em;
+  color: var(--muted-color);
+  opacity: 0;
+  transition: opacity 300ms ease;
+  pointer-events: none;
+}
+
+.scene-placeholder[data-status="idle"] .scene-sketch-mark,
+.scene-placeholder[data-status="queued"] .scene-sketch-mark {
+  opacity: 0.28;
+}
+
+/* Shimmer sweep — only visible while generating. */
+.scene-shimmer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0;
+  pointer-events: none;
+  background-image: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 22%,
+    rgba(255, 255, 255, 0.5) 50%,
+    rgba(255, 255, 255, 0) 78%
+  );
+  background-size: 220% 100%;
+  background-position: 130% 0;
+  transition: opacity 220ms ease;
+}
+
+.scene-placeholder[data-status="generating"] .scene-shimmer {
+  opacity: 0.8;
+  animation: scene-shimmer-sweep 1.4s linear infinite;
+}
+
+.scene-placeholder.scene-no-anim .scene-shimmer {
+  animation: none;
+  background-position: 50% 0;
+  opacity: 0.55;
+}
+
+@keyframes scene-shimmer-sweep {
+  from {
+    background-position: 130% 0;
+  }
+  to {
+    background-position: -130% 0;
+  }
+}
+
+.scene-image {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  opacity: 0;
+  transition: opacity 320ms ease;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+.scene-placeholder.scene-no-anim .scene-image {
+  transition: none;
+}
+
+.scene-caption-overlay {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 3;
+  padding: 26px 12px 30px;
+  background-image: linear-gradient(
+    to top,
+    var(--popover-bg) 0%,
+    var(--popover-bg) 42%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  pointer-events: none;
+}
+
+.scene-caption {
+  display: block;
+  max-height: 3em;
+  overflow: hidden;
+  color: var(--muted-color);
+  font-size: 0.8em;
+  line-height: 1.5;
+  text-align: center;
+  text-overflow: ellipsis;
+}
+
+.scene-placeholder[data-status="ready"] .scene-caption-overlay {
+  background-image: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.55) 0%,
+    rgba(0, 0, 0, 0.28) 48%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+.scene-placeholder[data-status="ready"] .scene-caption {
+  color: #fdfaf3;
+}
+
+.scene-status-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px 30px 44px;
+  pointer-events: none;
+}
+
+.scene-status {
+  color: var(--muted-color);
+  font-size: 0.8em;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.scene-status[data-visible="false"] {
+  display: none;
+}
+
+/* Errors are calm and amber — product rule: no bright red, no alarm. */
+.scene-placeholder[data-status="error"] .scene-status {
+  color: #9a6b2f;
+}
+
+.scene-placeholder[data-status="error"] .scene-frame {
+  border-color: #c8a878;
+}
+
+.scene-actions {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 6px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.scene-actions > button {
+  pointer-events: auto;
+}
+
+.scene-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 3px 10px;
+  border: 1px dashed var(--popover-border);
+  border-radius: 999px;
+  background-color: var(--popover-bg);
+  color: var(--text-color);
+  font-family: var(--font-family);
+  font-size: 0.72em;
+  line-height: 1.7;
+  text-indent: 0;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  touch-action: manipulation;
+}
+
+.scene-action:active {
+  opacity: 0.75;
+}
+
+.scene-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.scene-placeholder[data-status="ready"] .scene-generate {
+  display: none;
+}
+
+.scene-collapse-toggle {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 0.8em;
+  line-height: 1;
+}
+
+.scene-placeholder[data-collapsed="false"] .scene-collapse-toggle {
+  position: absolute;
+  top: 6px;
+  inset-inline-end: 6px;
+  z-index: 6;
+}
+
+/* Collapsed: a single-line pill bar. The frame is removed from the flow entirely. */
+.scene-placeholder[data-collapsed="true"] {
+  margin: 0.6em 0;
+}
+
+.scene-placeholder[data-collapsed="true"] .scene-frame {
+  display: none;
+}
+
+.scene-collapsed-bar {
+  display: none;
+  align-items: center;
+  min-height: 34px;
+  /* Logical padding: the expand toggle is pinned with `inset-inline-end`, so the 40px
+     clearance must sit on the inline END (left in RTL) or a long Arabic caption runs
+     under the button. */
+  padding-block: 6px;
+  padding-inline-start: 14px;
+  padding-inline-end: 40px;
+  border: 1.5px dashed var(--popover-border);
+  border-radius: 999px;
+  background-color: var(--popover-bg);
+}
+
+.scene-placeholder[data-collapsed="true"] .scene-collapsed-bar {
+  display: flex;
+}
+
+.scene-collapsed-caption {
+  overflow: hidden;
+  color: var(--muted-color);
+  font-size: 0.78em;
+  line-height: 1.6;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.scene-placeholder[data-collapsed="true"] .scene-collapse-toggle {
+  position: absolute;
+  top: 50%;
+  inset-inline-end: 8px;
+  transform: translateY(-50%);
+  z-index: 6;
+}
+
+/* ---------------------------------------------------------------------
+   Structured prompt editor (overlay on #reader-root → never shifts pages)
+   --------------------------------------------------------------------- */
+
+.scene-prompt-editor {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.35);
+  font-family: var(--font-family);
+  touch-action: manipulation;
+}
+
+.scene-prompt-panel {
+  width: min(100%, 540px);
+  max-height: 82vh;
+  overflow-y: auto;
+  padding: 16px 18px 18px;
+  border: 1px solid var(--popover-border);
+  border-radius: 14px;
+  background: var(--popover-bg);
+  color: var(--text-color);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.26);
+  font-size: 15px;
+  line-height: 1.7;
+  text-align: start;
+}
+
+.scene-prompt-header {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--popover-border);
+}
+
+.scene-prompt-title {
+  color: var(--accent-color);
+  font-size: 0.92em;
+  font-weight: 600;
+}
+
+.scene-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+  font-size: 0.82em;
+  color: var(--muted-color);
+}
+
+.scene-field input,
+.scene-field textarea {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--popover-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-color);
+  font-family: var(--font-family);
+  font-size: 16px;
+  line-height: 1.6;
+  resize: none;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.scene-field input:focus,
+.scene-field textarea:focus {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 1px;
+}
+
+.scene-prompt-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.scene-prompt-actions .scene-action {
+  padding: 6px 18px;
+  font-size: 0.9em;
+}
+
+.scene-prompt-actions .scene-save {
+  border-style: solid;
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  font-weight: 600;
+}

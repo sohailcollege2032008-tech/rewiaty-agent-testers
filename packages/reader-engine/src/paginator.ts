@@ -13,10 +13,19 @@ import {
   type EngineHighlight,
   type ReaderInsets,
   type ReaderSettings,
+  type SceneDisplayMode,
+  type ScenePlaceholder,
+  type ScenePromptParts,
   type SelectionRect,
   type TocEntry,
 } from './types.js';
 import { applyTashkeelToElement, toDisplayOffset, toOriginalOffset } from './tashkeel.js';
+import {
+  normalizeScenePlaceholder,
+  normalizeScenePrompt,
+  syncScenePlaceholdersInRoot,
+  type SceneRenderOptions,
+} from './scene-placeholder.js';
 
 function normalizeInsets(insets?: ReaderInsets | null): ReaderInsets {
   const top = typeof insets?.top === 'number' && Number.isFinite(insets.top) ? Math.max(0, Math.round(insets.top)) : 0;
@@ -343,6 +352,14 @@ export class Paginator {
   private layoutGeneration = 0;
   private highlights: EngineHighlight[] = [];
 
+  // --- F46 scene placeholders ---
+  /**
+   * Every scene frame the host has told us about, in host order. Stored even when
+   * `sceneDisplayMode` is `hidden`, so switching back to `expanded` needs no re-fetch.
+   */
+  private scenePlaceholders: ScenePlaceholder[] = [];
+  private sceneDisplayMode: SceneDisplayMode = 'expanded';
+
   // --- exact pagination pass (offscreen, frame-chunked) ---
   /** Chapters still to measure, in priority order (see `startExactPagination`). */
   private exactQueue: number[] = [];
@@ -607,6 +624,9 @@ export class Paginator {
     // F18: the offscreen probe has to measure the same glyphs the reader sees — the
     // displayed text, in the mode currently chosen, not the file's full vocalisation.
     applyTashkeelToElement(el, this.settings.tashkeel);
+    // F46: a scene frame occupies real column height, so the probe must include the frames
+    // the reader will see — otherwise an unmounted chapter's count would be short.
+    syncScenePlaceholdersInRoot(el, this.scenePlaceholders, this.sceneRenderOptions());
     probe.appendChild(el);
     try {
       this.pageCache.set(this.cacheKey(chapter), Math.max(1, this.measureChapterScrollPages(el)));
@@ -890,6 +910,198 @@ export class Paginator {
   setHighlights(highlights: EngineHighlight[]): void {
     this.highlights = Array.isArray(highlights) ? [...highlights] : [];
     this.renderHighlights();
+  }
+
+  // -------------------------------------------------------------------------
+  // F46 scene placeholders
+  // -------------------------------------------------------------------------
+
+  getScenePlaceholder(sceneId: string): ScenePlaceholder | null {
+    return this.scenePlaceholders.find((placeholder) => placeholder.id === sceneId) ?? null;
+  }
+
+  getSceneDisplayMode(): SceneDisplayMode {
+    return this.sceneDisplayMode;
+  }
+
+  /**
+   * Replace the whole scene list (used by `load` and `scene-placeholders`).
+   *
+   * `reflow: false` is for the `load` path, which is about to `setBook` and rebuild every
+   * chapter anyway — reflowing the *previous* book first would be wasted work.
+   */
+  setScenePlaceholders(
+    placeholders: readonly ScenePlaceholder[] | undefined,
+    displayMode?: SceneDisplayMode,
+    reflow = true,
+  ): void {
+    const normalized: ScenePlaceholder[] = [];
+    for (const entry of Array.isArray(placeholders) ? placeholders : []) {
+      const placeholder = normalizeScenePlaceholder(entry);
+      if (placeholder) normalized.push(placeholder);
+    }
+
+    if (displayMode === 'expanded' || displayMode === 'collapsed' || displayMode === 'hidden') {
+      this.sceneDisplayMode = displayMode;
+    }
+    if (this.sceneDisplayMode === 'collapsed') {
+      for (const placeholder of normalized) placeholder.collapsed = true;
+    } else if (this.sceneDisplayMode === 'expanded') {
+      for (const placeholder of normalized) placeholder.collapsed = false;
+    }
+
+    this.scenePlaceholders = normalized;
+    if (reflow && this.book) this.applySceneLayoutChange();
+  }
+
+  setSceneDisplayMode(mode: SceneDisplayMode): void {
+    if (mode !== 'expanded' && mode !== 'collapsed' && mode !== 'hidden') return;
+    this.sceneDisplayMode = mode;
+    if (mode === 'collapsed') {
+      this.scenePlaceholders = this.scenePlaceholders.map((placeholder) => ({
+        ...placeholder,
+        collapsed: true,
+      }));
+    } else if (mode === 'expanded') {
+      this.scenePlaceholders = this.scenePlaceholders.map((placeholder) => ({
+        ...placeholder,
+        collapsed: false,
+      }));
+    }
+    if (this.book) this.applySceneLayoutChange();
+  }
+
+  /**
+   * Apply one scene update from the host.
+   *
+   * A status/image change is DOM-only (the frame box is fixed by design, so it cannot
+   * move anything). Anything that changes the *box* — collapse, aspect ratio, anchor —
+   * re-measures and reflows the chapter list.
+   */
+  updateScenePlaceholder(placeholder: ScenePlaceholder): void {
+    const next = normalizeScenePlaceholder(placeholder);
+    if (!next) return;
+
+    const index = this.scenePlaceholders.findIndex((entry) => entry.id === next.id);
+    const previous = index >= 0 ? this.scenePlaceholders[index]! : null;
+    if (index >= 0) this.scenePlaceholders[index] = next;
+    else this.scenePlaceholders.push(next);
+
+    if (!this.book) return;
+
+    const layoutAffecting =
+      !previous ||
+      previous.afterBlockId !== next.afterBlockId ||
+      previous.collapsed !== next.collapsed ||
+      (previous.aspectRatio ?? 0) !== (next.aspectRatio ?? 0) ||
+      this.sceneDisplayMode === 'hidden';
+
+    if (layoutAffecting) {
+      this.applySceneLayoutChange();
+      return;
+    }
+
+    // Status/image only: DOM-only, no reflow. The target placeholder was already replaced
+    // in the list above — never broadcast its `collapsed` flag to the other scenes, or an
+    // update to one scene would silently expand another collapsed one without repaginating.
+    for (const entry of this.rendered.values()) {
+      this.syncSceneFigures(entry);
+    }
+  }
+
+  setSceneCollapsed(sceneId: string, collapsed: boolean): void {
+    const placeholder = this.getScenePlaceholder(sceneId);
+    if (!placeholder) return;
+    this.updateScenePlaceholder({ ...placeholder, collapsed });
+  }
+
+  /** Persist an edited prompt locally so the next `scene-generate` uses it. */
+  updateScenePlaceholderPrompt(sceneId: string, prompt: ScenePromptParts): void {
+    const placeholder = this.getScenePlaceholder(sceneId);
+    if (!placeholder) return;
+    placeholder.prompt = normalizeScenePrompt(prompt);
+  }
+
+  private sceneRenderOptions(): SceneRenderOptions {
+    return {
+      displayMode: this.sceneDisplayMode,
+      disableAnimation: this.settings.disableAnimation,
+    };
+  }
+
+  /**
+   * A deterministic signature of everything about the scene set that changes pagination.
+   *
+   * Status/image are deliberately NOT part of it: an image arriving must not invalidate
+   * the page map. Collapse/aspect/anchor do change the box, so they must.
+   */
+  private sceneSignature(): string {
+    if (this.sceneDisplayMode === 'hidden' || this.scenePlaceholders.length === 0) {
+      return `scene:${this.sceneDisplayMode}:none`;
+    }
+    const parts = this.scenePlaceholders
+      .map(
+        (placeholder) =>
+          `${placeholder.id}@${placeholder.afterBlockId}:${placeholder.collapsed ? 'c' : 'e'}:${placeholder.aspectRatio ?? ''}`,
+      )
+      .sort();
+    return `scene:${this.sceneDisplayMode}:${parts.join(',')}`;
+  }
+
+  /** Insert/update/remove the scene frames inside one rendered chapter. */
+  private syncSceneFigures(entry: RenderedChapter): void {
+    syncScenePlaceholdersInRoot(entry.el, this.scenePlaceholders, this.sceneRenderOptions());
+  }
+
+  /**
+   * Reflow after the scene set changed the box (mount, collapse, hide, aspect ratio).
+   *
+   * Follows the same anchor-restore contract as a settings change: the reader keeps the
+   * block they were on, and the page map is rebuilt from real measurements.
+   */
+  private applySceneLayoutChange(): void {
+    if (!this.book) return;
+    this.cancelIdleWork();
+    this.cancelExactPagination();
+    this.cancelDragSettle();
+    this.dragging = false;
+    this.layoutGeneration++;
+
+    const anchorBefore = this.captureCurrentAnchor();
+    this.rememberRestoredAnchor(anchorBefore);
+
+    for (const entry of this.rendered.values()) {
+      this.syncSceneFigures(entry);
+      this.remeasureChapter(entry);
+    }
+
+    // The scene signature is part of the cache key, so counts measured before this
+    // change are unreachable; drop those stale scene-layout entries from memory too.
+    const currentSignature = this.layoutSignature();
+    for (const key of Array.from(this.pageCache.keys())) {
+      if (key.includes('|scene:') && !key.endsWith(`|${currentSignature}`)) {
+        this.pageCache.delete(key);
+      }
+    }
+
+    this.invalidatePageMap();
+    this.layoutVirtualizedChapterOffsets();
+
+    if (anchorBefore) {
+      this.currentChapterPage = this.alignToSpread(
+        this.resolveAnchorPageInCurrentChapter(anchorBefore),
+      );
+    } else {
+      const curr = this.rendered.get(this.currentChapterIdx);
+      const maxPage = curr ? curr.layoutPageCount - 1 : 0;
+      this.currentChapterPage = Math.max(0, Math.min(this.currentChapterPage, maxPage));
+    }
+
+    this.applyTrackTransform(false);
+    this.renderHighlights();
+    this.scheduleBackgroundWork();
+    // The host should see the corrected position/page numbers immediately.
+    this.callbacks.onBackgroundProgress?.();
   }
 
   /**
@@ -1914,6 +2126,9 @@ export class Paginator {
       blockEls,
       blockById,
     };
+    // F46: mount the frames before the first measurement, so `ready` is reported for the
+    // layout that includes them.
+    this.syncSceneFigures(entry);
     this.applyChapterMeasurements(entry);
     return entry;
   }
@@ -1955,6 +2170,8 @@ export class Paginator {
     entry.mountedBlockCount = endIdx;
     entry.mountedWordCount += batchWords;
     entry.isComplete = endIdx >= blocks.length;
+    // F46: the batch may have mounted a new scene anchor.
+    this.syncSceneFigures(entry);
     this.remeasureChapter(entry);
   }
 
@@ -1988,6 +2205,8 @@ export class Paginator {
     entry.mountedBlockCount = endIdx;
     entry.mountedWordCount += addedWords;
     entry.isComplete = endIdx >= blocks.length;
+    // F46: the batch may have mounted a new scene anchor.
+    this.syncSceneFigures(entry);
     this.remeasureChapter(entry);
   }
 
@@ -2131,6 +2350,10 @@ export class Paginator {
       // combining marks the page counts happen to agree, because the marks add no advance
       // width; `test/tashkeel.spec.ts` measures that instead of assuming it.)
       s.tashkeel,
+      // F46: a scene frame is real content in the column flow, so which frames exist
+      // (and whether they are collapsed) changes page counts. Status does not — that is
+      // the whole zero-layout-shift contract.
+      this.sceneSignature(),
     ].join('|');
   }
 

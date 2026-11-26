@@ -197,6 +197,40 @@ export type ReaderInsets = {
   bottom: number;
 };
 
+/**
+ * F46 — the structured prompt behind a scene placeholder. Every part is a short, editable
+ * phrase, so the reader can nudge the picture without rewriting a paragraph.
+ */
+export type ScenePromptParts = {
+  setting: string;
+  mood: string;
+  characters: string;
+  style: string;
+  note?: string;
+};
+
+export type ScenePlaceholderStatus = 'idle' | 'queued' | 'generating' | 'ready' | 'error';
+
+/**
+ * F46 — a sketchbook frame anchored after one block of the book.
+ *
+ * The frame keeps the same outer box in every status (see `styles.css`), so an image
+ * arriving late can never move the text the reader is already reading.
+ */
+export type ScenePlaceholder = {
+  id: string;
+  afterBlockId: string;
+  caption: string;
+  prompt: ScenePromptParts;
+  status: ScenePlaceholderStatus;
+  aspectRatio?: number; // width / height, default 1.6 (16/10)
+  imageUrl?: string; // only allow data:image/*, file://, https://, or relative safe paths; reject javascript:/data:text/html
+  errorMessage?: string;
+  collapsed?: boolean;
+};
+
+export type SceneDisplayMode = 'expanded' | 'collapsed' | 'hidden';
+
 export type RNToWebMessage =
   | {
       type: 'load';
@@ -206,6 +240,8 @@ export type RNToWebMessage =
       insets?: ReaderInsets;
       fontBaseUrl?: string;
       highlights?: EngineHighlight[];
+      scenePlaceholders?: ScenePlaceholder[];
+      sceneDisplayMode?: SceneDisplayMode;
     }
   | {
       type: 'settings';
@@ -238,6 +274,19 @@ export type RNToWebMessage =
     }
   | {
       type: 'clear-selection';
+    }
+  | {
+      type: 'scene-placeholders';
+      placeholders: ScenePlaceholder[];
+      displayMode?: SceneDisplayMode;
+    }
+  | {
+      type: 'scene-update';
+      placeholder: ScenePlaceholder;
+    }
+  | {
+      type: 'scene-display-mode';
+      mode: SceneDisplayMode;
     };
 
 export type TocEntry = {
@@ -298,6 +347,21 @@ export type WebToRNMessage =
       type: 'highlight-tap';
       highlightId: string;
       rect: SelectionRect;
+    }
+  | {
+      type: 'scene-generate';
+      sceneId: string;
+      prompt: ScenePromptParts;
+    }
+  | {
+      type: 'scene-prompt-edit';
+      sceneId: string;
+      prompt: ScenePromptParts;
+    }
+  | {
+      type: 'scene-toggle-collapse';
+      sceneId: string;
+      collapsed: boolean;
     }
   | {
       type: 'error';

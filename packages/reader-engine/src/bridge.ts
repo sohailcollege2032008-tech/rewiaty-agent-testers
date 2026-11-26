@@ -18,6 +18,9 @@ const VALID_INCOMING_TYPES = new Set([
   'suppress-taps',
   'highlights',
   'clear-selection',
+  'scene-placeholders',
+  'scene-update',
+  'scene-display-mode',
 ]);
 
 /**

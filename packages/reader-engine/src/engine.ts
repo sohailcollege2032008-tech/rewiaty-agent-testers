@@ -10,6 +10,7 @@ import {
   type SelectionWordAnchor,
 } from './highlights.js';
 import { Paginator } from './paginator.js';
+import { ScenePromptEditor } from './scene-placeholder.js';
 import { DEFAULT_SETTINGS, type ReaderSettings, type RNToWebMessage } from './types.js';
 
 const LONG_PRESS_MS = 350;
@@ -69,6 +70,8 @@ export class ReaderEngine {
   private readonly footnoteCloseBtn: HTMLElement;
 
   private readonly paginator: Paginator;
+  /** F46 — the structured prompt editor, mounted on #reader-root (never in the page flow). */
+  private readonly sceneEditor: ScenePromptEditor;
   private book: Book | null = null;
   private pointerStart: { x: number; y: number; time: number } | null = null;
   private longPressTimer: number | null = null;
@@ -147,6 +150,8 @@ export class ReaderEngine {
       onExactPagination: () => this.emitPositionAndToc(),
     });
 
+    this.sceneEditor = new ScenePromptEditor(this.rootEl);
+
     this.bindEvents();
   }
 
@@ -159,6 +164,15 @@ export class ReaderEngine {
     this.rootEl.addEventListener('pointerdown', (e) => {
       if (!this.footnoteBackdrop.hidden) return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
+      // F46: a scene frame and its prompt editor own every touch that lands on them.
+      // Without this the button tap would also become a page-centre tap (`tap` → HUD)
+      // or start a text selection behind the control. Same idea as `[data-fn]` below.
+      if (this.closestSceneInteractive(e.target)) {
+        this.cancelLongPress();
+        this.gesture = null;
+        this.pointerStart = null;
+        return;
+      }
       this.cancelLongPress();
       this.hadSelectionOnDown = hasNonCollapsedSelection();
       this.isSelecting = false;
@@ -357,6 +371,24 @@ export class ReaderEngine {
 
     this.rootEl.addEventListener('click', (e) => {
       const target = e.target as HTMLElement | null;
+
+      // F46: scene controls are ordinary buttons in the page; handle them here so the
+      // paginator never sees their gestures (see the pointerdown guard above).
+      const sceneAction = target?.closest<HTMLElement>('[data-scene-action]');
+      if (sceneAction) {
+        e.preventDefault();
+        this.handleSceneAction(sceneAction);
+        return;
+      }
+
+      const promptEditor = target?.closest<HTMLElement>('[data-scene-prompt-editor]');
+      if (promptEditor) {
+        e.preventDefault();
+        // Only the backdrop itself dismisses; a click inside the panel is a form control.
+        if (target === promptEditor) this.closeScenePromptEditor();
+        return;
+      }
+
       const fnLink = target?.closest<HTMLElement>('[data-fn]');
       if (fnLink) {
         e.preventDefault();
@@ -386,6 +418,15 @@ export class ReaderEngine {
     });
 
     window.addEventListener('keydown', (e) => {
+      // The prompt editor is a form. While it is open every key belongs to it (caret
+      // movement, panel scroll), so none of the reader's page shortcuts may run.
+      if (this.sceneEditor.isOpen()) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          this.closeScenePromptEditor();
+        }
+        return;
+      }
       if (!this.footnoteBackdrop.hidden && e.key === 'Escape') {
         this.closeFootnote();
         return;
@@ -656,10 +697,18 @@ export class ReaderEngine {
         };
         this.clearSelection();
         this.closeFootnote();
+        this.closeScenePromptEditor();
         this.gesture = null;
         this.paginator.cancelDrag();
         this.awaitingExactPosition = true;
         this.resetImageProof();
+        // F46: install the scene set BEFORE the book is mounted, so the very first
+        // measurement already counts the frames (no post-`ready` page-count correction).
+        this.paginator.setScenePlaceholders(
+          msg.scenePlaceholders,
+          msg.sceneDisplayMode ?? 'expanded',
+          false,
+        );
         this.paginator.setBook(msg.book, merged, msg.anchor, msg.insets, msg.highlights);
         postToHost({ type: 'ready' });
         this.paginator.scheduleBackgroundWork();
@@ -723,7 +772,97 @@ export class ReaderEngine {
         this.clearSelection();
         break;
       }
+      case 'scene-placeholders': {
+        this.paginator.setScenePlaceholders(msg.placeholders, msg.displayMode);
+        break;
+      }
+      case 'scene-update': {
+        if (msg.placeholder) this.paginator.updateScenePlaceholder(msg.placeholder);
+        break;
+      }
+      case 'scene-display-mode': {
+        this.paginator.setSceneDisplayMode(msg.mode);
+        break;
+      }
     }
+  }
+
+  /** F46 — true when a pointer landed on a scene frame or its prompt editor. */
+  private closestSceneInteractive(target: EventTarget | null): boolean {
+    const el = target as HTMLElement | null;
+    if (!el || typeof el.closest !== 'function') return false;
+    return Boolean(el.closest('.scene-placeholder, [data-scene-prompt-editor]'));
+  }
+
+  /**
+   * F46 — one delegated handler for every `data-scene-action` button.
+   *
+   * The figure itself never carries behaviour: the prompt and the status always come from
+   * the paginator's model, so a re-mounted frame (batch append, reflow) keeps working.
+   */
+  private handleSceneAction(button: HTMLElement): void {
+    const action = button.getAttribute('data-scene-action');
+    if (!action) return;
+
+    if (action === 'save-prompt') {
+      this.saveScenePrompt();
+      return;
+    }
+    if (action === 'cancel-prompt') {
+      this.closeScenePromptEditor();
+      return;
+    }
+
+    const figure = button.closest<HTMLElement>('figure.scene-placeholder');
+    const sceneId =
+      figure?.getAttribute('data-scene-id') ?? this.sceneEditor.getSceneId() ?? null;
+    if (!sceneId) return;
+
+    const placeholder = this.paginator.getScenePlaceholder(sceneId);
+    if (!placeholder) return;
+
+    switch (action) {
+      case 'generate': {
+        if (placeholder.status === 'queued' || placeholder.status === 'generating') return;
+        postToHost({ type: 'scene-generate', sceneId, prompt: placeholder.prompt });
+        break;
+      }
+      case 'edit-prompt': {
+        this.sceneEditor.open(placeholder, this.paginator.getDirection());
+        break;
+      }
+      case 'toggle-collapse': {
+        const currentlyCollapsed = figure?.getAttribute('data-collapsed') === 'true';
+        const collapsed = !currentlyCollapsed;
+        this.paginator.setSceneCollapsed(sceneId, collapsed);
+        const updated = this.paginator.getScenePlaceholder(sceneId);
+        postToHost({
+          type: 'scene-toggle-collapse',
+          sceneId,
+          collapsed: updated?.collapsed ?? collapsed,
+        });
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  private saveScenePrompt(): void {
+    const sceneId = this.sceneEditor.getSceneId();
+    if (!sceneId) {
+      this.closeScenePromptEditor();
+      return;
+    }
+    const prompt = this.sceneEditor.readPrompt();
+    // Local first: the next `✨ ارسم` must use what the reader just typed.
+    this.paginator.updateScenePlaceholderPrompt(sceneId, prompt);
+    this.closeScenePromptEditor();
+    postToHost({ type: 'scene-prompt-edit', sceneId, prompt });
+  }
+
+  private closeScenePromptEditor(): void {
+    this.sceneEditor.close();
   }
 
   private finishSelectionGesture(): void {
