@@ -1,13 +1,16 @@
 import { type DatabaseAdapter } from '@/storage/database';
+import { DEFAULT_CUSTOM_COLORS } from '../../../../../packages/reader-engine/src/types';
 import {
   DEFAULT_SETTINGS,
   FONT_DEFAULT_MIGRATED_KV_KEY,
   SETTINGS_KV_KEY,
   THEME_MANUAL_KV_KEY,
+  getSectionResetPartial,
   loadReaderSettings,
   loadThemePreference,
   resetReaderSettings,
   resetSection,
+  sanitizeCustomColors,
   saveReaderSettings,
   selectManualTheme,
   updateReaderSettings,
@@ -287,6 +290,78 @@ describe('settings-store', () => {
     expect(afterThemeReset.fontSize).toBe(26);
     const pref = await loadThemePreference(db);
     expect(pref.hasManualTheme).toBe(false);
+  });
+
+  it('persists the custom pair canonically — uppercase, hashed, and reloaded as chosen (F32)', async () => {
+    // A reader who types lowercase (or forgets the hash) still gets one stored spelling.
+    const saved = await updateReaderSettings(
+      { customColors: { enabled: true, bg: '101820', text: 'f2e8d5' } },
+      db,
+    );
+    expect(saved.customColors).toEqual({ enabled: true, bg: '#101820', text: '#F2E8D5' });
+
+    const reloaded = await loadReaderSettings(db);
+    expect(reloaded.customColors).toEqual({ enabled: true, bg: '#101820', text: '#F2E8D5' });
+
+    const rawRow = await db.getFirstAsync<{ value: string }>(
+      'SELECT value FROM kv WHERE key = ?',
+      SETTINGS_KV_KEY,
+    );
+    expect(JSON.parse(rawRow!.value).customColors.bg).toBe('#101820');
+  });
+
+  it('keeps the stored pair but turns custom colours off when «إلغاء التخصيص» is pressed (F32)', async () => {
+    await updateReaderSettings({ customColors: { enabled: true, bg: '#101820', text: '#F2E8D5' } }, db);
+
+    const disabled = await updateReaderSettings({ customColors: { enabled: false, bg: '#101820', text: '#F2E8D5' } }, db);
+    // Disabling is not a deletion — the picker reopens on the same pair.
+    expect(disabled.customColors).toEqual({ enabled: false, bg: '#101820', text: '#F2E8D5' });
+    expect((await loadReaderSettings(db)).customColors?.enabled).toBe(false);
+  });
+
+  it('drops a mangled hex back to the default pair with custom colours off (F32)', async () => {
+    // A corrupt row (old build, crash mid-write, hand-edited DB) must never paint a blank page.
+    expect(sanitizeCustomColors({ enabled: true, bg: '#12', text: '#F2E8D5' })).toEqual({
+      enabled: false,
+      bg: DEFAULT_CUSTOM_COLORS.bg,
+      text: '#F2E8D5',
+    });
+    expect(sanitizeCustomColors({ enabled: 'yes', bg: '#101820', text: '#F2E8D5' })).toEqual({
+      enabled: false,
+      bg: '#101820',
+      text: '#F2E8D5',
+    });
+    expect(sanitizeCustomColors('nonsense')).toBeUndefined();
+
+    const corruptDb = createKvTestDb();
+    await corruptDb.runAsync(
+      'INSERT INTO kv (key, value) VALUES (?, ?)',
+      SETTINGS_KV_KEY,
+      JSON.stringify({ customColors: { enabled: true, bg: 'not-a-colour', text: '#F2E8D5' } }),
+    );
+    const loaded = await loadReaderSettings(corruptDb);
+    expect(loaded.customColors).toEqual({
+      enabled: false,
+      bg: DEFAULT_CUSTOM_COLORS.bg,
+      text: '#F2E8D5',
+    });
+  });
+
+  it('resetting «المظهر» drops the custom pair as well as the theme (F32)', async () => {
+    expect(getSectionResetPartial('theme', 'burnt-paper')).toEqual({
+      theme: 'burnt-paper',
+      customColors: { ...DEFAULT_CUSTOM_COLORS, enabled: false },
+    });
+
+    await updateReaderSettings(
+      { theme: 'sepia', fontSize: 25, customColors: { enabled: true, bg: '#101820', text: '#F2E8D5' } },
+      db,
+    );
+    const afterThemeReset = await resetSection('theme', db, 'burnt-paper');
+    expect(afterThemeReset.theme).toBe('burnt-paper');
+    expect(afterThemeReset.customColors).toEqual({ ...DEFAULT_CUSTOM_COLORS, enabled: false });
+    // Other tabs are untouched by a theme reset.
+    expect(afterThemeReset.fontSize).toBe(25);
   });
 
   it('resets back to DEFAULT_SETTINGS', async () => {

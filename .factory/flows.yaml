@@ -88,3 +88,9 @@ flows:
     target: release-apk
     run: "bash scripts/ci-flows.sh highlight-add"
     artifact: ".factory/evidence/latest/apk/app.apk"
+  - id: custom-colors
+    who: "قارئ مش مرتاح لأي مظهر جاهز"
+    steps: "يفتح الرواية ← الإعدادات ← المظهر ← «ألوان مخصّصة» ← يختار لون الورق والحبر ← نسبة التباين (WCAG) بتتحدّث مع كل لمسة وبتقول AAA ← تطبيق ← الصفحة والورقة اتغيّرت للون اللي اختاره ← يفتح تاني ويضغط «إلغاء التخصيص» ← المظهر الجاهز رجع"
+    target: release-apk
+    run: "bash scripts/ci-flows.sh custom-colors"
+    artifact: ".factory/evidence/latest/apk/app.apk"

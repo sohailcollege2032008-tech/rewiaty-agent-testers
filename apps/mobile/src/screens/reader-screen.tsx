@@ -22,6 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import WebView, { type WebViewMessageEvent, type WebViewNavigation } from 'react-native-webview';
 
+import { CustomColorsModal } from '@/components/custom-colors-modal';
 import { HighlightNoteModal } from '@/components/highlight-note-modal';
 import { HighlightToolbar } from '@/components/highlight-toolbar';
 import { ReaderHud } from '@/components/reader-hud';
@@ -72,9 +73,11 @@ import {
   selectManualTheme,
   type SettingsTabId,
 } from '@/storage/settings-store';
+import { buildCustomAppTheme } from '@/theme/custom-theme';
 import { RADIUS, TYPOGRAPHY, useResponsiveLayout } from '@/theme/layout';
 import { getAppThemeTokens, resolveAppTheme, resolveSystemTheme } from '@/theme/reader-theme';
 import { notifyThemeListeners } from '@/theme/use-app-theme';
+import { DEFAULT_CUSTOM_COLORS } from '@/types/reader';
 import type {
   BookmarkItem,
   BookReaderState,
@@ -214,6 +217,7 @@ export function ReaderScreen() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const settingsVisibleRef = useRef(false);
   settingsVisibleRef.current = settingsVisible;
+  const [customColorsVisible, setCustomColorsVisible] = useState(false);
   const hudBeforeSettingsRef = useRef(false);
   const suppressTapUntilRef = useRef(0);
   const [measuredHudHeights, setMeasuredHudHeights] = useState<{
@@ -240,7 +244,12 @@ export function ReaderScreen() {
     null,
   );
 
-  const themeTokens = useMemo(() => getAppThemeTokens(settings.theme), [settings.theme]);
+  const themeTokens = useMemo(() => {
+    const base = getAppThemeTokens(settings.theme);
+    const custom = settings.customColors;
+    // F32: a custom pair paints the HUD/sheets too, so the chrome never fights the page.
+    return custom?.enabled ? buildCustomAppTheme(base, custom.bg, custom.text) : base;
+  }, [settings.theme, settings.customColors]);
 
   bookRef.current = book;
   bookmarkItemsRef.current = bookmarkItems;
@@ -719,6 +728,33 @@ export function ReaderScreen() {
     },
     [postToEngine],
   );
+
+  const handleOpenCustomColors = useCallback(() => {
+    setCustomColorsVisible(true);
+  }, []);
+
+  /**
+   * F32: applying a pair is a normal settings change, so the engine repaints immediately and the
+   * choice is persisted through the same sanitised path as every other setting.
+   */
+  const handleApplyCustomColors = useCallback(
+    (selection: { bg: string; text: string }) => {
+      handleSettingsChange({
+        customColors: { enabled: true, bg: selection.bg, text: selection.text },
+      });
+      setCustomColorsVisible(false);
+    },
+    [handleSettingsChange],
+  );
+
+  /** «إلغاء التخصيص» keeps the chosen pair around but hands the page back to the preset theme. */
+  const handleDisableCustomColors = useCallback(() => {
+    const current = settings.customColors ?? DEFAULT_CUSTOM_COLORS;
+    handleSettingsChange({
+      customColors: { enabled: false, bg: current.bg, text: current.text },
+    });
+    setCustomColorsVisible(false);
+  }, [handleSettingsChange, settings.customColors]);
 
   useEffect(() => {
     if (!showHudHint || !hudVisible) {
@@ -1428,7 +1464,18 @@ export function ReaderScreen() {
               settings={settings}
               onChange={handleSettingsChange}
               onReset={handleResetSettings}
+              onOpenCustomColors={handleOpenCustomColors}
               onClose={handleCloseSettings}
+            />
+
+            <CustomColorsModal
+              visible={customColorsVisible}
+              initialBg={settings.customColors?.bg ?? DEFAULT_CUSTOM_COLORS.bg}
+              initialText={settings.customColors?.text ?? DEFAULT_CUSTOM_COLORS.text}
+              theme={settings.theme}
+              onApply={handleApplyCustomColors}
+              onDisable={handleDisableCustomColors}
+              onClose={() => setCustomColorsVisible(false)}
             />
           </>
         ) : null}

@@ -1,6 +1,8 @@
 import {
+  DEFAULT_CUSTOM_COLORS,
   DEFAULT_SETTINGS,
   THEMES,
+  type CustomReaderColors,
   type IndentMode,
   type ReaderSettings,
   type TashkeelMode,
@@ -9,6 +11,7 @@ import {
 } from '../../../../packages/reader-engine/src/types';
 import { READER_FONT_FAMILIES } from '../../../../packages/reader-engine/src/fonts';
 import { isLegacyThemeId, migrateThemeId } from '@/theme/reader-theme';
+import { normalizeHexColor } from '@/theme/wcag';
 import { getKv, setKv, type DatabaseAdapter } from './database';
 
 export const SETTINGS_KV_KEY = 'reader_settings_v1';
@@ -37,6 +40,25 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
 
 function roundToStep(value: number, step: number): number {
   return Math.round(value / step) * step;
+}
+
+/**
+ * F32 — ألوان مخصّصة are stored, so they are read back from a file that can be corrupted (an old
+ * build, a crash mid-write, someone editing the DB). A half-typed or mangled hex must never reach
+ * a style: anything that is not a real `#RRGGBB` is dropped back to the default pair, and a
+ * non-boolean `enabled` reads as off — the reader keeps their preset theme rather than a blank page.
+ */
+export function sanitizeCustomColors(raw: unknown): CustomReaderColors | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const candidate = raw as Partial<CustomReaderColors>;
+  const bg = typeof candidate.bg === 'string' ? normalizeHexColor(candidate.bg) : null;
+  const text = typeof candidate.text === 'string' ? normalizeHexColor(candidate.text) : null;
+  const corrupt = bg === null || text === null;
+  return {
+    enabled: corrupt ? false : candidate.enabled === true,
+    bg: bg ?? DEFAULT_CUSTOM_COLORS.bg,
+    text: text ?? DEFAULT_CUSTOM_COLORS.text,
+  };
 }
 
 export function sanitizeSettingsPartial(
@@ -104,6 +126,12 @@ export function sanitizeSettingsPartial(
   }
   if (partial.dirOverride !== undefined && VALID_DIRS.has(partial.dirOverride)) {
     next.dirOverride = partial.dirOverride;
+  }
+  if (partial.customColors !== undefined) {
+    const custom = sanitizeCustomColors(partial.customColors);
+    if (custom) {
+      next.customColors = custom;
+    }
   }
 
   return next;
@@ -236,6 +264,8 @@ export function getSectionResetPartial(
     case 'theme':
       return {
         theme: systemTheme,
+        // F32: resetting «المظهر» also drops the custom pair, so the preset is what paints.
+        customColors: { ...DEFAULT_CUSTOM_COLORS, enabled: false },
       };
   }
 }

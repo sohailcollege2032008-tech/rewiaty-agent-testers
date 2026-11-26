@@ -3,8 +3,12 @@ import { escapeHtml } from '@rewiaty/book-format';
 import {
   SPREAD_GUTTER_PX,
   SPREAD_MIN_VIEWPORT_PX,
+  buildCustomThemeTokens,
+  isDarkHexColor,
   measureChToPx,
+  normalizeHexColor,
   spineTokensFor,
+  spineTokensForColors,
 } from './spread.js';
 import { hitTestHighlightAtPoint, renderEngineHighlights } from './highlights.js';
 import {
@@ -1872,8 +1876,16 @@ export class Paginator {
   }
 
   private applyStylesAndMeasureViewport(): void {
-    const theme = THEMES[this.settings.theme] ?? THEMES.warraq;
-    const spine = spineTokensFor(this.settings.theme);
+    // F32 — ألوان مخصّصة. A custom pair wins over the preset theme, but only when it is enabled
+    // *and* both colours are real hex: the engine is the last line of defence, so a corrupted
+    // stored value degrades to the chosen preset instead of painting an unreadable page. `enabled`
+    // is compared strictly, not truthily — a mangled `"yes"` from an old build must not paint.
+    const customEnabled = this.settings.customColors?.enabled === true;
+    const customBg = customEnabled ? normalizeHexColor(this.settings.customColors!.bg) : null;
+    const customText = customEnabled ? normalizeHexColor(this.settings.customColors!.text) : null;
+    const customTokens = customBg && customText ? buildCustomThemeTokens(customBg, customText) : null;
+    const theme = customTokens ?? (THEMES[this.settings.theme] ?? THEMES.warraq);
+    const spine = customBg ? spineTokensForColors(customBg) : spineTokensFor(this.settings.theme);
     const rootStyle = document.documentElement.style;
 
     const maxCh = Math.max(45, Math.min(85, Math.round(this.settings.maxReadingWidth)));
@@ -1954,7 +1966,14 @@ export class Paginator {
     document.documentElement.setAttribute('lang', bookLang);
     // Themes other than the light ones tone images down so a white illustration does not glare on
     // a dark page; the attribute lets the stylesheet target them without guessing from colours.
-    document.documentElement.setAttribute('data-theme', this.settings.theme);
+    // With custom colours the attribute follows the *picked* background's luminance, otherwise a
+    // light custom page would inherit the preset theme's image dimming (and vice versa).
+    const customIsDark = customBg ? isDarkHexColor(customBg) : false;
+    document.documentElement.setAttribute(
+      'data-theme',
+      customTokens ? (customIsDark ? 'burnt-paper' : 'warraq') : this.settings.theme,
+    );
+    document.documentElement.setAttribute('data-custom-colors', customTokens ? 'true' : 'false');
     this.rootEl.setAttribute('dir', this.dir);
     this.rootEl.classList.toggle('spread-mode', spread);
 
@@ -1969,7 +1988,9 @@ export class Paginator {
     rootStyle.setProperty('--popover-bg', theme.popoverBg);
     rootStyle.setProperty('--popover-border', theme.popoverBorder);
 
-    const isDarkTheme = this.settings.theme === 'burnt-paper' || this.settings.theme === 'oled-crimson';
+    const isDarkTheme = customTokens
+      ? customIsDark
+      : this.settings.theme === 'burnt-paper' || this.settings.theme === 'oled-crimson';
     for (const meta of HIGHLIGHT_COLORS) {
       rootStyle.setProperty(`--hl-${meta.id}`, isDarkTheme ? meta.fillDark : meta.fillLight);
     }
