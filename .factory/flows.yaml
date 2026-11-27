@@ -78,6 +78,12 @@ flows:
     target: release-apk
     run: "bash scripts/ci-flows.sh scrubber-direction"
     artifact: ".factory/evidence/latest/apk/app.apk"
+  - id: page-edges
+    who: "قارئ عربي بيتابع التقدم من سُمك حواف الصفحات"
+    steps: "يفتح الرواية ← أول صفحة: حافة المقروء على اليمين 2px والمتبقي على الشمال 6px ← يسحب شريط الصفحات لآخر الكتاب ← المقروء بيتخن (4–6px) والمتبقي بيضعف ← يرجع لأول الكتاب ← الحواف رجعت 2/6"
+    target: release-apk
+    run: "bash scripts/ci-flows.sh page-edges"
+    artifact: ".factory/evidence/latest/apk/app.apk"
   - id: chapter-timeline
     who: "قارئ عربي بيستخدم شريط الصفحات الموزون بالفصول"
     steps: "يفتح الرواية ← يفتح الـ HUD ← الشريط عليه علامة فصل (طول كل فصل على قد كلماته) ← يسحب الشريط ← يظهر tooltip فيه اسم الفصل ورقم الصفحة وأول سطر من الفصل ← يقفل ويرجع عادي"

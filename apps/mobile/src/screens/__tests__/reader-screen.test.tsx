@@ -1713,6 +1713,132 @@ describe('ReaderScreen', () => {
     expect(leftPct('timeline-marker-highlight-hl-ch01')).toBeCloseTo(100, 1);
   });
 
+  /** F25 — flatten a rendered node's style array so the physical edge widths can be read. */
+  function flatStyle(node: { props: { style?: unknown } }): Record<string, unknown> {
+    return (ReactNative.StyleSheet.flatten(node.props.style as never) ?? {}) as Record<
+      string,
+      unknown
+    >;
+  }
+
+  function mockBookDir(dir: 'rtl' | 'ltr', page = 4, pageCount = 10) {
+    const meta = {
+      title: 'أوراق البحر',
+      author: 'مؤلف',
+      lang: dir === 'rtl' ? 'ar' : 'en',
+      dir,
+    };
+    (readBookBundle as jest.Mock).mockResolvedValue({
+      book: {
+        id: 'book_123',
+        meta,
+        chapters: [
+          { id: 'ch01', title: 'الفصل الأول', blocks: [], wordCount: 100, hash: 'h1' },
+        ],
+        footnotes: {},
+        wordCount: 100,
+      },
+      manifest: { id: 'book_123', meta, chapters: [], wordCount: 100, parserVersion: 1 },
+      state: {
+        anchor: { blockId: 'ch01_p0001', charOffset: 0 },
+        progress: pageCount > 1 ? (page - 1) / (pageCount - 1) : 0,
+        chapterId: 'ch01',
+        page,
+        pageCount,
+        updatedAt: Date.now(),
+      },
+    });
+  }
+
+  async function emitReady() {
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+    });
+  }
+
+  async function emitPosition(page: number, pageCount: number) {
+    await act(async () => {
+      emitWebMessage({
+        type: 'position',
+        anchor: { blockId: 'ch01_p0002', charOffset: 0 },
+        chapterId: 'ch01',
+        page,
+        pageCount,
+        chapterPage: page,
+        chapterPageCount: pageCount,
+        bookProgress: pageCount > 1 ? (page - 1) / (pageCount - 1) : 0,
+      });
+    });
+  }
+
+  it('thickens the read edge and thins the remaining edge as pages advance in an RTL book (F25)', async () => {
+    // Saved position: page 2 of 10 → 1/9 read. RTL: what is read accumulates on the physical right.
+    const utils = await renderLoadedReader();
+    await emitReady();
+
+    expect(flatStyle(utils.getByTestId('reader-page-edge-read')).width).toBeCloseTo(
+      2 + (4 * 1) / 9,
+      5,
+    );
+    expect(flatStyle(utils.getByTestId('reader-page-edge-remaining')).width).toBeCloseTo(
+      6 - (4 * 1) / 9,
+      5,
+    );
+    // The read edge hugs the right side and the remaining edge the left side in RTL.
+    expect(flatStyle(utils.getByTestId('reader-page-edge-read')).right).toBe(0);
+    expect(flatStyle(utils.getByTestId('reader-page-edge-remaining')).left).toBe(0);
+    // Decorative: the strips must never eat a page swipe.
+    expect(utils.getByTestId('reader-page-edge-read').props.pointerEvents).toBe('none');
+    expect(utils.getByTestId('reader-page-edge-remaining').props.pointerEvents).toBe('none');
+
+    // A page turn re-measures both thicknesses from the reported page.
+    await emitPosition(6, 10);
+    expect(flatStyle(utils.getByTestId('reader-page-edge-read')).width).toBeCloseTo(
+      2 + (4 * 5) / 9,
+      5,
+    );
+    expect(flatStyle(utils.getByTestId('reader-page-edge-remaining')).width).toBeCloseTo(
+      6 - (4 * 5) / 9,
+      5,
+    );
+
+    // Last page: fully read is 6 px, nothing remaining is the 2 px floor.
+    await emitPosition(10, 10);
+    expect(flatStyle(utils.getByTestId('reader-page-edge-read')).width).toBeCloseTo(6, 5);
+    expect(flatStyle(utils.getByTestId('reader-page-edge-remaining')).width).toBeCloseTo(2, 5);
+  });
+
+  it('mirrors the two edges for an LTR book (F25)', async () => {
+    mockBookDir('ltr', 4, 10);
+    const utils = await renderLoadedReader();
+    await emitReady();
+
+    expect(flatStyle(utils.getByTestId('reader-page-edge-read')).width).toBeCloseTo(
+      2 + (4 * 3) / 9,
+      5,
+    );
+    // LTR: the read edge is on the left, the remaining one on the right.
+    expect(flatStyle(utils.getByTestId('reader-page-edge-read')).left).toBe(0);
+    expect(flatStyle(utils.getByTestId('reader-page-edge-remaining')).right).toBe(0);
+  });
+
+  it('keeps the 2..6 floor on a single-page book instead of inventing progress (F25)', async () => {
+    mockBookDir('rtl', 1, 1);
+    const utils = await renderLoadedReader();
+    await emitReady();
+
+    expect(flatStyle(utils.getByTestId('reader-page-edge-read')).width).toBeCloseTo(2, 5);
+    expect(flatStyle(utils.getByTestId('reader-page-edge-remaining')).width).toBeCloseTo(6, 5);
+  });
+
+  it('paints no page edges before the engine is ready (F25)', async () => {
+    const utils = await renderLoadedReader();
+    // The loading overlay is still up: a saved page number is not measured progress yet.
+    expect(utils.queryByTestId('reader-loading-overlay')).toBeTruthy();
+    expect(utils.queryByTestId('reader-page-edge-read')).toBeNull();
+    expect(utils.queryByTestId('reader-page-edge-remaining')).toBeNull();
+  });
+
   it('P2 #60 (Codex P2): isolates ~total and % with LRI..PDI and matches swipe hint to effectiveDir', () => {
     const { formatRunningFooterCounter, getHudHintText } = jest.requireActual('@/screens/reader-screen');
     expect(formatRunningFooterCounter(8, 13, false, 58)).toBe('صفحة 8 من 13 · \u206658%\u2069');
