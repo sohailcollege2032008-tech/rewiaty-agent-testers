@@ -69,11 +69,23 @@ appId: com.rewiaty.app
 - assertVisible:
     id: "settings-dimmer-value"
     text: "٢٠٪"
+# F31's new rows push the warmth/brightness steppers below the fold; scroll to
+# them before reading, without changing any asserted value.
+- scrollUntilVisible:
+    element:
+      id: "settings-warmth-inc"
+    direction: DOWN
+    timeout: 10000
 - tapOn:
     id: "settings-warmth-inc"
 - assertVisible:
     id: "settings-warmth-value"
     text: "١٠٪"
+- scrollUntilVisible:
+    element:
+      id: "settings-brightness-inc"
+    direction: DOWN
+    timeout: 10000
 - tapOn:
     id: "settings-brightness-inc"
 - assertVisible:

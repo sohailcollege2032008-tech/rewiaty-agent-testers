@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { Linking } from 'react-native';
 
 import AboutScreen from '@/app/about';
@@ -7,8 +7,26 @@ import { DictionarySheet } from '@/components/dictionary-sheet';
 import {
   buildWiktionaryEntryUrl,
   DICTIONARY_ATTRIBUTION,
+  DICTIONARY_DUMP_DATE,
+  DICTIONARY_ENTRY_COUNT,
+  readBundledDictionaryMeta,
   type DictionaryLookupResult,
 } from '@/storage/dictionary';
+
+jest.mock('@/storage/dictionary', () => {
+  const actual = jest.requireActual('@/storage/dictionary');
+  return {
+    ...actual,
+    readBundledDictionaryMeta: jest.fn(),
+  };
+});
+
+const readBundledDictionaryMetaMock = readBundledDictionaryMeta as unknown as jest.Mock;
+
+beforeEach(() => {
+  readBundledDictionaryMetaMock.mockReset();
+  readBundledDictionaryMetaMock.mockResolvedValue(null);
+});
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
@@ -240,6 +258,47 @@ describe('AboutAttributionCard', () => {
     expect(getByText('https://ar.wiktionary.org')).toBeTruthy();
     expect(getByText(/2026-11-01/)).toBeTruthy();
     expect(getByText(/15735/)).toBeTruthy();
+  });
+
+  it('renders the entry count and dump date read live from the bundled database', async () => {
+    readBundledDictionaryMetaMock.mockResolvedValue({
+      dumpDate: '2031-05-06',
+      entryCount: 42137,
+    });
+
+    const { getByTestId } = await render(<AboutAttributionCard />);
+
+    await waitFor(() =>
+      expect(getByTestId('about-dictionary-meta')).toHaveTextContent(/2031-05-06/),
+    );
+    expect(getByTestId('about-dictionary-meta')).toHaveTextContent(/42137 مدخل/);
+    expect(getByTestId('about-dictionary-meta')).not.toHaveTextContent('15735');
+  });
+
+  it('keeps the static fallback metadata when the bundled database is unavailable', async () => {
+    readBundledDictionaryMetaMock.mockResolvedValue(null);
+
+    const { getByTestId } = await render(<AboutAttributionCard />);
+
+    await waitFor(() =>
+      expect(getByTestId('about-dictionary-meta')).toHaveTextContent(
+        new RegExp(`${DICTIONARY_DUMP_DATE} . ${DICTIONARY_ENTRY_COUNT} مدخل`),
+      ),
+    );
+  });
+
+  it('lets explicit props win and skips the database read entirely', async () => {
+    readBundledDictionaryMetaMock.mockResolvedValue({
+      dumpDate: '2031-05-06',
+      entryCount: 42137,
+    });
+
+    const { getByTestId } = await render(
+      <AboutAttributionCard dumpDate="1999-01-01" entryCount={7} />,
+    );
+
+    expect(getByTestId('about-dictionary-meta')).toHaveTextContent(/1999-01-01 . 7 مدخل/);
+    expect(readBundledDictionaryMetaMock).not.toHaveBeenCalled();
   });
 });
 

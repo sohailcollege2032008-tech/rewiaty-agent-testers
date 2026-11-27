@@ -20,5 +20,5 @@ appId: com.rewiaty.app
     timeout: 2000
 - takeScreenshot: "02-first-page-under-2s"
 - assertVisible:
-    id: "reader-page-counter"
+    id: "reader-running-numbers"
     text: "صفحة .* من .*"
