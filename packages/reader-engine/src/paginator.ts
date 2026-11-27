@@ -3510,6 +3510,8 @@ export class Paginator {
       }
       this.mountScrollWindow(idx, true);
       this.invalidateScrollSlots();
+      // The final mount may have compensated `scrollTop`; the bar follows the landed offset.
+      this.updateScrollProgressFill();
       this.renderHighlights();
       this.scheduleBackgroundWork();
       return true;
@@ -3536,6 +3538,8 @@ export class Paginator {
       this.scrollToPageWithinChapter(targetIdx, pageInChapter);
       this.mountScrollWindow(targetIdx, true);
       this.invalidateScrollSlots();
+      // The final mount may have compensated `scrollTop`; the bar follows the landed offset.
+      this.updateScrollProgressFill();
       this.renderHighlights();
       this.scheduleBackgroundWork();
       return true;
@@ -3582,7 +3586,7 @@ export class Paginator {
     this.scrollRaf = window.requestAnimationFrame(() => {
       this.scrollRaf = null;
       if (!this.isScrollMode()) return;
-      this.updateScrollProgressFill();
+      this.updateScrollProgressFill(true);
       // P2-1: the window has to exist *while* the reader is scrolling, not 100 ms later.
       // Resolve the visible chapter from slot geometry and mount `[n-1, n, n+1]` on this
       // frame. The early exit keeps a steady scroll free of repeated layout work.
@@ -3626,13 +3630,37 @@ export class Paginator {
     this.scheduleBackgroundWork();
   }
 
-  private updateScrollProgressFill(): void {
+  /**
+   * Write the progress fill.
+   *
+   * `animate` is for a real scroll frame: the sheet's `transition: transform 80ms linear`
+   * makes the bar glide between frames. Every other write is a *placement* — entering scroll
+   * mode, `goto`, re-anchoring after a reflow or a resize — and must land on the exact value
+   * synchronously. Leaving the transition in charge there pins the bar to its previous scale
+   * (usually 0, the paginated/hidden value) for the whole 80 ms, which is both a visible jump
+   * and a read-after-write race for anything sampling the bar right after a programmatic move.
+   */
+  private updateScrollProgressFill(animate = false): void {
     if (!this.book) return;
     const fill = this.rootEl.querySelector<HTMLElement>('.scroll-progress-fill');
     if (!fill) return;
     const scrollable = this.stageEl.scrollHeight - this.stageEl.clientHeight;
     const progress = scrollable > 0 ? this.stageEl.scrollTop / scrollable : 0;
-    fill.style.transform = `scaleX(${Math.max(0, Math.min(1, progress)).toFixed(4)})`;
+    const transform = `scaleX(${Math.max(0, Math.min(1, progress)).toFixed(4)})`;
+    if (animate) {
+      // A scroll frame also fires for programmatic offsets; an unchanged value must not
+      // restart the transition it is already running towards.
+      if (fill.style.transform === transform) return;
+      fill.style.transition = '';
+      fill.style.transform = transform;
+      return;
+    }
+    // A placement: commit the value while transitions are off (which also cancels one still
+    // in flight), then restore the sheet's rule — the same pattern as `applyTrackTransform`.
+    fill.style.transition = 'none';
+    fill.style.transform = transform;
+    void fill.offsetWidth;
+    fill.style.transition = '';
   }
 
   private getScrollPositionSnapshot(): PositionSnapshot | null {
