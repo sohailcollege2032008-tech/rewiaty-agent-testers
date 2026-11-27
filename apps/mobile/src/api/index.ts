@@ -5,9 +5,46 @@ export {
   DEVICE_ID_STORAGE_KEY,
   DEVICE_SECRET_STORAGE_KEY,
   getAuthenticatedApiClient,
+  getAuthenticatedDeviceId,
   resetAuthenticatedApiClientsForTests,
 } from './device-session';
 export type { AuthenticatedApiClientOptions, DeviceSessionSecureStore } from './device-session';
+export {
+  applyForegroundNotificationHandler,
+  ensureNotificationChannel,
+  ensurePushRegisteredIfGranted,
+  installPushNotificationHandling,
+  loadExpoNotifications,
+  loadDefaultPushTokenStore,
+  parsePushNotificationData,
+  PUSH_CHANNEL_DESCRIPTION_AR,
+  PUSH_CHANNEL_ID,
+  PUSH_CHANNEL_NAME_AR,
+  PUSH_MISSION_CONTROL_ROUTE,
+  PUSH_NOTIFICATION_COPY_AR,
+  PUSH_READER_ROUTE,
+  PUSH_TOKEN_ID_KV_KEY,
+  PUSH_UPLOAD_ROUTE,
+  registerDevicePushToken,
+  resetExpoNotificationsLoaderForTests,
+  routeFromPushNotificationData,
+  unregisterDevicePushToken,
+} from './push-notifications';
+export type {
+  ExpoNotificationPermissionLike,
+  ExpoNotificationResponseLike,
+  ExpoNotificationSubscriptionLike,
+  ExpoNotificationsLike,
+  InstallPushNotificationHandlingOptions,
+  PushPermissionsAdapter,
+  PushRegistrationResult,
+  PushRegistrationStatus,
+  PushRouteOptions,
+  PushRouteTarget,
+  PushTokenApiClient,
+  PushTokenStore,
+  RegisterDevicePushTokenOptions,
+} from './push-notifications';
 export { parseSseChunk, subscribeToJobEvents, isJobSseEvent } from './sse';
 export type {
   RawSseEvent,

@@ -1,18 +1,20 @@
 import { useMemo } from 'react';
+import { Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { createRewiatyApiUploadService, getAuthenticatedApiClient } from '@/api';
+import {
+  createRewiatyApiUploadService,
+  getAuthenticatedApiClient,
+  getAuthenticatedDeviceId,
+  registerDevicePushToken,
+} from '@/api';
 import { OFFLINE_SERVICE_BANNER_AR, PdfUploadScreen } from '@/screens/pdf-upload-screen';
+import { getConfiguredApiBaseUrl } from '@/utils/api-base-url';
 
-/**
- * The cloud API origin comes from the build environment. An empty value is the
- * supported "offline build" case: the screen keeps the calm
- * «الخدمة السحابية لسه مش مفعّلة» notice instead of failing on the first tap.
- */
-export function getConfiguredApiBaseUrl(
-  raw: string | undefined = process.env.EXPO_PUBLIC_API_BASE_URL,
-): string {
-  return typeof raw === 'string' ? raw.trim() : '';
+export { getConfiguredApiBaseUrl };
+
+function nativePushPlatform(): 'android' | 'ios' {
+  return Platform.OS === 'ios' ? 'ios' : 'android';
 }
 
 /**
@@ -43,6 +45,26 @@ export default function PdfUploadRoute() {
       onBack={() => {
         router.back();
       }}
+      {...(baseUrl && Platform.OS !== 'web'
+        ? {
+            // F38: ask for push permission in the same gesture that starts a long conversion.
+            // Fire-and-forget — the screen never awaits this, so a denial cannot block the job.
+            onRequestPushNotifications: () => {
+              void (async () => {
+                try {
+                  const deviceId = await getAuthenticatedDeviceId(baseUrl);
+                  await registerDevicePushToken({
+                    apiClient: getAuthenticatedApiClient(baseUrl),
+                    deviceId,
+                    platform: nativePushPlatform(),
+                  });
+                } catch {
+                  // Push is optional; the conversion continues regardless.
+                }
+              })();
+            },
+          }
+        : {})}
     />
   );
 }
