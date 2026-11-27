@@ -545,17 +545,87 @@ export function createDemoMissionControlSeed(timestamp: number = Date.now()): Re
   return { jobs, usage };
 }
 
-let defaultStore: MissionControlStore | null = null;
+export type DefaultMissionControlStoreOptions = {
+  /**
+   * Explicit backend base URL. Defaults to the build-time `EXPO_PUBLIC_API_BASE_URL`;
+   * tests and embedded builds pass it directly instead of depending on the environment.
+   */
+  apiBaseUrl?: string | null;
+};
 
-export function getDefaultMissionControlStore(): MissionControlStore {
-  if (!defaultStore) {
-    const seed = createDemoMissionControlSeed();
-    defaultStore = createMissionControlStore(
-      createInMemoryMissionControlAdapter(seed),
-      { initialJobs: seed.jobs, initialUsage: seed.usage },
-    );
+/** Trimmed public API base URL, or `null` when the app should stay on the offline demo. */
+function normalizeApiBaseUrl(raw: string | null | undefined): string | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * Why static member access: Expo replaces `process.env.EXPO_PUBLIC_*` at build time, so the
+ * live backend URL has to be written literally here to reach the release bundle.
+ */
+function readConfiguredApiBaseUrl(): string | null {
+  return normalizeApiBaseUrl(process.env.EXPO_PUBLIC_API_BASE_URL);
+}
+
+let defaultStore: { key: string | null; store: MissionControlStore } | null = null;
+
+function createOfflineMissionControlStore(): MissionControlStore {
+  const seed = createDemoMissionControlSeed();
+  return createMissionControlStore(createInMemoryMissionControlAdapter(seed), {
+    initialJobs: seed.jobs,
+    initialUsage: seed.usage,
+  });
+}
+
+/**
+ * The live store starts empty and is filled by `refresh()` — the screens call it when they
+ * are focused, so a reader never sees demo books they do not own while the first fetch runs.
+ */
+function createLiveMissionControlStore(apiBaseUrl: string): MissionControlStore {
+  // Why `require`: `mission-control-adapter` imports this module's labels and types, so a
+  // static import here would be a module-init cycle. Both packages are loaded on demand,
+  // after this module has finished defining what the adapter reads.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { createApiMissionControlAdapter } =
+    require('../api/mission-control-adapter') as typeof import('../api/mission-control-adapter');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { RewiatyApiClient } =
+    require('../api/client') as typeof import('../api/client');
+
+  return createMissionControlStore(
+    createApiMissionControlAdapter(new RewiatyApiClient({ baseUrl: apiBaseUrl })),
+  );
+}
+
+/**
+ * One shared store for the badge and the Mission Control screen.
+ *
+ * With `EXPO_PUBLIC_API_BASE_URL` configured it talks to the real backend; without it the
+ * deterministic demo seed stays, which keeps offline and Maestro builds functional.
+ */
+export function getDefaultMissionControlStore(
+  options: DefaultMissionControlStoreOptions = {},
+): MissionControlStore {
+  const apiBaseUrl =
+    options.apiBaseUrl !== undefined
+      ? normalizeApiBaseUrl(options.apiBaseUrl)
+      : readConfiguredApiBaseUrl();
+
+  if (defaultStore && defaultStore.key === apiBaseUrl) {
+    return defaultStore.store;
   }
-  return defaultStore;
+
+  const store = apiBaseUrl
+    ? createLiveMissionControlStore(apiBaseUrl)
+    : createOfflineMissionControlStore();
+  defaultStore = { key: apiBaseUrl, store };
+  return store;
+}
+
+/** Drops the cached shared store so tests can configure the environment cleanly. */
+export function resetDefaultMissionControlStoreForTests(): void {
+  defaultStore = null;
 }
 
 export type MissionControlSnapshot = MissionControlState & {

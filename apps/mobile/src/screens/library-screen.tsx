@@ -45,6 +45,7 @@ export function LibraryScreen() {
   const themeId = resolveSystemTheme(colorScheme);
   const palette = getAppThemeTokens(themeId, colorScheme);
   const missionControl = useMissionControl();
+  const refreshMissionControl = missionControl.refresh;
 
   const [books, setBooks] = useState<BookLibraryRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,7 +75,10 @@ export function LibraryScreen() {
   useFocusEffect(
     useCallback(() => {
       void refreshBooks();
-    }, [refreshBooks]),
+      // The shared store starts empty when a live backend is configured; the badge and the
+      // Mission Control screen both read it, so the library asks for a fresh snapshot here.
+      void refreshMissionControl();
+    }, [refreshBooks, refreshMissionControl]),
   );
 
   const runFilePickerImport = async () => {
@@ -486,6 +490,29 @@ export function LibraryScreen() {
           <MissionControlBadge activeCount={missionControl.activeCount} theme={themeId} />
 
           <Pressable
+            testID="library-ai-settings-button"
+            onPress={() => router.push('/ai-settings')}
+            style={({ pressed }) => [
+              styles.aiSettingsBtn,
+              {
+                borderColor: palette.border,
+                backgroundColor: pressed ? palette.accentSoft : palette.surface,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="إعدادات الذكاء الاصطناعي"
+          >
+            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M12 3.2l1.9 5.1 5.1 1.9-5.1 1.9L12 17.2l-1.9-5.1L5 10.2l5.1-1.9L12 3.2z"
+                stroke={palette.accent}
+                strokeWidth={1.6}
+                strokeLinejoin="round"
+              />
+            </Svg>
+          </Pressable>
+
+          <Pressable
             testID="library-search-button"
             onPress={() => router.push('/search')}
             hitSlop={6}
@@ -740,6 +767,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    // A 360dp header must keep «استيراد» on-screen; the lockup gives up width first.
+    flexShrink: 1,
+    minWidth: 0,
   },
   brandName: {
     fontWeight: '700',
@@ -755,11 +785,23 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
+    // The header row is one line: actions keep their full size, the brand label yields.
+    flexShrink: 0,
   },
   searchBtn: {
     width: 38,
     height: 38,
+    borderRadius: RADIUS.button,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiSettingsBtn: {
+    // 48 × 48 on the Pressable itself (not hitSlop) so the vertical touch target stays
+    // honest even when the header row clips a slop area.
+    width: 48,
+    height: 48,
     borderRadius: RADIUS.button,
     borderWidth: 1,
     alignItems: 'center',

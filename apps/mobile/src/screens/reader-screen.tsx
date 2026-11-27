@@ -83,6 +83,7 @@ import type {
   ReaderInsets,
   ReaderSettings,
   RNToWebMessage,
+  ScenePlaceholder,
   SelectionInfo,
   SelectionRect,
   TocEntry,
@@ -116,6 +117,24 @@ export const HUD_HINT_TEXT = 'اضغط في نص الصفحة عشان تظهر 
 
 // `spread` comes from the engine's ReaderSettings ('auto' | 'single').
 type EngineSettingsPayload = Partial<ReaderSettings>;
+
+/**
+ * F46 — the only wording a queued scene may show. Image generation is offline-first for now:
+ * the placeholder waits in the queue instead of flashing a red provider error.
+ */
+export const SCENE_QUEUED_MESSAGE_AR = 'في قائمة الانتظار';
+
+/** Applies one patch to one scene, keeping the array identity stable for untouched entries. */
+export function applyScenePatch(
+  scenes: readonly ScenePlaceholder[],
+  sceneId: string,
+  patch: Partial<ScenePlaceholder>,
+): { scenes: ScenePlaceholder[]; updated: ScenePlaceholder } | null {
+  const index = scenes.findIndex((scene) => scene.id === sceneId);
+  if (index === -1) return null;
+  const updated: ScenePlaceholder = { ...scenes[index]!, ...patch };
+  return { scenes: scenes.map((scene, i) => (i === index ? updated : scene)), updated };
+}
 
 function isReaderDocumentUrl(url: string, baseUrl: string): boolean {
   if (!url) return false;
@@ -165,6 +184,7 @@ export function ReaderScreen() {
   const currentAnchorRef = useRef<Anchor | null>(null);
   const bookmarkItemsRef = useRef<BookmarkItem[]>([]);
   const highlightsRef = useRef<HighlightItem[]>([]);
+  const scenesRef = useRef<ScenePlaceholder[]>([]);
   const bookRef = useRef<Book | null>(null);
   const readingStatsRef = useRef<ReadingStats | null>(null);
   const readingTrackerRef = useRef<ReadingSessionTracker | null>(null);
@@ -279,12 +299,43 @@ export function ReaderScreen() {
     return settings.maxReadingWidth;
   }, [layout.readerMaxReadingWidthCh, settings.maxReadingWidth]);
 
+  /**
+   * Builds the state to persist from the LIVE refs at the moment the write happens.
+   *
+   * Why (Codex #64 P2): the debounced position/scene save used to capture a 500 ms-old state
+   * object. A bookmark or highlight saved in between was then wiped by that stale snapshot.
+   * Snapshotting on flush — and letting every immediate save go through the same builder —
+   * means a delayed timer can only ever write the newest merged state, never a regression.
+   */
+  const buildReaderStateSnapshot = useCallback(
+    (overrides: Partial<BookReaderState> = {}): BookReaderState | null => {
+      const base = latestStateRef.current;
+      if (!base) return null;
+      // Scenes live in their own ref; drop the possibly older copy carried by `base` and
+      // re-add the live one below (keeping the field absent when the book has no scenes).
+      const { scenes: _savedScenes, ...rest } = base;
+      void _savedScenes;
+      const liveScenes = scenesRef.current;
+      return {
+        ...rest,
+        bookmarkItems: bookmarkItemsRef.current,
+        highlights: highlightsRef.current,
+        ...(liveScenes.length > 0 ? { scenes: [...liveScenes] } : {}),
+        ...overrides,
+        updatedAt: Date.now(),
+      };
+    },
+    [],
+  );
+
   const debouncedSave = useMemo(
     () =>
-      debounce((targetBookId: string, state: BookReaderState) => {
+      debounce((targetBookId: string) => {
+        const state = buildReaderStateSnapshot();
+        if (!state) return;
         void saveBookReaderState(targetBookId, state);
       }, POSITION_SAVE_DEBOUNCE_MS),
-    [],
+    [buildReaderStateSnapshot],
   );
 
   const flushReadingStats = useCallback(() => {
@@ -394,6 +445,8 @@ export function ReaderScreen() {
         bookmarkItemsRef.current = initialBookmarks;
         const initialHighlights = normalizeHighlightItems(bundle.state.highlights, bundle.book);
         highlightsRef.current = initialHighlights;
+        // F46: scene placeholders are optional in every saved state written before them.
+        scenesRef.current = bundle.state.scenes ?? [];
         readingTrackerRef.current = new ReadingSessionTracker({
           chapters: bundle.book.chapters.map((chapter) => ({
             id: chapter.id,
@@ -463,6 +516,7 @@ export function ReaderScreen() {
     };
     const initialInsets = engineInsetsRef.current;
     prevSentInsetsRef.current = initialInsets;
+    const scenes = scenesRef.current;
     postToEngine({
       type: 'load',
       book,
@@ -470,6 +524,7 @@ export function ReaderScreen() {
       settings: loadSettings,
       insets: initialInsets,
       highlights: resolveHighlightsForBook(book, highlightsRef.current),
+      ...(scenes.length > 0 ? { scenePlaceholders: scenes } : {}),
       ...(fontBaseUrlRef.current ? { fontBaseUrl: fontBaseUrlRef.current } : {}),
     });
   }, [webLoaded, book, effectiveMaxWidth, layout.isTabletLandscape, postToEngine]);
@@ -543,6 +598,30 @@ export function ReaderScreen() {
     suppressTapUntilRef.current = Date.now() + SETTINGS_CLOSE_TAP_COOLDOWN_MS;
     postToEngine({ type: 'suppress-taps', durationMs: SETTINGS_CLOSE_TAP_COOLDOWN_MS });
   }, [postToEngine]);
+
+  /**
+   * F46 — every scene interaction (prompt edit, collapse, generate) follows the same path:
+   * update the in-memory model, echo the placeholder back to the engine so the frame repaints,
+   * and persist the whole state so the change survives closing the book.
+   */
+  const persistScenes = useCallback(
+    (nextScenes: ScenePlaceholder[], updated: ScenePlaceholder) => {
+      scenesRef.current = nextScenes;
+      postToEngine({ type: 'scene-update', placeholder: updated });
+
+      if (!bookId) return;
+      const base = latestStateRef.current;
+      if (!base) return;
+      const nextState: BookReaderState = {
+        ...base,
+        scenes: nextScenes,
+        updatedAt: Date.now(),
+      };
+      latestStateRef.current = nextState;
+      debouncedSave(bookId);
+    },
+    [bookId, debouncedSave, postToEngine],
+  );
 
   const handleWebViewMessage = useCallback(
     (event: WebViewMessageEvent) => {
@@ -638,10 +717,11 @@ export function ReaderScreen() {
               bookmarks: latestStateRef.current?.bookmarks,
               bookmarkItems: bookmarkItemsRef.current,
               highlights: highlightsRef.current,
+              ...(scenesRef.current.length > 0 ? { scenes: scenesRef.current } : {}),
               updatedAt: Date.now(),
             };
             latestStateRef.current = nextState;
-            debouncedSave(bookId, nextState);
+            debouncedSave(bookId);
           }
 
           // F23: feed the tracker from real page turns only (never from a timer).
@@ -663,12 +743,38 @@ export function ReaderScreen() {
         case 'image-rendered':
           setImageProof({ count: parsed.count, width: parsed.width, height: parsed.height });
           break;
+        case 'scene-prompt-edit': {
+          const result = applyScenePatch(scenesRef.current, parsed.sceneId, {
+            prompt: parsed.prompt,
+          });
+          if (result) persistScenes(result.scenes, result.updated);
+          break;
+        }
+        case 'scene-toggle-collapse': {
+          const result = applyScenePatch(scenesRef.current, parsed.sceneId, {
+            collapsed: parsed.collapsed,
+          });
+          if (result) persistScenes(result.scenes, result.updated);
+          break;
+        }
+        case 'scene-generate': {
+          // Offline-first: the scene waits in the queue. No red error, no provider text.
+          const result = applyScenePatch(scenesRef.current, parsed.sceneId, {
+            status: 'queued',
+            errorMessage: undefined,
+          });
+          if (result) {
+            persistScenes(result.scenes, result.updated);
+            showToast(SCENE_QUEUED_MESSAGE_AR);
+          }
+          break;
+        }
         case 'error':
           setLoadError(readerErrorMessage(parsed.message));
           break;
       }
     },
-    [bookId, debouncedSave, handleCloseSettings],
+    [bookId, debouncedSave, handleCloseSettings, persistScenes],
   );
 
   const handleBack = useCallback(() => {
@@ -772,30 +878,18 @@ export function ReaderScreen() {
       bookmarkItemsRef.current = nextItems;
       setBookmarkItems(nextItems);
 
+      if (!bookId) return;
       // Why: once bookmarks live in bookmarkItems the legacy page list is retired; keeping it
       // would resurrect deleted legacy bookmarks on the next load (Codex #19 P2).
-      const nextPages: number[] = [];
-
-      if (!bookId) return;
-      const base = latestStateRef.current ?? {
-        anchor: null,
-        progress: 0,
-        chapterId: pageInfo.chapterId,
-        page: pageInfo.page,
-        pageCount: pageInfo.pageCount,
-        updatedAt: Date.now(),
-      };
-      const updatedState: BookReaderState = {
-        ...base,
-        bookmarks: nextPages,
+      const updatedState = buildReaderStateSnapshot({
+        bookmarks: [],
         bookmarkItems: nextItems,
-        highlights: highlightsRef.current,
-        updatedAt: Date.now(),
-      };
+      });
+      if (!updatedState) return;
       latestStateRef.current = updatedState;
       void saveBookReaderState(bookId, updatedState);
     },
-    [bookId, pageInfo.chapterId, pageInfo.page, pageInfo.pageCount],
+    [bookId, buildReaderStateSnapshot],
   );
 
   const handleToggleBookmark = useCallback(() => {
@@ -849,24 +943,12 @@ export function ReaderScreen() {
       }
 
       if (!bookId) return;
-      const base = latestStateRef.current ?? {
-        anchor: null,
-        progress: 0,
-        chapterId: pageInfo.chapterId,
-        page: pageInfo.page,
-        pageCount: pageInfo.pageCount,
-        updatedAt: Date.now(),
-      };
-      const updatedState: BookReaderState = {
-        ...base,
-        bookmarkItems: bookmarkItemsRef.current,
-        highlights: nextItems,
-        updatedAt: Date.now(),
-      };
+      const updatedState = buildReaderStateSnapshot({ highlights: nextItems });
+      if (!updatedState) return;
       latestStateRef.current = updatedState;
       void saveBookReaderState(bookId, updatedState);
     },
-    [bookId, pageInfo.chapterId, pageInfo.page, pageInfo.pageCount, postToEngine],
+    [bookId, buildReaderStateSnapshot, postToEngine],
   );
 
   const editingHighlight = useMemo(

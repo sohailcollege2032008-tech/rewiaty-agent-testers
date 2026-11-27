@@ -379,6 +379,25 @@ describe('LibraryScreen', () => {
     });
   });
 
+  it('opens AI settings from the library header (BYOK entry point)', async () => {
+    const { getByTestId } = await render(<LibraryScreen />);
+
+    await waitFor(() => {
+      expect(getByTestId('library-ai-settings-button')).toBeTruthy();
+    });
+
+    const button = getByTestId('library-ai-settings-button');
+    expect(button.props.accessibilityLabel).toBe('إعدادات الذكاء الاصطناعي');
+    expect(button.props.accessibilityRole).toBe('button');
+
+    await fireEvent.press(button);
+
+    expect(mockPush).toHaveBeenCalledWith('/ai-settings');
+    // The sample-book import invariant must survive the extra header action.
+    expect(getByTestId('import-book-button')).toBeTruthy();
+    expect(getByTestId('library-brand-name')).toBeTruthy();
+  });
+
   it('gives primary library buttons >= 48dp effective touch targets', async () => {
     const { getByTestId } = await render(<LibraryScreen />);
 
@@ -404,11 +423,31 @@ describe('LibraryScreen', () => {
       return { width: w + left + right, height: h + top + bottom };
     };
 
-    for (const id of ['import-book-button', 'continue-reading-button']) {
+    for (const id of ['import-book-button', 'continue-reading-button', 'library-ai-settings-button']) {
       const box = measureTouchBox(getByTestId(id));
       expect(box.height).toBeGreaterThanOrEqual(48);
       expect(box.width).toBeGreaterThanOrEqual(48);
     }
+  });
+
+  it('sizes the library AI settings button at >= 48dp without relying on hitSlop', async () => {
+    const { getByTestId } = await render(<LibraryScreen />);
+
+    await waitFor(() => {
+      expect(getByTestId('library-ai-settings-button')).toBeTruthy();
+    });
+
+    const button = getByTestId('library-ai-settings-button');
+    const ownStyle =
+      ReactNative.StyleSheet.flatten(
+        button.props.style as ReactNative.StyleProp<ReactNative.ViewStyle>,
+      ) ?? {};
+
+    // The 48dp box must live on the Pressable itself (Codex finding 5): a header
+    // row that clips a hitSlop area would otherwise shrink the real target.
+    expect(button.props.hitSlop).toBeUndefined();
+    expect(Number(ownStyle.width ?? ownStyle.minWidth)).toBeGreaterThanOrEqual(48);
+    expect(Number(ownStyle.height ?? ownStyle.minHeight)).toBeGreaterThanOrEqual(48);
   });
 
   it('configures expo-localization for forced RTL in app.json and I18nManager in _layout', () => {

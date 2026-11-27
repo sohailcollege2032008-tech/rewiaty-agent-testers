@@ -8,7 +8,9 @@ import {
   createInMemoryMissionControlAdapter,
   createMissionControlStore,
   formatMonthKeyAr,
+  getDefaultMissionControlStore,
   getMonthKey,
+  resetDefaultMissionControlStoreForTests,
   summarizeUsageByBook,
   type MissionControlAdapter,
   type MissionJob,
@@ -408,3 +410,120 @@ describe('mission-control-store', () => {
     expect(await adapter.fetchUsage()).toHaveLength(NOV_USAGE.length);
   });
 });
+
+describe('getDefaultMissionControlStore backend wiring (Codex #64 P2)', () => {
+  const ENV_KEY = 'EXPO_PUBLIC_API_BASE_URL';
+  const originalEnv = process.env[ENV_KEY];
+  const originalFetch = global.fetch;
+
+  type JsonResponse = {
+    ok: boolean;
+    status: number;
+    text: () => Promise<string>;
+  };
+
+  function jsonResponse(body: unknown): JsonResponse {
+    return { ok: true, status: 200, text: async () => JSON.stringify(body) };
+  }
+
+  afterEach(() => {
+    if (originalEnv === undefined) {
+      delete process.env[ENV_KEY];
+    } else {
+      process.env[ENV_KEY] = originalEnv;
+    }
+    global.fetch = originalFetch;
+    resetDefaultMissionControlStoreForTests();
+  });
+
+  it('uses the live HTTP adapter when EXPO_PUBLIC_API_BASE_URL is configured', async () => {
+    process.env[ENV_KEY] = 'https://api.rewiaty.test';
+    resetDefaultMissionControlStoreForTests();
+
+    const fetchMock = jest.fn(async (url: string) => {
+      if (url.includes('/v1/jobs')) {
+        return jsonResponse({
+          jobs: [
+            {
+              job_id: 'job_live',
+              book_id: 'book_live',
+              status: 'running',
+              stage: 'tashkeel',
+              ai_level: 'essential',
+              progress: { percent: 40, current_page: 4, total_pages: 10 },
+              created_at: '2026-11-26T10:00:00.000Z',
+              updated_at: '2026-11-26T10:05:00.000Z',
+            },
+          ],
+        });
+      }
+      return jsonResponse({
+        month: NOV,
+        books: [
+          {
+            book_id: 'book_live',
+            text_cost_usd: 0.25,
+            image_cost_usd: 0,
+            total_cost_usd: 0.25,
+            text_input_tokens: 100,
+            text_output_tokens: 50,
+            images_generated: 0,
+          },
+        ],
+      });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const store = getDefaultMissionControlStore();
+
+    // Live stores start empty: nothing pretends to be the reader's work before the fetch.
+    expect(store.getJobs()).toHaveLength(0);
+    expect(store.getState().usage).toEqual([]);
+
+    await store.refresh();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('https://api.rewiaty.test/v1/jobs?limit=50');
+    expect(String(fetchMock.mock.calls[1]![0])).toContain('https://api.rewiaty.test/v1/usage?month=');
+
+    expect(store.getJobs().map((job) => job.id)).toEqual(['job_live']);
+    expect(store.getActiveJobCount()).toBe(1);
+    expect(store.getMonthlyUsage(NOV).totalCostUsd).toBeCloseTo(0.25, 10);
+  });
+
+  it('keeps the offline demo seed when no base URL is configured', () => {
+    delete process.env[ENV_KEY];
+    resetDefaultMissionControlStoreForTests();
+
+    const store = getDefaultMissionControlStore();
+
+    expect(store.getJobs().map((job) => job.id)).toContain('job_tashkeel_water');
+    expect(store.getActiveJobCount()).toBe(3);
+    expect(store.getMonthlyUsage(getMonthKey()).totalCostUsd).toBeGreaterThan(0);
+  });
+
+  it('shares one cached store and resetDefaultMissionControlStoreForTests drops it', () => {
+    delete process.env[ENV_KEY];
+    resetDefaultMissionControlStoreForTests();
+
+    const first = getDefaultMissionControlStore();
+    expect(getDefaultMissionControlStore()).toBe(first);
+
+    resetDefaultMissionControlStoreForTests();
+    expect(getDefaultMissionControlStore()).not.toBe(first);
+  });
+
+  it('honours an explicit apiBaseUrl over the build environment', async () => {
+    delete process.env[ENV_KEY];
+    resetDefaultMissionControlStoreForTests();
+
+    const fetchMock = jest.fn(async (_url: string) => jsonResponse({ jobs: [], books: [] }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const store = getDefaultMissionControlStore({ apiBaseUrl: ' https://embedded.rewiaty.test/ ' });
+    await store.refresh();
+
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('https://embedded.rewiaty.test/v1/jobs?limit=50');
+  });
+});
+
