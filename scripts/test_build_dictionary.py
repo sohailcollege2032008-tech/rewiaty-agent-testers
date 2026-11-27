@@ -30,10 +30,12 @@ _SPEC.loader.exec_module(_MODULE)
 
 from build_dictionary import (  # noqa: E402
     DEFAULT_DUMP_DATE,
+    DOWNLOAD_USER_AGENT,
     DictionaryBuildError,
     SOURCE_URL,
     build_dictionary_db,
     build_meta_document,
+    download_dump,
     dump_date_from_filename,
     dump_url_for_date,
     extract_arabic_section,
@@ -678,6 +680,28 @@ class CliSha256EnforcementTests(unittest.TestCase):
         document = json.loads(self.meta_out.read_text(encoding="utf-8"))
         self.assertEqual(document["dump_date"], "2026-11-01")
         self.assertEqual(document["source_url"], dump_url_for_date("2026-11-01"))
+
+    def test_download_dump_sends_explicit_wikimedia_user_agent(self) -> None:
+        import io
+        import urllib.request
+        from unittest import mock
+
+        seen_requests: list[urllib.request.Request] = []
+
+        def fake_urlopen(req: object):
+            self.assertIsInstance(req, urllib.request.Request)
+            assert isinstance(req, urllib.request.Request)
+            seen_requests.append(req)
+            return io.BytesIO(b"dump-bytes")
+
+        with mock.patch.object(urllib.request, "urlopen", side_effect=fake_urlopen):
+            out = download_dump(self.root / "dl-cache", SOURCE_URL)
+
+        self.assertEqual(out.read_bytes(), b"dump-bytes")
+        self.assertEqual(len(seen_requests), 1)
+        self.assertEqual(seen_requests[0].full_url, SOURCE_URL)
+        self.assertEqual(seen_requests[0].get_header("User-agent"), DOWNLOAD_USER_AGENT)
+        self.assertNotIn("Python-urllib", seen_requests[0].get_header("User-agent") or "")
 
 
 if __name__ == "__main__":

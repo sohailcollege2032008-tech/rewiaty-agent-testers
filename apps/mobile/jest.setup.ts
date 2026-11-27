@@ -48,6 +48,7 @@ jest.mock('react-native-reanimated', () => {
 
 jest.mock('expo-sqlite', () => ({
   openDatabaseAsync: jest.fn(),
+  importDatabaseFromAssetAsync: jest.fn(async () => undefined),
 }));
 
 jest.mock('expo-sharing', () => ({
