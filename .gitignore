@@ -18,3 +18,5 @@ samples/long-ar.md
 *.sqlite3
 *.xml.bz2
 apps/mobile/assets/dictionary/*.sqlite
+# Dictionary build cache (downloaded dumps live here, never in git)
+.cache/
