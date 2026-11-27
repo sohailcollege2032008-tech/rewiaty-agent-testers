@@ -795,7 +795,7 @@ test.describe('Rewiaty Reader Engine', () => {
     });
 
     // Sample the very first 12 animation frames right after cold open: the track must SNAP
-    // immediately to an exact integer page multiple with zero mid-transition drift.
+    // immediately to the exact anchor page offset with zero mid-transition drift.
     const samples = await page.evaluate(async () => {
       const results: Array<{ translateX: number; pageWidth: number; transitionDuration: string; scrollLeft: number }> = [];
       const stage = document.getElementById('reader-stage')!;
@@ -806,14 +806,8 @@ test.describe('Rewiaty Reader Engine', () => {
           Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--page-width')),
         );
         const transform = getComputedStyle(track).transform;
-        let translateX = 0;
-        if (transform && transform !== 'none') {
-          const match = /matrix\(([^)]+)\)/.exec(transform);
-          if (match?.[1]) {
-            const parts = match[1].split(',').map((v) => Number(v.trim()));
-            translateX = parts[4] ?? 0;
-          }
-        }
+        const translateX =
+          transform && transform !== 'none' ? new DOMMatrixReadOnly(transform).m41 : 0;
         results.push({
           translateX,
           pageWidth,
@@ -824,19 +818,20 @@ test.describe('Rewiaty Reader Engine', () => {
       return results;
     });
 
-    for (const sample of samples) {
-      expect(sample.pageWidth).toBeGreaterThan(0);
-      expect(Number.isInteger(sample.translateX)).toBe(true);
-      expect(Math.abs(sample.translateX) % sample.pageWidth).toBe(0);
-      expect(sample.transitionDuration).toBe('0s');
-      expect(sample.scrollLeft).toBe(0);
-    }
-
     await expect.poll(async () => (await getLatestPosition(page))?.chapterId).toBe(targetChapter.id);
     const settledPos = (await getLatestPosition(page))!;
     expect(settledPos.chapterPage).toBeGreaterThanOrEqual(2);
 
-    // Trigger an inset/settings reflow right after cold open — must also snap cleanly with 0s transition.
+    const expectedOffset = (settledPos.chapterPage - 1) * samples[0]!.pageWidth;
+    for (const sample of samples) {
+      expect(sample.pageWidth).toBeGreaterThan(0);
+      expect(sample.translateX).toBe(expectedOffset);
+      expect(sample.transitionDuration).toBe('0s');
+      expect(sample.scrollLeft).toBe(0);
+    }
+
+    // Trigger an inset/settings reflow right after cold open — must also snap to the resolved
+    // anchor page with 0s transition.
     await sendBridge(page, {
       type: 'settings',
       partial: {},
@@ -848,16 +843,19 @@ test.describe('Rewiaty Reader Engine', () => {
       const pageWidth = Math.round(
         Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--page-width')),
       );
-      const match = /matrix\(([^)]+)\)/.exec(getComputedStyle(track).transform);
-      const translateX = match?.[1] ? Number(match[1].split(',')[4]?.trim() ?? 0) : 0;
+      const transform = getComputedStyle(track).transform;
+      const translateX =
+        transform && transform !== 'none' ? new DOMMatrixReadOnly(transform).m41 : 0;
       return {
         translateX,
         pageWidth,
         transitionDuration: getComputedStyle(track).transitionDuration,
       };
     });
-    expect(Number.isInteger(afterInsets.translateX)).toBe(true);
-    expect(Math.abs(afterInsets.translateX) % afterInsets.pageWidth).toBe(0);
+    const postInsetsPos = (await getLatestPosition(page))!;
+    expect(postInsetsPos.chapterId).toBe(targetChapter.id);
+    expect(postInsetsPos.chapterPage).toBeGreaterThanOrEqual(2);
+    expect(afterInsets.translateX).toBe((postInsetsPos.chapterPage - 1) * afterInsets.pageWidth);
     expect(afterInsets.transitionDuration).toBe('0s');
   });
 });

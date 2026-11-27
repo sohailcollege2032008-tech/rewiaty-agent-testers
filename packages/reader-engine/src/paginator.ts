@@ -1448,19 +1448,22 @@ export class Paginator {
     if (changed || firstForSignature) {
       this.invalidatePageMap();
       this.layoutVirtualizedChapterOffsets();
-      // Why (P1 #57): once fonts/first-paint settle, re-snap to the restored anchor (or
-      // clamp inside the settled page count) with transition disabled so the track never
-      // drifts onto an outdated column or half-page offset.
-      if (this.isRestoredAnchorUsable()) {
-        this.currentChapterPage = this.alignToSpread(
-          this.resolveAnchorPageInCurrentChapter(this.restoredAnchor!),
-        );
-      } else {
-        const curr = this.rendered.get(this.currentChapterIdx);
-        const maxPage = curr ? curr.layoutPageCount - 1 : 0;
-        this.currentChapterPage = Math.max(0, Math.min(this.currentChapterPage, maxPage));
+      // Why (P1 #57 + Codex P2): once fonts/first-paint settle, re-snap to the restored
+      // anchor (or clamp inside the settled page count) with transition disabled — but NEVER
+      // interrupt an active finger drag or release settle animation (e.g. from a late image
+      // load); commitDragTurn/cancelDrag will snap cleanly when the gesture finishes.
+      if (!this.dragging && this.dragSettleTimer === null) {
+        if (this.isRestoredAnchorUsable()) {
+          this.currentChapterPage = this.alignToSpread(
+            this.resolveAnchorPageInCurrentChapter(this.restoredAnchor!),
+          );
+        } else {
+          const curr = this.rendered.get(this.currentChapterIdx);
+          const maxPage = curr ? curr.layoutPageCount - 1 : 0;
+          this.currentChapterPage = Math.max(0, Math.min(this.currentChapterPage, maxPage));
+        }
+        this.applyTrackTransform(false);
       }
-      this.applyTrackTransform(false);
       this.renderHighlights();
     }
     // Count the rest of the book offscreen so the page number (and the total) are a
