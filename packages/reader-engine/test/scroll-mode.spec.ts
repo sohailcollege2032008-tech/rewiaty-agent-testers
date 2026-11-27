@@ -947,4 +947,37 @@ test.describe('F22 scroll mode', () => {
     await page.waitForTimeout(150);
     expect(Math.abs(await lineOffset(targetBlock))).toBeLessThanOrEqual(8);
   });
+
+  /**
+   * Issue #79 (L5 QA): entering scroll mode writes the real offset onto the fill, but the
+   * `transform 80ms linear` transition used to hold the bar at its previous scale (0) for the
+   * first frames. On a slow runner the first read is the transition's start value while the
+   * inline style already carries the offset — the bar looked empty at the top of the book.
+   * A programmatic placement is not a scroll, so it must land synchronously with no animation.
+   */
+  test('(m14) the progress bar lands on the real offset the moment scroll mode opens', async ({
+    page,
+  }) => {
+    await mountEngine(page);
+    const book = buildArabicBook(90, 3);
+    await loadBook(page, book, { fontSize: 20 });
+    await expect.poll(async () => (await getLatestPosition(page))?.page).toBe(1);
+
+    await enterScroll(page);
+
+    const read = await page.evaluate(() => {
+      const stage = document.getElementById('reader-stage')!;
+      const fill = document.querySelector<HTMLElement>('.scroll-progress-fill')!;
+      const max = Math.max(1, stage.scrollHeight - stage.clientHeight);
+      const match = /matrix\(([-\d.]+)/.exec(getComputedStyle(fill).transform);
+      return {
+        scale: match ? Number.parseFloat(match[1]!) : 1,
+        expected: stage.scrollTop / max,
+        animations: fill.getAnimations().length,
+      };
+    });
+    // There is nothing to wait for: a placement must not leave a transition in flight.
+    expect(read.animations).toBe(0);
+    expect(read.scale).toBeCloseTo(read.expected, 2);
+  });
 });
