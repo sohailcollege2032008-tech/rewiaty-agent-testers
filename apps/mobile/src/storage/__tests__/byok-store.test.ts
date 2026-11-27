@@ -825,6 +825,11 @@ describe('byok-store — رابط السيرفر للمزوّد المخصّص (
       'api.example.com',
       'https://',
       'https://user:pass@api.example.com',
+      'https://api.example.com/v1?api_key=secret',
+      'https://api.example.com/v1#secret',
+      'https://api.example.com:0/v1',
+      'https://api.example.com:65536/v1',
+      'https://api.example.com:99999/v1',
       'https://api.example.com a',
       '',
     ]) {

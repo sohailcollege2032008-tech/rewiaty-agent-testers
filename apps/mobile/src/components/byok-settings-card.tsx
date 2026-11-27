@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import {
+  BYOK_CUSTOM_BASE_URL_REQUIRED_ERROR_AR,
   BYOK_MODELS_BADGE_AR,
   BYOK_PROVIDERS,
   type ByokConfig,
@@ -176,6 +177,36 @@ export function ByokSettingsCard({
   const handleSave = useCallback(async () => {
     const trimmed = draftKey.trim();
     if (!trimmed) {
+      // If a custom key is already stored, allow updating customBaseUrl/modelId via the same
+      // Save button without forcing the user to re-type their key, refusing empty base_url.
+      if (hasKey && provider === 'custom') {
+        if (!trimmedBaseUrl) {
+          setError(BYOK_CUSTOM_BASE_URL_REQUIRED_ERROR_AR);
+          return;
+        }
+        setBusy(true);
+        setError('');
+        setFeedback('');
+        try {
+          const updated = await saveByokPreferences(
+            {
+              provider: 'custom',
+              modelId: trimmedModelId,
+              customBaseUrl: trimmedBaseUrl,
+              now: now ? now() : undefined,
+            },
+            db,
+            secureStore,
+          );
+          commit(updated);
+          setFeedback(BYOK_SAVED_MESSAGE_AR);
+        } catch (err: unknown) {
+          setError(toSafeByokErrorMessage(err));
+        } finally {
+          setBusy(false);
+        }
+        return;
+      }
       setError('اكتب مفتاح الـ API الأول.');
       return;
     }
@@ -211,6 +242,7 @@ export function ByokSettingsCard({
     config?.modelId,
     db,
     draftKey,
+    hasKey,
     now,
     provider,
     secureStore,
@@ -482,6 +514,24 @@ export function ByokSettingsCard({
               editable={!busy}
               style={[styles.input, { color: palette.text, fontFamily: TYPOGRAPHY.uiFont }]}
             />
+            {draftBaseUrl.length > 0 && !busy ? (
+              <Pressable
+                testID="byok-custom-base-url-clear"
+                accessibilityRole="button"
+                accessibilityLabel="مسح رابط السيرفر"
+                onPress={() => setDraftBaseUrl('')}
+                style={styles.visibilityButton}
+              >
+                <Text
+                  style={[
+                    styles.visibilityText,
+                    { color: palette.accent, fontFamily: TYPOGRAPHY.uiFont },
+                  ]}
+                >
+                  مسح
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
           <Text
             style={[

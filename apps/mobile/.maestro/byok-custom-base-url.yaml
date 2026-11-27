@@ -95,8 +95,9 @@ appId: com.rewiaty.app
     direction: UP
     timeout: 10000
 - tapOn:
+    id: "byok-custom-base-url-clear"
+- tapOn:
     id: "byok-custom-base-url-input"
-- eraseText: 60
 - inputText: "https://api.example.test/v1"
 - hideKeyboard
 - scrollUntilVisible:
