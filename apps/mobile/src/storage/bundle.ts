@@ -209,6 +209,12 @@ export async function readBookBundle(bookId: string): Promise<{
         highlights: Array.isArray(parsedState.highlights)
           ? (parsedState.highlights as BookReaderState['highlights'])
           : undefined,
+        // F46: scene placeholders are part of the saved state. Dropping them here made every
+        // reopen start from a scene-less state, so the reader's edited prompts/status vanished.
+        // Optional and `undefined` for `.reader-state.json` files written before F46.
+        scenes: Array.isArray(parsedState.scenes)
+          ? (parsedState.scenes as BookReaderState['scenes'])
+          : undefined,
         settings: parsedState.settings,
         updatedAt: typeof parsedState.updatedAt === 'number' ? parsedState.updatedAt : Date.now(),
       };

@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useColorScheme, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -263,6 +263,13 @@ export function MissionControlScreen({ store, now = Date.now }: MissionControlSc
 
   const monthKey = useMemo(() => getMonthKey(now()), [now]);
   const control = useMissionControl(store, { monthKey });
+  const refreshMissionControl = control.refresh;
+
+  // A live-backed store starts empty and is only filled by `refresh()`; ask once per store
+  // so opening the screen never shows a stale or blank snapshot.
+  useEffect(() => {
+    void refreshMissionControl();
+  }, [refreshMissionControl]);
 
   const handlePause = useCallback(
     (jobId: string) => {

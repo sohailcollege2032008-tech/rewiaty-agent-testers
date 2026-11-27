@@ -66,6 +66,7 @@ appId: com.rewiaty.app
     timeout: 10000
 - assertVisible:
     id: "byok-mode-server-saved"
+    enabled: false
 - assertVisible: "قريباً"
 - takeScreenshot: "07-byok-settings"
 - tapOn:

@@ -1,4 +1,4 @@
-import { act, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
 import * as ReactNative from 'react-native';
 import { Dimensions } from 'react-native';
@@ -318,5 +318,87 @@ describe('ReaderScreen F46 scene placeholders bridge', () => {
         }),
       ),
     );
+  });
+
+  /**
+   * Codex #64 P2 — the debounced scene save used to capture its state 500 ms early, so a
+   * bookmark saved in that window was overwritten by the stale snapshot. Waiting past the
+   * debounce and reading the LAST write proves the timer wrote the merged state.
+   */
+  async function waitPastDebounce() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 700));
+    });
+  }
+
+  function lastSavedState(): Record<string, unknown> {
+    const calls = (saveBookReaderState as jest.Mock).mock.calls;
+    return calls[calls.length - 1]?.[1] as Record<string, unknown>;
+  }
+
+  it('keeps a bookmark added during the debounce window together with the scene edit', async () => {
+    const { getByTestId } = await renderReader();
+
+    await act(async () => {
+      emit({
+        type: 'scene-prompt-edit',
+        sceneId: 'scene_1',
+        prompt: { ...SCENE_PROMPT, mood: 'مفعم بالحنين' },
+      });
+    });
+
+    // Bookmark lands before the 500 ms scene debounce flushes.
+    await fireEvent.press(getByTestId('reader-bookmark-ribbon'));
+    await waitPastDebounce();
+
+    const state = lastSavedState();
+    expect(state.scenes).toEqual([
+      expect.objectContaining({
+        id: 'scene_1',
+        prompt: expect.objectContaining({ mood: 'مفعم بالحنين' }),
+      }),
+    ]);
+    expect(state.bookmarkItems).toHaveLength(1);
+  });
+
+  it('keeps a highlight added during the debounce window together with the scene edit', async () => {
+    const { getByTestId } = await renderReader();
+
+    await act(async () => {
+      emit({
+        type: 'scene-prompt-edit',
+        sceneId: 'scene_1',
+        prompt: { ...SCENE_PROMPT, mood: 'مفعم بالحنين' },
+      });
+    });
+
+    await act(async () => {
+      emit({
+        type: 'selection',
+        selection: {
+          anchor: { blockId: 'ch01_p0001', charOffset: 0 },
+          length: 10,
+          quote: 'كَانَتْ نُورُ',
+          contextBefore: '',
+          contextAfter: ' تَعْرِفُ',
+          chapterId: 'ch01',
+          rect: { left: 100, top: 240, right: 260, bottom: 270, width: 160, height: 30 },
+        },
+      });
+    });
+    // Highlight lands before the 500 ms scene debounce flushes.
+    await fireEvent.press(getByTestId('highlight-color-gold'));
+    await waitPastDebounce();
+
+    const state = lastSavedState();
+    expect(state.scenes).toEqual([
+      expect.objectContaining({
+        id: 'scene_1',
+        prompt: expect.objectContaining({ mood: 'مفعم بالحنين' }),
+      }),
+    ]);
+    expect(state.highlights).toEqual([
+      expect.objectContaining({ color: 'gold', quote: 'كَانَتْ نُورُ' }),
+    ]);
   });
 });

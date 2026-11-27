@@ -45,6 +45,7 @@ export function LibraryScreen() {
   const themeId = resolveSystemTheme(colorScheme);
   const palette = getAppThemeTokens(themeId, colorScheme);
   const missionControl = useMissionControl();
+  const refreshMissionControl = missionControl.refresh;
 
   const [books, setBooks] = useState<BookLibraryRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,7 +75,10 @@ export function LibraryScreen() {
   useFocusEffect(
     useCallback(() => {
       void refreshBooks();
-    }, [refreshBooks]),
+      // The shared store starts empty when a live backend is configured; the badge and the
+      // Mission Control screen both read it, so the library asks for a fresh snapshot here.
+      void refreshMissionControl();
+    }, [refreshBooks, refreshMissionControl]),
   );
 
   const runFilePickerImport = async () => {
@@ -488,7 +492,6 @@ export function LibraryScreen() {
           <Pressable
             testID="library-ai-settings-button"
             onPress={() => router.push('/ai-settings')}
-            hitSlop={4}
             style={({ pressed }) => [
               styles.aiSettingsBtn,
               {
@@ -764,6 +767,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    // A 360dp header must keep «استيراد» on-screen; the lockup gives up width first.
+    flexShrink: 1,
+    minWidth: 0,
   },
   brandName: {
     fontWeight: '700',
@@ -779,7 +785,9 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
+    // The header row is one line: actions keep their full size, the brand label yields.
+    flexShrink: 0,
   },
   searchBtn: {
     width: 38,
@@ -790,9 +798,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   aiSettingsBtn: {
-    // 40 × 40 + 4 hitSlop on each side = a 48dp effective touch target.
-    width: 40,
-    height: 40,
+    // 48 × 48 on the Pressable itself (not hitSlop) so the vertical touch target stays
+    // honest even when the header row clips a slop area.
+    width: 48,
+    height: 48,
     borderRadius: RADIUS.button,
     borderWidth: 1,
     alignItems: 'center',

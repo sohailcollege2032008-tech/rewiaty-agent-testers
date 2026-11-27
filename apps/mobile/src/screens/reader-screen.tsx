@@ -299,12 +299,43 @@ export function ReaderScreen() {
     return settings.maxReadingWidth;
   }, [layout.readerMaxReadingWidthCh, settings.maxReadingWidth]);
 
+  /**
+   * Builds the state to persist from the LIVE refs at the moment the write happens.
+   *
+   * Why (Codex #64 P2): the debounced position/scene save used to capture a 500 ms-old state
+   * object. A bookmark or highlight saved in between was then wiped by that stale snapshot.
+   * Snapshotting on flush — and letting every immediate save go through the same builder —
+   * means a delayed timer can only ever write the newest merged state, never a regression.
+   */
+  const buildReaderStateSnapshot = useCallback(
+    (overrides: Partial<BookReaderState> = {}): BookReaderState | null => {
+      const base = latestStateRef.current;
+      if (!base) return null;
+      // Scenes live in their own ref; drop the possibly older copy carried by `base` and
+      // re-add the live one below (keeping the field absent when the book has no scenes).
+      const { scenes: _savedScenes, ...rest } = base;
+      void _savedScenes;
+      const liveScenes = scenesRef.current;
+      return {
+        ...rest,
+        bookmarkItems: bookmarkItemsRef.current,
+        highlights: highlightsRef.current,
+        ...(liveScenes.length > 0 ? { scenes: [...liveScenes] } : {}),
+        ...overrides,
+        updatedAt: Date.now(),
+      };
+    },
+    [],
+  );
+
   const debouncedSave = useMemo(
     () =>
-      debounce((targetBookId: string, state: BookReaderState) => {
+      debounce((targetBookId: string) => {
+        const state = buildReaderStateSnapshot();
+        if (!state) return;
         void saveBookReaderState(targetBookId, state);
       }, POSITION_SAVE_DEBOUNCE_MS),
-    [],
+    [buildReaderStateSnapshot],
   );
 
   const flushReadingStats = useCallback(() => {
@@ -587,7 +618,7 @@ export function ReaderScreen() {
         updatedAt: Date.now(),
       };
       latestStateRef.current = nextState;
-      debouncedSave(bookId, nextState);
+      debouncedSave(bookId);
     },
     [bookId, debouncedSave, postToEngine],
   );
@@ -690,7 +721,7 @@ export function ReaderScreen() {
               updatedAt: Date.now(),
             };
             latestStateRef.current = nextState;
-            debouncedSave(bookId, nextState);
+            debouncedSave(bookId);
           }
 
           // F23: feed the tracker from real page turns only (never from a timer).
@@ -847,30 +878,18 @@ export function ReaderScreen() {
       bookmarkItemsRef.current = nextItems;
       setBookmarkItems(nextItems);
 
+      if (!bookId) return;
       // Why: once bookmarks live in bookmarkItems the legacy page list is retired; keeping it
       // would resurrect deleted legacy bookmarks on the next load (Codex #19 P2).
-      const nextPages: number[] = [];
-
-      if (!bookId) return;
-      const base = latestStateRef.current ?? {
-        anchor: null,
-        progress: 0,
-        chapterId: pageInfo.chapterId,
-        page: pageInfo.page,
-        pageCount: pageInfo.pageCount,
-        updatedAt: Date.now(),
-      };
-      const updatedState: BookReaderState = {
-        ...base,
-        bookmarks: nextPages,
+      const updatedState = buildReaderStateSnapshot({
+        bookmarks: [],
         bookmarkItems: nextItems,
-        highlights: highlightsRef.current,
-        updatedAt: Date.now(),
-      };
+      });
+      if (!updatedState) return;
       latestStateRef.current = updatedState;
       void saveBookReaderState(bookId, updatedState);
     },
-    [bookId, pageInfo.chapterId, pageInfo.page, pageInfo.pageCount],
+    [bookId, buildReaderStateSnapshot],
   );
 
   const handleToggleBookmark = useCallback(() => {
@@ -924,24 +943,12 @@ export function ReaderScreen() {
       }
 
       if (!bookId) return;
-      const base = latestStateRef.current ?? {
-        anchor: null,
-        progress: 0,
-        chapterId: pageInfo.chapterId,
-        page: pageInfo.page,
-        pageCount: pageInfo.pageCount,
-        updatedAt: Date.now(),
-      };
-      const updatedState: BookReaderState = {
-        ...base,
-        bookmarkItems: bookmarkItemsRef.current,
-        highlights: nextItems,
-        updatedAt: Date.now(),
-      };
+      const updatedState = buildReaderStateSnapshot({ highlights: nextItems });
+      if (!updatedState) return;
       latestStateRef.current = updatedState;
       void saveBookReaderState(bookId, updatedState);
     },
-    [bookId, pageInfo.chapterId, pageInfo.page, pageInfo.pageCount, postToEngine],
+    [bookId, buildReaderStateSnapshot, postToEngine],
   );
 
   const editingHighlight = useMemo(

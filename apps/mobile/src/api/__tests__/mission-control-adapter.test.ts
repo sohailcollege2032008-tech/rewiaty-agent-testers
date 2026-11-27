@@ -103,6 +103,60 @@ describe('createApiMissionControlAdapter', () => {
       expect(running.degradedReasonAr).toBeUndefined();
     });
 
+    it('follows next_cursor so older active jobs past page 1 are not lost', async () => {
+      const client = fakeClient();
+      client.listJobs
+        .mockResolvedValueOnce({
+          jobs: [
+            jobSummary({ job_id: 'job_new_running', status: 'running', stage: 'tashkeel' }),
+            jobSummary({ job_id: 'job_done_page1', status: 'completed', stage: 'completed' }),
+          ],
+          next_cursor: 'cursor_2',
+        })
+        .mockResolvedValueOnce({
+          jobs: [
+            // Older active work that used to disappear from the screen and the badge.
+            jobSummary({ job_id: 'job_older_running', status: 'running', stage: 'ocr' }),
+          ],
+        });
+
+      const adapter = createApiMissionControlAdapter(client);
+      const jobs = await adapter.fetchJobs();
+
+      expect(client.listJobs).toHaveBeenCalledTimes(2);
+      expect(client.listJobs).toHaveBeenNthCalledWith(1, { limit: 50 });
+      expect(client.listJobs).toHaveBeenNthCalledWith(2, { limit: 50, cursor: 'cursor_2' });
+      expect(jobs.map((job) => job.id)).toEqual([
+        'job_new_running',
+        'job_done_page1',
+        'job_older_running',
+      ]);
+      expect(jobs.find((job) => job.id === 'job_older_running')?.status).toBe('running');
+    });
+
+    it('drops duplicate job_ids across pages and stops on a repeated cursor', async () => {
+      const client = fakeClient();
+      client.listJobs
+        .mockResolvedValueOnce({
+          jobs: [jobSummary({ job_id: 'job_1' })],
+          next_cursor: 'cursor_2',
+        })
+        .mockResolvedValueOnce({
+          jobs: [jobSummary({ job_id: 'job_1' }), jobSummary({ job_id: 'job_2' })],
+          // A misbehaving server handing back the same cursor must not loop forever.
+          next_cursor: 'cursor_2',
+        })
+        .mockResolvedValueOnce({
+          jobs: [jobSummary({ job_id: 'job_3' })],
+        });
+
+      const adapter = createApiMissionControlAdapter(client);
+      const jobs = await adapter.fetchJobs();
+
+      expect(client.listJobs).toHaveBeenCalledTimes(2);
+      expect(jobs.map((job) => job.id)).toEqual(['job_1', 'job_2']);
+    });
+
     it('degrades a failed job calmly, with the one allowed Arabic sentence and no raw error', () => {
       const failed = {
         ...jobSummary({ status: 'failed', stage: 'ocr' }),

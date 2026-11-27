@@ -430,6 +430,26 @@ describe('LibraryScreen', () => {
     }
   });
 
+  it('sizes the library AI settings button at >= 48dp without relying on hitSlop', async () => {
+    const { getByTestId } = await render(<LibraryScreen />);
+
+    await waitFor(() => {
+      expect(getByTestId('library-ai-settings-button')).toBeTruthy();
+    });
+
+    const button = getByTestId('library-ai-settings-button');
+    const ownStyle =
+      ReactNative.StyleSheet.flatten(
+        button.props.style as ReactNative.StyleProp<ReactNative.ViewStyle>,
+      ) ?? {};
+
+    // The 48dp box must live on the Pressable itself (Codex finding 5): a header
+    // row that clips a hitSlop area would otherwise shrink the real target.
+    expect(button.props.hitSlop).toBeUndefined();
+    expect(Number(ownStyle.width ?? ownStyle.minWidth)).toBeGreaterThanOrEqual(48);
+    expect(Number(ownStyle.height ?? ownStyle.minHeight)).toBeGreaterThanOrEqual(48);
+  });
+
   it('configures expo-localization for forced RTL in app.json and I18nManager in _layout', () => {
     const appJson = require('../../../app.json') as {
       expo: { plugins: Array<string | [string, Record<string, unknown>]> };

@@ -49,6 +49,12 @@ const STAGE_DETAIL_AR: Record<JobStage, string> = {
 /** Fallback title when the caller cannot resolve a book title yet. */
 const FALLBACK_BOOK_TITLE_AR = 'كتاب';
 
+/** Page size for `/v1/jobs`. */
+const JOBS_PAGE_LIMIT = 50;
+/** Hard stop on the page walk (20 × 50 = the 1000-job cap) so a bad cursor can't hang the UI. */
+const MAX_JOB_PAGES = 20;
+const MAX_JOBS = JOBS_PAGE_LIMIT * MAX_JOB_PAGES;
+
 /**
  * `JobSummary` carries no job kind; the stage is the only signal on the wire. Tashkeel is
  * the one stage that names its own job, everything else belongs to the conversion pipeline.
@@ -184,10 +190,35 @@ export function createApiMissionControlAdapter(
 ): MissionControlAdapter {
   return {
     async fetchJobs() {
-      // One page is enough for the mission list; the contract returns the newest first.
-      const response = await client.listJobs({ limit: 50 });
+      // The list is cursor-paginated: stopping at page 1 hid older active jobs (and their
+      // badge count) once the account had more than one page of work. Follow `next_cursor`
+      // until the server says there is no more, with hard stops so a misbehaving server can
+      // never spin this into an endless loop.
       const now = Date.now();
-      return (response.jobs ?? []).map((job) => mapJobSummary(job, options, now));
+      const collected: MissionJob[] = [];
+      const seenJobIds = new Set<string>();
+      const seenCursors = new Set<string>();
+      let cursor: string | undefined;
+
+      for (let page = 0; page < MAX_JOB_PAGES && collected.length < MAX_JOBS; page += 1) {
+        const params: { limit: number; cursor?: string } = { limit: JOBS_PAGE_LIMIT };
+        if (cursor) params.cursor = cursor;
+        const response = await client.listJobs(params);
+
+        for (const job of response.jobs ?? []) {
+          if (seenJobIds.has(job.job_id)) continue;
+          seenJobIds.add(job.job_id);
+          collected.push(mapJobSummary(job, options, now));
+          if (collected.length >= MAX_JOBS) break;
+        }
+
+        const nextCursor = response.next_cursor;
+        if (!nextCursor || seenCursors.has(nextCursor)) break;
+        seenCursors.add(nextCursor);
+        cursor = nextCursor;
+      }
+
+      return collected;
     },
     async pauseJob(jobId: string) {
       await client.pauseJob(jobId);
