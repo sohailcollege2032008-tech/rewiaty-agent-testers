@@ -225,6 +225,15 @@ export function ReaderScreen() {
   const webViewRef = useRef<WebView<Record<string, unknown>> | null>(null);
   const hasSentLoadRef = useRef(false);
   const initialAnchorRef = useRef<Anchor | undefined>(undefined);
+  const initialChapterIdRef = useRef<string | undefined>(undefined);
+  /**
+   * Issue #44 — while the engine is restoring a saved position, a report that regressed to
+   * the very start of the book (chapter 0 / page 1 / 0%) is a failed restore, not a read.
+   * Persisting it would overwrite the reader's real position and library progress. The guard
+   * is armed only when the book opened with a non-zero saved position and is dropped as soon
+   * as the reader genuinely navigates (page turn, TOC, scrubber, bookmark/highlight/search).
+   */
+  const restoreGuardRef = useRef<{ savedProgress: number; savedChapterId?: string } | null>(null);
   const initialSettingsRef = useRef<ReaderSettings>(DEFAULT_SETTINGS);
   const hasManualThemeRef = useRef(false);
   const fontBaseUrlRef = useRef<string | null>(null);
@@ -501,6 +510,19 @@ export function ReaderScreen() {
           ? `${bookId}:${activeSearchAnchor.blockId}:${activeSearchAnchor.charOffset}`
           : null;
         initialAnchorRef.current = activeSearchAnchor ?? bundle.state.anchor ?? undefined;
+        initialChapterIdRef.current = activeSearchAnchor ? undefined : bundle.state.chapterId;
+        // Arm the restore guard only for a book that did not open at the beginning. A search
+        // deep link is an explicit target, so it never counts as a saved-position restore.
+        const firstChapterId = bundle.book.chapters[0]?.id;
+        const savedProgress = bundle.state.progress ?? 0;
+        const savedChapterId = bundle.state.chapterId;
+        const openedAwayFromStart =
+          savedProgress > 0 ||
+          (typeof savedChapterId === 'string' && savedChapterId !== firstChapterId);
+        restoreGuardRef.current =
+          !activeSearchAnchor && openedAwayFromStart
+            ? { savedProgress, savedChapterId }
+            : null;
         initialSettingsRef.current = resolvedSettings;
         fontBaseUrlRef.current = resolvedFontsUrl;
         latestStateRef.current = bundle.state;
@@ -571,6 +593,7 @@ export function ReaderScreen() {
     const key = `${bookId}:${searchAnchor.blockId}:${searchAnchor.charOffset}`;
     if (appliedSearchKeyRef.current === key) return;
     appliedSearchKeyRef.current = key;
+    restoreGuardRef.current = null;
     postToEngine({ type: 'goto', anchor: searchAnchor });
   }, [bookId, engineReady, searchAnchor, postToEngine]);
 
@@ -590,6 +613,9 @@ export function ReaderScreen() {
       type: 'load',
       book,
       anchor: initialAnchorRef.current,
+      // An empty chapter's anchor is its own id (or a block that no longer exists), so the
+      // engine needs the saved chapter id as a fallback to restore the position (#44).
+      chapterId: initialChapterIdRef.current,
       settings: loadSettings,
       insets: initialInsets,
       highlights: resolveHighlightsForBook(book, highlightsRef.current),
@@ -776,7 +802,36 @@ export function ReaderScreen() {
                 : 0,
             estimated: parsed.estimated === true,
           });
-          if (bookId) {
+
+          // Issue #44: a saved non-zero position must never be replaced by a failed restore.
+          // A report of the very start of the book (chapter 0 / page 1 / 0%) is only written
+          // after the reader genuinely navigates there; until then it cannot be distinguished
+          // from the engine falling back to chapter 0 because the anchor did not resolve.
+          let persistPosition = true;
+          const restoreGuard = restoreGuardRef.current;
+          if (restoreGuard) {
+            const firstChapterId = bookRef.current?.chapters[0]?.id;
+            const reportedProgress =
+              typeof parsed.bookProgress === 'number' && Number.isFinite(parsed.bookProgress)
+                ? parsed.bookProgress
+                : 0;
+            const reportedPage = typeof parsed.page === 'number' ? parsed.page : 0;
+            const explicitUserNav = parsed.userNavigated === true;
+            const regressedToStart =
+              !explicitUserNav &&
+              reportedProgress === 0 &&
+              reportedPage <= 1 &&
+              (firstChapterId === undefined || parsed.chapterId === firstChapterId);
+            if (regressedToStart) {
+              persistPosition = false;
+            } else {
+              // Any explicit navigation (including swiping back to page 1) or any non-start
+              // position confirms the session is live: resume normal persistence.
+              restoreGuardRef.current = null;
+            }
+          }
+
+          if (bookId && persistPosition) {
             const nextState: BookReaderState = {
               anchor: parsed.anchor,
               progress: parsed.bookProgress,
@@ -795,7 +850,7 @@ export function ReaderScreen() {
 
           // F23: feed the tracker from real page turns only (never from a timer).
           const tracker = readingTrackerRef.current;
-          if (tracker) {
+          if (tracker && persistPosition) {
             const chapter = bookRef.current?.chapters.find((c) => c.id === parsed.chapterId);
             const chapterPageCount = Math.max(1, parsed.chapterPageCount ?? parsed.pageCount);
             tracker.recordProgress({
@@ -865,6 +920,7 @@ export function ReaderScreen() {
 
   const handleSelectChapter = useCallback(
     (chapterId: string) => {
+      restoreGuardRef.current = null;
       postToEngine({ type: 'goto', chapterId });
     },
     [postToEngine],
@@ -872,6 +928,7 @@ export function ReaderScreen() {
 
   const handleSeekPage = useCallback(
     (targetPage: number) => {
+      restoreGuardRef.current = null;
       postToEngine({ type: 'goto', page: targetPage });
     },
     [postToEngine],
@@ -989,6 +1046,7 @@ export function ReaderScreen() {
 
   const handleOpenBookmark = useCallback(
     (item: BookmarkItem, anchor: Anchor | null) => {
+      restoreGuardRef.current = null;
       if (anchor) {
         postToEngine({ type: 'goto', anchor });
       } else if (item.page !== undefined) {
@@ -1172,6 +1230,7 @@ export function ReaderScreen() {
 
   const handleOpenHighlight = useCallback(
     (_item: HighlightItem, anchor: Anchor | null) => {
+      restoreGuardRef.current = null;
       if (anchor) {
         postToEngine({ type: 'goto', anchor });
       }
