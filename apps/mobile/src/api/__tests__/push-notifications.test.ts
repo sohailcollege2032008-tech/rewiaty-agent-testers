@@ -1,0 +1,450 @@
+/**
+ * F38 — Expo push notifications, tested entirely through the injected seams.
+ *
+ * No native module, no Expo push call and no network: the permissions adapter, token fetcher,
+ * notifications module, KV store and API client are all in-memory fakes here.
+ */
+import {
+  ensurePushRegisteredIfGranted,
+  installPushNotificationHandling,
+  PUSH_CHANNEL_NAME_AR,
+  PUSH_MISSION_CONTROL_ROUTE,
+  PUSH_NOTIFICATION_COPY_AR,
+  PUSH_READER_ROUTE,
+  PUSH_TOKEN_ID_KV_KEY,
+  PUSH_UPLOAD_ROUTE,
+  parsePushNotificationData,
+  registerDevicePushToken,
+  routeFromPushNotificationData,
+  unregisterDevicePushToken,
+  type ExpoNotificationResponseLike,
+  type ExpoNotificationsLike,
+  type PushTokenApiClient,
+  type PushTokenStore,
+} from '@/api/push-notifications';
+import type { PushNotificationData, PushTokenRequest } from '@/api/types';
+
+function makeApiClient() {
+  const registerPushToken = jest.fn(
+    async (body: PushTokenRequest): Promise<{
+      token_id: string;
+      device_id: string;
+      platform: PushTokenRequest['platform'];
+      provider: PushTokenRequest['provider'];
+      registered_at: string;
+    }> => ({
+      token_id: 'pt_new',
+      device_id: body.device_id,
+      platform: body.platform,
+      provider: body.provider,
+      registered_at: '2026-11-28T00:00:00Z',
+    }),
+  );
+  const deletePushToken = jest.fn(async (_tokenId: string) => undefined);
+  return { registerPushToken, deletePushToken };
+}
+
+function makeStore(initial: string | null = null): PushTokenStore & {
+  current: () => string | null;
+} {
+  let value = initial;
+  return {
+    getTokenId: jest.fn(async () => value),
+    setTokenId: jest.fn(async (tokenId: string) => {
+      value = tokenId;
+    }),
+    clearTokenId: jest.fn(async () => {
+      value = null;
+    }),
+    current: () => value,
+  };
+}
+
+function permissions(initial: 'granted' | 'undetermined', afterRequest: 'granted' | 'denied') {
+  return {
+    get: jest.fn(async () => ({ status: initial, granted: initial === 'granted' })),
+    request: jest.fn(async () => ({
+      status: afterRequest,
+      granted: afterRequest === 'granted',
+    })),
+  };
+}
+
+const DEVICE_ID = 'dev_1';
+const PLATFORM = 'android' as const;
+
+describe('registerDevicePushToken', () => {
+  it('registers with the Expo provider and persists token_id when permission is granted', async () => {
+    const apiClient = makeApiClient();
+    const store = makeStore();
+    const getToken = jest.fn(async () => 'ExponentPushToken[abc]');
+
+    const result = await registerDevicePushToken({
+      apiClient: apiClient as unknown as PushTokenApiClient,
+      deviceId: DEVICE_ID,
+      platform: PLATFORM,
+      permissions: permissions('granted', 'granted'),
+      getToken,
+      notificationsModule: null,
+      store,
+    });
+
+    expect(result).toEqual({
+      status: 'registered',
+      tokenId: 'pt_new',
+      token: 'ExponentPushToken[abc]',
+    });
+    expect(getToken).toHaveBeenCalledWith({ deviceId: DEVICE_ID, platform: PLATFORM });
+    expect(apiClient.registerPushToken).toHaveBeenCalledWith({
+      device_id: DEVICE_ID,
+      platform: PLATFORM,
+      provider: 'expo',
+      token: 'ExponentPushToken[abc]',
+    });
+    expect(store.setTokenId).toHaveBeenCalledWith('pt_new');
+    expect(store.current()).toBe('pt_new');
+    expect(apiClient.deletePushToken).not.toHaveBeenCalled();
+  });
+
+  it('prompts for permission when undetermined and registers once granted', async () => {
+    const apiClient = makeApiClient();
+    const store = makeStore();
+    const perms = permissions('undetermined', 'granted');
+
+    const result = await registerDevicePushToken({
+      apiClient: apiClient as unknown as PushTokenApiClient,
+      deviceId: DEVICE_ID,
+      platform: PLATFORM,
+      permissions: perms,
+      getToken: async () => 'ExponentPushToken[abc]',
+      notificationsModule: null,
+      store,
+    });
+
+    expect(perms.request).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe('registered');
+  });
+
+  it('returns denied with no token fetch and no API call when permission is refused', async () => {
+    const apiClient = makeApiClient();
+    const store = makeStore();
+    const perms = permissions('undetermined', 'denied');
+    const getToken = jest.fn(async () => 'ExponentPushToken[abc]');
+
+    const result = await registerDevicePushToken({
+      apiClient: apiClient as unknown as PushTokenApiClient,
+      deviceId: DEVICE_ID,
+      platform: PLATFORM,
+      permissions: perms,
+      getToken,
+      notificationsModule: null,
+      store,
+    });
+
+    expect(result).toEqual({ status: 'denied' });
+    expect(getToken).not.toHaveBeenCalled();
+    expect(apiClient.registerPushToken).not.toHaveBeenCalled();
+    expect(store.setTokenId).not.toHaveBeenCalled();
+  });
+
+  it('never throws when the permission adapter itself fails', async () => {
+    const apiClient = makeApiClient();
+    const store = makeStore();
+
+    const result = await registerDevicePushToken({
+      apiClient: apiClient as unknown as PushTokenApiClient,
+      deviceId: DEVICE_ID,
+      platform: PLATFORM,
+      permissions: {
+        get: async () => {
+          throw new Error('native module exploded');
+        },
+      },
+      getToken: async () => 'ExponentPushToken[abc]',
+      notificationsModule: null,
+      store,
+    });
+
+    expect(result).toEqual({ status: 'failed', reason: 'permission_error' });
+    expect(apiClient.registerPushToken).not.toHaveBeenCalled();
+  });
+
+  it('treats a device with no push capability (null token) as unavailable, with no API call', async () => {
+    const apiClient = makeApiClient();
+    const store = makeStore();
+
+    const result = await registerDevicePushToken({
+      apiClient: apiClient as unknown as PushTokenApiClient,
+      deviceId: DEVICE_ID,
+      platform: PLATFORM,
+      permissions: permissions('granted', 'granted'),
+      getToken: async () => null,
+      notificationsModule: null,
+      store,
+    });
+
+    expect(result).toEqual({ status: 'unavailable', reason: 'no_token' });
+    expect(apiClient.registerPushToken).not.toHaveBeenCalled();
+    expect(store.setTokenId).not.toHaveBeenCalled();
+  });
+
+  it('re-registration deletes the previous server token and stores the new one', async () => {
+    const apiClient = makeApiClient();
+    const store = makeStore('pt_old');
+
+    const result = await registerDevicePushToken({
+      apiClient: apiClient as unknown as PushTokenApiClient,
+      deviceId: DEVICE_ID,
+      platform: PLATFORM,
+      permissions: permissions('granted', 'granted'),
+      getToken: async () => 'ExponentPushToken[new]',
+      notificationsModule: null,
+      store,
+    });
+
+    expect(result.status).toBe('registered');
+    expect(apiClient.deletePushToken).toHaveBeenCalledWith('pt_old');
+    expect(store.current()).toBe('pt_new');
+  });
+
+  it('keeps the previous token id when registration fails', async () => {
+    const apiClient = makeApiClient();
+    apiClient.registerPushToken.mockRejectedValueOnce(new Error('network down'));
+    const store = makeStore('pt_old');
+
+    const result = await registerDevicePushToken({
+      apiClient: apiClient as unknown as PushTokenApiClient,
+      deviceId: DEVICE_ID,
+      platform: PLATFORM,
+      permissions: permissions('granted', 'granted'),
+      getToken: async () => 'ExponentPushToken[new]',
+      notificationsModule: null,
+      store,
+    });
+
+    expect(result).toEqual({ status: 'failed', reason: 'api_error' });
+    expect(apiClient.deletePushToken).not.toHaveBeenCalled();
+    expect(store.current()).toBe('pt_old');
+  });
+});
+
+describe('ensurePushRegisteredIfGranted', () => {
+  it('never prompts: denied permission stays silent with no API call', async () => {
+    const apiClient = makeApiClient();
+    const perms = permissions('undetermined', 'granted');
+
+    const result = await ensurePushRegisteredIfGranted({
+      apiClient: apiClient as unknown as PushTokenApiClient,
+      deviceId: DEVICE_ID,
+      platform: PLATFORM,
+      permissions: perms,
+      getToken: async () => 'ExponentPushToken[abc]',
+      notificationsModule: null,
+      store: makeStore(),
+    });
+
+    expect(result).toEqual({ status: 'denied' });
+    expect(perms.request).not.toHaveBeenCalled();
+    expect(apiClient.registerPushToken).not.toHaveBeenCalled();
+  });
+
+  it('registers silently when permission was already granted', async () => {
+    const apiClient = makeApiClient();
+    const perms = permissions('granted', 'granted');
+
+    const result = await ensurePushRegisteredIfGranted({
+      apiClient: apiClient as unknown as PushTokenApiClient,
+      deviceId: DEVICE_ID,
+      platform: PLATFORM,
+      permissions: perms,
+      getToken: async () => 'ExponentPushToken[abc]',
+      notificationsModule: null,
+      store: makeStore(),
+    });
+
+    expect(result.status).toBe('registered');
+    expect(perms.request).not.toHaveBeenCalled();
+  });
+});
+
+describe('unregisterDevicePushToken', () => {
+  it('deletes the stored server token and clears the KV id', async () => {
+    const apiClient = makeApiClient();
+    const store = makeStore('pt_old');
+
+    await unregisterDevicePushToken({
+      apiClient: apiClient as unknown as PushTokenApiClient,
+      store,
+    });
+
+    expect(apiClient.deletePushToken).toHaveBeenCalledWith('pt_old');
+    expect(store.clearTokenId).toHaveBeenCalled();
+    expect(store.current()).toBeNull();
+  });
+
+  it('does nothing on the server when there is no stored token', async () => {
+    const apiClient = makeApiClient();
+
+    await unregisterDevicePushToken({
+      apiClient: apiClient as unknown as PushTokenApiClient,
+      store: makeStore(),
+    });
+
+    expect(apiClient.deletePushToken).not.toHaveBeenCalled();
+  });
+});
+
+describe('routeFromPushNotificationData', () => {
+  const chapterPayload: PushNotificationData = {
+    event: 'chapter_ready',
+    book_id: 'book_1',
+    job_id: 'job_1',
+    chapter_id: 'ch01',
+    chapter_index: 1,
+  };
+
+  const jobPayload: PushNotificationData = {
+    event: 'job_completed',
+    book_id: 'book_1',
+    job_id: 'job_1',
+  };
+
+  it('routes chapter_ready to the reader with the chapter hint', () => {
+    expect(routeFromPushNotificationData(chapterPayload)).toEqual({
+      pathname: PUSH_READER_ROUTE,
+      params: { id: 'book_1', chapter: 'ch01', chapterIndex: '1' },
+    });
+  });
+
+  it('routes job_completed to the finished book', () => {
+    expect(routeFromPushNotificationData(jobPayload)).toEqual({
+      pathname: PUSH_READER_ROUTE,
+      params: { id: 'book_1' },
+    });
+  });
+
+  it('falls back to Mission Control when the book is not imported locally', () => {
+    expect(routeFromPushNotificationData(chapterPayload, { bookReady: false })).toEqual({
+      pathname: PUSH_MISSION_CONTROL_ROUTE,
+    });
+    expect(routeFromPushNotificationData(jobPayload, { bookReady: false })).toEqual({
+      pathname: PUSH_MISSION_CONTROL_ROUTE,
+    });
+  });
+
+  it('falls back to the upload screen when a completed book no longer exists', () => {
+    expect(
+      routeFromPushNotificationData(jobPayload, { bookReady: false, bookExists: false }),
+    ).toEqual({ pathname: PUSH_UPLOAD_ROUTE });
+  });
+
+  it('ignores invalid or unrelated payloads', () => {
+    expect(routeFromPushNotificationData(null)).toBeNull();
+    expect(routeFromPushNotificationData(undefined)).toBeNull();
+    expect(routeFromPushNotificationData('chapter_ready')).toBeNull();
+    expect(routeFromPushNotificationData({})).toBeNull();
+    expect(routeFromPushNotificationData({ event: 'other_event', book_id: 'b', job_id: 'j' })).toBeNull();
+    expect(routeFromPushNotificationData({ event: 'chapter_ready', job_id: 'j' })).toBeNull();
+    expect(routeFromPushNotificationData({ event: 'chapter_ready', book_id: 'b' })).toBeNull();
+    expect(
+      routeFromPushNotificationData({ event: 'job_completed', book_id: '', job_id: 'j' }),
+    ).toBeNull();
+  });
+});
+
+describe('parsePushNotificationData', () => {
+  it('keeps only valid optional fields', () => {
+    expect(
+      parsePushNotificationData({
+        event: 'chapter_ready',
+        book_id: 'book_1',
+        job_id: 'job_1',
+        chapter_id: '  ',
+        chapter_index: 0,
+      }),
+    ).toEqual({ event: 'chapter_ready', book_id: 'book_1', job_id: 'job_1' });
+    expect(
+      parsePushNotificationData({
+        event: 'chapter_ready',
+        book_id: 'book_1',
+        job_id: 'job_1',
+        chapter_index: -1,
+      }),
+    ).toEqual({ event: 'chapter_ready', book_id: 'book_1', job_id: 'job_1' });
+  });
+});
+
+describe('installPushNotificationHandling', () => {
+  function makeNotifications(): ExpoNotificationsLike & {
+    emit: (data: unknown, identifier: string) => void;
+  } {
+    let listener: ((response: ExpoNotificationResponseLike) => void) | null = null;
+    return {
+      setNotificationHandler: jest.fn(),
+      setNotificationChannelAsync: jest.fn(async () => undefined),
+      addNotificationResponseReceivedListener: jest.fn(
+        (cb: (response: ExpoNotificationResponseLike) => void) => {
+          listener = cb;
+          return { remove: jest.fn() };
+        },
+      ),
+      getLastNotificationResponseAsync: jest.fn(async () => null),
+      AndroidImportance: { DEFAULT: 3 },
+      emit: (data: unknown, identifier: string) => {
+        listener?.({
+          notification: { request: { identifier, content: { data } } },
+        });
+      },
+    };
+  }
+
+  it('navigates on a chapter_ready tap and ignores unrelated payloads', () => {
+    const notifications = makeNotifications();
+    const navigate = jest.fn();
+
+    const unsubscribe = installPushNotificationHandling({
+      notificationsModule: notifications,
+      navigate,
+    });
+
+    expect(notifications.setNotificationHandler).toHaveBeenCalled();
+    expect(notifications.setNotificationChannelAsync).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ name: PUSH_CHANNEL_NAME_AR }),
+    );
+
+    notifications.emit(
+      { event: 'chapter_ready', book_id: 'book_1', job_id: 'job_1', chapter_id: 'ch01' },
+      'response-1',
+    );
+    expect(navigate).toHaveBeenCalledWith({
+      pathname: PUSH_READER_ROUTE,
+      params: { id: 'book_1', chapter: 'ch01' },
+    });
+
+    navigate.mockClear();
+    notifications.emit({ event: 'something_else' }, 'response-2');
+    expect(navigate).not.toHaveBeenCalled();
+
+    unsubscribe();
+  });
+
+  it('is a no-op when the notifications module is unavailable', () => {
+    const navigate = jest.fn();
+    const unsubscribe = installPushNotificationHandling({
+      notificationsModule: null,
+      navigate,
+    });
+
+    expect(() => unsubscribe()).not.toThrow();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+});
+
+describe('Arabic channel copy', () => {
+  it('uses the fixed Arabic channel name and KV key', () => {
+    expect(PUSH_TOKEN_ID_KV_KEY).toBe('push_token_id_v1');
+    expect(PUSH_CHANNEL_NAME_AR).toBe('تحويل الكتب');
+    expect(PUSH_NOTIFICATION_COPY_AR.channelName).toBe('تحويل الكتب');
+  });
+});
