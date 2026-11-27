@@ -415,6 +415,57 @@ describe('ReaderScreen', () => {
     );
   });
 
+  it('F22: switches to scroll mode, sends the partial, gates the progress-bar switch, and reads chapter progress', async () => {
+    const { getByTestId, queryByTestId, getByText } = await renderLoadedReader();
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+
+    await fireEvent.press(getByTestId('reader-settings-button'));
+    await fireEvent.press(getByTestId('settings-tab-layout'));
+
+    // The progress-bar switch only makes sense in scroll mode.
+    expect(queryByTestId('settings-reading-mode-paginated')).toBeTruthy();
+    expect(queryByTestId('settings-scroll-progress-switch')).toBeNull();
+
+    await fireEvent.press(getByTestId('settings-reading-mode-scroll'));
+    expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
+      type: 'settings',
+      partial: { readingMode: 'scroll' },
+    });
+
+    const progressSwitch = getByTestId('settings-scroll-progress-switch');
+    expect(progressSwitch.props.value).toBe(true);
+    await fireEvent(progressSwitch, 'valueChange', false);
+    expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
+      type: 'settings',
+      partial: { showScrollProgressBar: false },
+    });
+
+    // Scroll positions carry a chapter fraction instead of a page number.
+    await act(async () => {
+      emitWebMessage({
+        type: 'position',
+        anchor: { blockId: 'ch02_p0001', charOffset: 0 },
+        chapterId: 'ch02',
+        page: 6,
+        pageCount: 11,
+        chapterPage: 3,
+        chapterPageCount: 6,
+        bookProgress: 0.5,
+        chapterProgress: 0.42,
+        readingMode: 'scroll',
+        spread: false,
+      });
+    });
+
+    expect(getByText('الفصل 42%')).toBeTruthy();
+    // The layer stays usable in scroll mode: the scrubber still maps to page seeks.
+    expect(getByTestId('reader-scrubber-track')).toBeTruthy();
+  });
+
   it('sends spread="auto" and renders settings as a side panel on landscape tablet', async () => {
     Dimensions.set({
       window: { width: 1366, height: 1024, scale: 2, fontScale: 1 },

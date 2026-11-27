@@ -26,6 +26,12 @@ flows:
     target: release-apk
     run: "bash scripts/ci-flows.sh settings-live"
     artifact: ".factory/evidence/latest/apk/app.apk"
+  - id: scroll-mode
+    who: "قارئ بيقرا كتاب طويل بالتمرير"
+    steps: "tap في النص ← الإعدادات ← تبويب الصفحة ← «وضع القراءة» = تمرير ← الفصول تبقى عمود رأسي واحد ← شريط التقدم العلوي يظهر ويقدر يتقفل ← يسحب لفوق فالعدّاد بيقول «الفصل X%» وبيزيد ← يرجع «صفحات» فالعدّاد بيرجع «صفحة N من M»"
+    target: release-apk
+    run: "bash scripts/ci-flows.sh scroll-mode"
+    artifact: ".factory/evidence/latest/apk/app.apk"
   - id: open-with-telegram
     who: "قارئ وصله ملف من تيليجرام"
     steps: "يفتح ملف md بـ «روايتي» من مدير الملفات ← يتعمله import ويتفتح"

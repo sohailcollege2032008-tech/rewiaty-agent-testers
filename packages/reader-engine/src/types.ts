@@ -11,6 +11,14 @@ export type IndentMode = 'classic' | 'block';
 
 export type TapZone = 'prev' | 'next' | 'center';
 
+/**
+ * F22 — how the book is presented.
+ * - `paginated` (default): the classic one-column page that turns horizontally.
+ * - `scroll`: one continuous vertical column; chapters stack, the page map still drives
+ *   every number the reader sees (page, TOC, scrubber).
+ */
+export type ReadingMode = 'paginated' | 'scroll';
+
 export type HighlightColor = 'gold' | 'sage' | 'sky' | 'rose';
 
 export type HighlightColorMeta = {
@@ -115,6 +123,13 @@ export type ReaderSettings = {
    * - 'single': never spread, even on a tablet in landscape.
    */
   spread?: 'auto' | 'single';
+  /** F22 — `paginated` (default) or continuous vertical `scroll`. */
+  readingMode?: ReadingMode;
+  /**
+   * F22 — show the thin reading-progress bar at the top of the page while scrolled.
+   * Default `true`; the reader can turn it off in the layout tab.
+   */
+  showScrollProgressBar?: boolean;
 };
 
 export type ThemeTokens = {
@@ -190,6 +205,8 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   maxReadingWidth: 68,
   dirOverride: 'auto',
   spread: 'auto',
+  readingMode: 'paginated',
+  showScrollProgressBar: true,
 };
 
 export type ReaderInsets = {
@@ -314,6 +331,10 @@ export type WebToRNMessage =
       bookProgress: number;
       /** true when the reader is showing a two-page open-book spread. */
       spread: boolean;
+      /** F22 — 0..1 position inside the current chapter while in `scroll` mode. */
+      chapterProgress?: number;
+      /** F22 — which presentation produced this position. */
+      readingMode?: ReadingMode;
       /**
        * true while `pageCount` is an estimate for the current layout. The sheet
        * counter should read "~N" (or drop the total) instead of presenting it as final.

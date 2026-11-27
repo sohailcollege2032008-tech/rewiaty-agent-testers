@@ -6,6 +6,7 @@ export type {
   HighlightColor,
   HighlightColorMeta,
   IndentMode,
+  ReadingMode,
   RNToWebMessage,
   ReaderInsets,
   ReaderSettings,

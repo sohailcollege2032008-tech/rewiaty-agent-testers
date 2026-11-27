@@ -1,0 +1,122 @@
+appId: com.rewiaty.app
+---
+# F22 — وضع التمرير: فصل واحد تحت التاني في عمود رأسي متصل، مع شريط تقدم علوي
+# وعدّاد بيعرض نسبة الفصل بدل رقم الصفحة.
+- launchApp
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 20000
+- waitForAnimationToEnd
+- takeScreenshot: "01-paginated-start"
+# Open the bars only if they are closed (they open on their own with a hint on first launch).
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-settings-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-settings-button"
+    timeout: 5000
+- tapOn:
+    id: "reader-settings-button"
+- tapOn:
+    id: "settings-tab-layout"
+- extendedWaitUntil:
+    visible:
+      id: "settings-reading-mode-scroll"
+    timeout: 5000
+# The progress-bar switch is a scroll-mode control: it must be absent while paginated.
+- assertNotVisible:
+    id: "settings-scroll-progress-switch"
+- takeScreenshot: "02-layout-tab-paginated"
+- tapOn:
+    id: "settings-reading-mode-scroll"
+- extendedWaitUntil:
+    visible:
+      id: "settings-scroll-progress-switch"
+    timeout: 5000
+- takeScreenshot: "03-layout-tab-scroll"
+# Close the sheet by tapping above it, then read the footer counter in scroll mode.
+- tapOn:
+    point: "50%,15%"
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-page-counter"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-page-counter"
+    timeout: 5000
+- assertVisible:
+    id: "reader-page-counter"
+    text: "الفصل 0%"
+- takeScreenshot: "04-scroll-hud-footer"
+# Drag the text upwards: the stack scrolls and the chapter percentage grows.
+- tapOn:
+    point: "50%,50%"
+- waitForAnimationToEnd
+- swipe:
+    start: "50%,75%"
+    end: "50%,25%"
+    duration: 500
+- waitForAnimationToEnd
+- swipe:
+    start: "50%,75%"
+    end: "50%,25%"
+    duration: 500
+- waitForAnimationToEnd
+- takeScreenshot: "05-scrolled"
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-page-counter"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-page-counter"
+    timeout: 5000
+- assertVisible:
+    id: "reader-page-counter"
+    # Two full-screen swipes must actually move the reader through the chapter, not just
+    # repaint it: 0% is the start state, anything from 1% up proves the stack scrolled.
+    text: "الفصل [1-9][0-9]*%"
+- takeScreenshot: "06-scrolled-hud-footer"
+# Back to pages: the counter is a page number again.
+- tapOn:
+    id: "reader-settings-button"
+- tapOn:
+    id: "settings-tab-layout"
+- tapOn:
+    id: "settings-reading-mode-paginated"
+- tapOn:
+    point: "50%,15%"
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-page-counter"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-page-counter"
+    timeout: 5000
+- assertVisible:
+    id: "reader-page-counter"
+    text: "صفحة .*"
+- takeScreenshot: "07-back-to-paginated"

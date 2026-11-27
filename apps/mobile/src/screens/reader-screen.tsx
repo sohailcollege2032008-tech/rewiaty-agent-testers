@@ -80,6 +80,7 @@ import type {
   BookReaderState,
   HighlightColor,
   HighlightItem,
+  ReadingMode,
   ReaderInsets,
   ReaderSettings,
   RNToWebMessage,
@@ -247,6 +248,10 @@ export function ReaderScreen() {
     page: number;
     pageCount: number;
     bookProgress: number;
+    /** F22: which layout the engine is drawing; drives the footer reading. */
+    readingMode: ReadingMode;
+    /** F22 scroll mode: 0..1 progress inside the current chapter. */
+    chapterProgress: number;
     /** The engine is still measuring chapters, so `pageCount` is an estimate. */
     estimated: boolean;
   }>({
@@ -254,6 +259,8 @@ export function ReaderScreen() {
     page: 1,
     pageCount: 1,
     bookProgress: 0,
+    readingMode: 'paginated',
+    chapterProgress: 0,
     estimated: true,
   });
   const [imageProof, setImageProof] = useState<{ count: number; width: number; height: number } | null>(
@@ -479,6 +486,8 @@ export function ReaderScreen() {
           page: bundle.state.page ?? 1,
           pageCount: bundle.state.pageCount ?? Math.max(1, bundle.book.chapters.length),
           bookProgress: bundle.state.progress ?? 0,
+          readingMode: 'paginated',
+          chapterProgress: 0,
           // A saved position is reported before the engine has measured anything.
           estimated: true,
         });
@@ -704,6 +713,13 @@ export function ReaderScreen() {
             bookProgress:
               typeof parsed.bookProgress === 'number' && Number.isFinite(parsed.bookProgress)
                 ? parsed.bookProgress
+                : 0,
+            // F22: the engine says which layout produced this position. A page built before
+            // the field existed is paginated by definition.
+            readingMode: parsed.readingMode === 'scroll' ? 'scroll' : 'paginated',
+            chapterProgress:
+              typeof parsed.chapterProgress === 'number' && Number.isFinite(parsed.chapterProgress)
+                ? Math.max(0, Math.min(1, parsed.chapterProgress))
                 : 0,
             estimated: parsed.estimated === true,
           });
@@ -1433,6 +1449,8 @@ export function ReaderScreen() {
               chapterTitle={activeChapterTitle}
               page={pageInfo.page}
               pageCount={pageInfo.pageCount}
+              readingMode={pageInfo.readingMode}
+              chapterProgress={pageInfo.chapterProgress}
               estimated={pageInfo.estimated}
               chapterCount={book.chapters.length}
               isBookmarked={isBookmarked}
