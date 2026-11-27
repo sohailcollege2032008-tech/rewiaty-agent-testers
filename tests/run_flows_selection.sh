@@ -33,6 +33,9 @@ STUB
 cat > "$WORK/bin/maestro" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$MAESTRO_CALLS"
+# The real maestro (and adb) read stdin; draining it here reproduces run 45949187687, where the
+# first generic flow ate the rest of the requested ids inside the runner's `while read` loop.
+cat >/dev/null 2>&1 || true
 if [ "${1:-}" = "test" ]; then exit "${MAESTRO_RC:-0}"; fi
 exit 0
 STUB
@@ -65,7 +68,7 @@ run_runner() {
     cd "$dir" || exit 99
     HOME="$WORK/home" PATH="$WORK/bin:$PATH" FLOW="$flow" \
       MAESTRO_CALLS="$dir/maestro-calls.txt" MAESTRO_RC="$rc" \
-      bash "$RUNNER" > "$dir/run.log" 2>&1
+      bash "$RUNNER" > "$dir/run.log" 2>&1 </dev/null
   )
   printf '%s' "$?" > "$dir/exit-code"
 }
@@ -186,6 +189,20 @@ if [ "$(exit_of "$BOX")" != "0" ]; then
 else
   no "a failing generic flow exited 0"
 fi
+
+# --- several new ids in one request: every one of them must run -----------------
+BOX="$(new_sandbox several-new-ids)"
+add_flow "$BOX" mission-control-byok
+add_flow "$BOX" dictionary-lookup
+add_flow "$BOX" scroll-mode
+run_runner "$BOX" "mission-control-byok,dictionary-lookup,scroll-mode"
+for id in mission-control-byok dictionary-lookup scroll-mode; do
+  if status_row "$BOX" "$id" PASS; then
+    ok "multi-id request ran $id"
+  else
+    no "multi-id request did not run $id: $(status_of "$BOX")"
+  fi
+done
 
 printf '\n%s passed, %s failed\n' "$PASSED" "$FAILED"
 [ "$FAILED" -eq 0 ]
