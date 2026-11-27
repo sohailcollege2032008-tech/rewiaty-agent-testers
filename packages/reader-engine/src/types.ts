@@ -1,7 +1,11 @@
 import type { Anchor, Book } from '@rewiaty/book-format';
+import type {
+  ReadingFocusMode,
+  ReadingFocusReport,
+} from './reading-focus.js';
 import type { TashkeelMode } from './tashkeel.js';
 
-export type { TashkeelMode };
+export type { ReadingFocusMode, ReadingFocusReport, TashkeelMode };
 
 /**
  * F31 — «موسوعة الثيمات». The four core themes stay the quick-select row; the nine encyclopedia
@@ -199,6 +203,15 @@ export type ReaderSettings = {
    * Default `true`; the reader can turn it off in the layout tab.
    */
   showScrollProgressBar?: boolean;
+  /**
+   * F33 — وضع التركيز ومسطرة التتبع.
+   * - `off` (default): the page is untouched.
+   * - `paragraph`: the paragraph under the reading line keeps the body ink; the rest of the page
+   *   is painted with the theme's readable `muted` token.
+   * - `ruler`: a thin pass-through line is drawn at the reading line, text untouched.
+   * The reading line itself is the geometry documented in `reading-focus.ts`.
+   */
+  readingFocus?: ReadingFocusMode;
 };
 
 export type ThemeTokens = {
@@ -411,6 +424,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   eyeRestIntervalMinutes: 45,
   readingMode: 'paginated',
   showScrollProgressBar: true,
+  readingFocus: 'off',
 };
 
 export type ReaderInsets = {
@@ -612,6 +626,7 @@ export type WebToRNMessage =
       sceneId: string;
       collapsed: boolean;
     }
+  | ({ type: 'reading-focus' } & ReadingFocusReport)
   | {
       type: 'error';
       message: string;

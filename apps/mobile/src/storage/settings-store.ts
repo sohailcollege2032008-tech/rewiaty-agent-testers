@@ -4,6 +4,7 @@ import {
   THEMES,
   type CustomReaderColors,
   type IndentMode,
+  type ReadingFocusMode,
   type ReadingMode,
   type ReaderSettings,
   type TashkeelMode,
@@ -47,6 +48,8 @@ const VALID_AUTO_THEME_MODES = new Set<AutoThemeMode>([
 ]);
 /** F22: the two reading layouts the engine can render. */
 const VALID_READING_MODES = new Set<ReadingMode>(['paginated', 'scroll']);
+/** F33 — إيقاف / تركيز الفقرة / مسطرة التتبع. */
+const VALID_READING_FOCUS = new Set<ReadingFocusMode>(['off', 'paragraph', 'ruler']);
 
 type RawStoredSettings = Partial<Omit<ReaderSettings, 'theme'>> & {
   theme?: string;
@@ -165,6 +168,11 @@ export function sanitizeSettingsPartial(
   }
   if (typeof partial.showScrollProgressBar === 'boolean') {
     next.showScrollProgressBar = partial.showScrollProgressBar;
+  }
+  // F33 — an unknown focus mode is dropped, never coerced: a mangled stored value must not
+  // suddenly dim the reader's page.
+  if (partial.readingFocus !== undefined && VALID_READING_FOCUS.has(partial.readingFocus)) {
+    next.readingFocus = partial.readingFocus;
   }
 
   // F31 — الإضاءة وراحة العين.
@@ -371,6 +379,8 @@ export function getSectionResetPartial(
         // F22: «وضع القراءة» and its progress bar are layout choices.
         readingMode: DEFAULT_SETTINGS.readingMode,
         showScrollProgressBar: DEFAULT_SETTINGS.showScrollProgressBar,
+        // F33: the focus control lives in «تنسيق الصفحة» too.
+        readingFocus: DEFAULT_SETTINGS.readingFocus,
       };
     case 'theme':
       // F31: «المظهر» owns the lighting/auto-theme/eye-rest comfort settings too, so «افتراضي»

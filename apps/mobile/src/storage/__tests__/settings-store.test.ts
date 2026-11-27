@@ -558,6 +558,40 @@ describe('settings-store', () => {
     expect(reset).toEqual(DEFAULT_SETTINGS);
     expect(await loadReaderSettings(db)).toEqual(DEFAULT_SETTINGS);
   });
+
+  it('persists the reading focus mode (off by default), ignores unknown values, and resets with the layout tab (F33)', async () => {
+    // Off is the default: a reader who never asked for focus keeps the plain page.
+    expect(DEFAULT_SETTINGS.readingFocus).toBe('off');
+
+    const paragraph = await updateReaderSettings({ readingFocus: 'paragraph' }, db);
+    expect(paragraph.readingFocus).toBe('paragraph');
+    // A gesture/sheet that saved a mode must survive a full reopen of the reader.
+    expect((await loadReaderSettings(db)).readingFocus).toBe('paragraph');
+
+    const ruler = await updateReaderSettings({ readingFocus: 'ruler' }, db);
+    expect(ruler.readingFocus).toBe('ruler');
+    expect((await loadReaderSettings(db)).readingFocus).toBe('ruler');
+
+    // A value this build does not know must not replace the reader's choice…
+    const ignored = await updateReaderSettings(
+      { readingFocus: 'spotlight' } as unknown as Partial<typeof DEFAULT_SETTINGS>,
+      db,
+    );
+    expect(ignored.readingFocus).toBe('ruler');
+
+    // …and a stored garbage value alone reads back as off instead of a coerced mode.
+    const staleDb = createKvTestDb();
+    await staleDb.runAsync(
+      'INSERT INTO kv (key, value) VALUES (?, ?)',
+      SETTINGS_KV_KEY,
+      JSON.stringify({ readingFocus: 'spotlight' }),
+    );
+    expect((await loadReaderSettings(staleDb)).readingFocus).toBe('off');
+
+    // The control lives in the layout tab, so its reset turns the effect off again.
+    const afterLayoutReset = await resetSection('layout', db);
+    expect(afterLayoutReset.readingFocus).toBe('off');
+  });
 });
 
 /**

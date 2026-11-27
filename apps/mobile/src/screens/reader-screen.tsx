@@ -33,7 +33,7 @@ import { DictionarySheet } from '@/components/dictionary-sheet';
 import { JumpBackPill } from '@/components/jump-back-pill';
 import { LightingOverlay } from '@/components/lighting-overlay';
 import { ReaderHud } from '@/components/reader-hud';
-import { ReaderSettingsSheet } from '@/components/reader-settings-sheet';
+import { ReaderSettingsSheet, type ReadingFocusStatus } from '@/components/reader-settings-sheet';
 import { TocModal } from '@/components/toc-modal';
 import { WelcomeBackCard } from '@/components/welcome-back-card';
 import {
@@ -476,6 +476,9 @@ export function ReaderScreen() {
   const [imageProof, setImageProof] = useState<{ count: number; width: number; height: number } | null>(
     null,
   );
+  // F33: the engine's live answer — which paragraph sits on the reading line right now. Kept in
+  // React state so the settings sheet can show it; never persisted (it is derived, not a setting).
+  const [readingFocusStatus, setReadingFocusStatus] = useState<ReadingFocusStatus | null>(null);
   // F27 — ملمس الورق: what the engine reports it is actually painting, so an on-device journey can
   // prove 3% grain on the paper themes and silence on the rest.
   const [paperGrainProof, setPaperGrainProof] = useState<string | null>(null);
@@ -1341,6 +1344,15 @@ export function ReaderScreen() {
         }
         case 'image-rendered':
           setImageProof({ count: parsed.count, width: parsed.width, height: parsed.height });
+          break;
+        case 'reading-focus':
+          // F33: derived on every page turn / scroll settle / settings change, so this is the
+          // honest proof the effect ran — the sheet shows it and Maestro asserts on it.
+          setReadingFocusStatus({
+            mode: parsed.mode,
+            currentIndex: parsed.currentIndex,
+            blockCount: parsed.blockCount,
+          });
           break;
         case 'paper-grain-status': {
           const labels = {
@@ -2460,6 +2472,7 @@ export function ReaderScreen() {
               onChange={handleSettingsChange}
               onReset={handleResetSettings}
               onOpenCustomColors={handleOpenCustomColors}
+              readingFocusStatus={readingFocusStatus}
               onClose={handleCloseSettings}
             />
 
