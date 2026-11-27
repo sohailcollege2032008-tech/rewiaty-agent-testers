@@ -26,11 +26,11 @@
   - **Smoke للميزات السبع الجديدة:** **7/7 PASS** بدليل بصري — F31 (موسوعة 13 ثيم) · F32 (ألوان مخصّصة بتباين WCAG) · F22 (وضع التمرير) · F26 (الرجوع بعد القفزة) · F29 (tooltip الخط الزمني) · F28 (كارت «فين كنا واقفين؟» بتجربة إيجابية بغياب 5 أيام) · F49 (القاموس).
   - **الـ P1s المفتوحة:** **0** (منتج). `rotate-position` لسه موقوفة بقرار منتج (مش gating).
   - **التقرير الكامل:** `.factory/qa/runs/2026-11-27-rc2-reverify-smoke.md` + الأدلة `.factory/qa/evidence/rc2/`.
-  - **`proof check` لسه مش DONE:** أدلة الـ gates/flows مربوطة بـ `1d3cb18`، وأي رحلة ماتعادتش على الـ SHA الحالي بتتحسب «never tried». وكمان رحلة `chapter-timeline` لسه فاشلة على `ef081d0`. الحل: `gates` + `ci-flows all` + `proof check` على HEAD بعد دمج إصلاح `chapter-timeline`.
+  - **`proof check` على `f487af8`: NOT DONE.** أداة `proof` محتاجة سجل gates ناجح وسجل لكل رحلة على نفس الـ SHA. `ci-flows all` بتنزل أدلة الجولة والـ APK، و`proof check` بتقرا سجلاتها من مخزن أدلة المصنع. الرحلة المؤجلة لسه بتظهر ضمن النواقص في `proof check`.
 - **اختبارات GitHub العامة — run `46018910006` (ريبو `rewiaty-agent-testers`، مصدر التطبيق `ef081d0` = دمج #82):** ❌ **FAIL** — الـ build ورفع الـ APK نجحوا، والخطوة اللي فشلت هي `Run Maestro flows on Android API 34 x86_64`. **22 رحلة: 20 PASS · 2 FAIL** — `rotate-position` (مؤجلة بقرار منتج، مش gating) و`chapter-timeline`.
   - **`chapter-timeline`:** الفيديو بيوري الـ tooltip ظاهر بوضوح بعد الـ swipe، لكن أول assert بيشتغل بعد ما اختفى. اللوج: الـ swipe يبدأ `15:15:58.237` وأول assert `15:16:02.141`؛ مدة الجستشر `800ms`، و`TOOLTIP_LINGER_MS` في `apps/mobile/src/components/page-scrubber.tsx` = `1800ms`.
   - **الإصلاح:** `waitToSettleTimeoutMs: 500` على نفس `swipe` في `apps/mobile/.maestro/chapter-timeline.yaml` (المفتاح الرسمي في Maestro للحد من انتظار settle بعد الجستشر). كل الـ asserts والقيم ومدة السحب `800ms` وكود التطبيق زي ما هي. `maestro check-syntax` = **OK**، والـ parser أثبت 18 أمر بنفس الترتيب و6 `assertVisible` و3 screenshots، والتغيير الوحيد هو المفتاح المضاف على الـ swipe.
-- **run `46075265488`:** جاري على `f487af8` وقت كتابة البريف — **مفيش نتيجة مؤكدة**، ومفيش نجاح متسجل.
+- **التحقق من `f487af8`:** [gates العامة عدّت](https://github.com/sohailcollege2032008-tech/rewiaty-agent-testers/actions/runs/46075451574) بـ 118 Playwright و780 Jest. [جولة الرحلات الكاملة](https://github.com/sohailcollege2032008-tech/rewiaty-agent-testers/actions/runs/46075265488) جارية وقت التحديث.
 - **اللي PR #82 (`fix/l5-rc2-maestro-dict-meta-docs`) قفله بعد الدمج:**
   - **F-1** `long-book-open`: كان بيقرأ `reader-page-counter` جوه الـ HUD المقفول ← بقى `reader-running-numbers` (فوتر دائم) بدون لمس `timeout: 2000`.
   - **F-2** `keep-awake`: نفس العنصر المخفي ← بقى `reader-running-numbers`.
