@@ -517,4 +517,47 @@ describe('ByokSettingsCard — واجهة إعدادات المفتاح', () => 
     },
     TEST_TIMEOUT,
   );
+
+  it(
+    'updates saved custom base URL via Save without re-entering the key and clears via مسح',
+    async () => {
+      const view = await renderCard();
+
+      await fireEvent.press(view.getByTestId('byok-provider-custom'));
+      await waitFor(() => expect(view.getByTestId('byok-custom-base-url-input')).toBeTruthy());
+
+      await fireEvent.changeText(view.getByTestId('byok-custom-model-input'), 'deepseek-chat');
+      await fireEvent.changeText(
+        view.getByTestId('byok-custom-base-url-input'),
+        'https://api.first.example/v1',
+      );
+      await fireEvent.changeText(view.getByTestId('byok-key-input'), API_KEY);
+      await fireEvent.press(view.getByTestId('byok-save-button'));
+      await waitFor(() => expect(view.getByTestId('byok-feedback')).toHaveTextContent(/المفتاح محفوظ/));
+
+      // Clear URL with the clear button and verify Save refuses empty URL without asking for key.
+      await fireEvent.press(view.getByTestId('byok-custom-base-url-clear'));
+      expect(view.getByTestId('byok-custom-base-url-input').props.value).toBe('');
+      await fireEvent.press(view.getByTestId('byok-save-button'));
+      await waitFor(() =>
+        expect(view.getByTestId('byok-error')).toHaveTextContent(
+          BYOK_CUSTOM_BASE_URL_REQUIRED_ERROR_AR,
+        ),
+      );
+
+      // Type a valid updated URL with draftKey blank -> updates preferences and keeps saved key.
+      await fireEvent.changeText(
+        view.getByTestId('byok-custom-base-url-input'),
+        'https://api.second.example/v1',
+      );
+      await fireEvent.press(view.getByTestId('byok-save-button'));
+      await waitFor(() => expect(view.getByTestId('byok-feedback')).toHaveTextContent(/المفتاح محفوظ/));
+
+      const parsed = JSON.parse(kv.get(BYOK_KV_KEY)!) as Record<string, unknown>;
+      expect(parsed.customBaseUrl).toBe('https://api.second.example/v1');
+      expect(parsed.hasKey).toBe(true);
+      expect(entries.get(getByokSecretEntryKey('custom'))).toBe(API_KEY);
+    },
+    TEST_TIMEOUT,
+  );
 });

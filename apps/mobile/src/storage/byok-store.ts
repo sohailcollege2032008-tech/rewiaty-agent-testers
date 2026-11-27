@@ -238,15 +238,33 @@ export function isByokStorageMode(value: unknown): value is ByokStorageMode {
  */
 export function validateHttpsBaseUrl(raw: string): string {
   const value = typeof raw === 'string' ? raw.trim() : '';
-  const match = /^https:\/\/([^\s/?#]+)([^\s]*)$/i.exec(value);
+  // Reject query strings (`?token=...`) and fragments (`#...`) as well as whitespace so
+  // credentials embedded in a URL can never leak into plaintext `kv` config.
+  const match = /^https:\/\/([^\s/?#]+)([^\s?#]*)$/i.exec(value);
   if (!match) {
     throw new Error(BYOK_CUSTOM_BASE_URL_ERROR_AR);
   }
 
   const authority = match[1] ?? '';
-  const host = authority.replace(/:\d+$/, '');
-  const validHost = host.length > 0 && !host.includes('@') && !host.includes('\\') && /^[^\s:/@]+$/.test(host);
-  if (!authority || !validHost) {
+  if (!authority || authority.includes('@') || authority.includes('\\')) {
+    throw new Error(BYOK_CUSTOM_BASE_URL_ERROR_AR);
+  }
+
+  const portMatch = /:([^:]+)$/.exec(authority);
+  const host = portMatch ? authority.slice(0, portMatch.index) : authority;
+  if (portMatch) {
+    const portStr = portMatch[1] ?? '';
+    if (!/^\d+$/.test(portStr)) {
+      throw new Error(BYOK_CUSTOM_BASE_URL_ERROR_AR);
+    }
+    const port = Number(portStr);
+    if (port < 1 || port > 65535) {
+      throw new Error(BYOK_CUSTOM_BASE_URL_ERROR_AR);
+    }
+  }
+
+  const validHost = host.length > 0 && /^[^\s:/@]+$/.test(host);
+  if (!validHost) {
     throw new Error(BYOK_CUSTOM_BASE_URL_ERROR_AR);
   }
 
