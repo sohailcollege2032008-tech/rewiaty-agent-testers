@@ -108,6 +108,19 @@ flows:
     target: release-apk
     run: "bash scripts/ci-flows.sh mission-control-byok"
     artifact: ".factory/evidence/latest/apk/app.apk"
+  # F40 — المزوّد المخصّص: حقل `base_url` بيظهر للمزوّد المخصّص بس، والرابط لازم https صحيح،
+  # والرابط الصالح بيتحفظ وبيفضل بعد إعادة فتح التطبيق. مفيش مفتاح حقيقي ولا طلب شبكة:
+  # الـ fixture كله مصنوع (`https://api.example.test/v1` و`sk-fixture-...`).
+  # ليه مفيش خطوة صور PDF: الـ release APK في CI بيتبني من غير `EXPO_PUBLIC_API_BASE_URL`
+  # (يعني شاشة PDF في وضع «الخدمة السحابية لسه مش مفعّلة» ومفيش staging أطّلع منه صور).
+  # تنزيل صور الفصول متغطّي باختبار تكامل محلي في
+  # `apps/mobile/src/api/__tests__/upload-service.test.ts` (createChapterAssetDownloader).
+  - id: byok-custom-base-url
+    who: "قارئ عنده مزوّد AI متوافق خاص بيه وبيوصّله بـ base_url"
+    steps: "المكتبة ← إعدادات الذكاء الاصطناعي ← كارت BYOK ← اختيار «مخصص» ← حقل رابط السيرفر بيظهر (ومش موجود قبل كده) ← يدخل رابط http فيترفض برسالة https ومفيش مفتاح بيتحفظ ← يصحّحه لـ https:// صحيح ويحفظ بمفتاح وهمي ← شارة «المفتاح محفوظ» وآخر ٤ حروف ظاهرين ← يقفل التطبيق ويفتحه ← المزوّد المخصّص لسه مختار والرابط الـ https هو المحفوظ (مش الـ http) والمفتاح لسه على الجهاز"
+    target: release-apk
+    run: "bash scripts/ci-flows.sh byok-custom-base-url"
+    artifact: ".factory/evidence/latest/apk/app.apk"
   - id: lighting-themes
     who: "قارئ بيقرا بالليل وعايز الشاشة تريح عينه"
     steps: "يفتح الرواية ← الإعدادات ← المظهر ← موسوعة الثيمات ← «داكن» ← «حِبْر اللَّيْل» يتطبّق (✓ عليه لما يفتح الموسوعة تاني) ← التعتيم ٢٠٪ ودفء الشاشة ١٠٪ والسطوع ٨٥٪ ← «تلقائيًا: بالوقت» يوضّح ميعاد الليل والنهار ← مفاتيح سحب الحافة وتذكير راحة العين بتشتغل ← الصفحة لسه مقروءة"

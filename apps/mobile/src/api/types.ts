@@ -72,11 +72,15 @@ export interface HealthResponse {
   version: string;
 }
 
+/**
+ * `checks` mirrors the backend `api/schemas.py`: one of `ok`, `error`, `skipped` per dependency.
+ * (`skipped` is how the backend reports a check that could not run on this deployment.)
+ */
 export interface ReadinessResponse {
   status: 'ok' | 'degraded';
   checks: {
-    redis: 'ok' | 'down';
-    storage: 'ok' | 'down';
+    redis: 'ok' | 'error' | 'skipped';
+    storage: 'ok' | 'error' | 'skipped';
   };
 }
 

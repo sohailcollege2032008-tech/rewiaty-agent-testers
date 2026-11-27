@@ -85,6 +85,7 @@ export function ByokSettingsCard({
 
   const [config, setConfig] = useState<ByokConfig | null>(null);
   const [draftKey, setDraftKey] = useState('');
+  const [draftBaseUrl, setDraftBaseUrl] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -94,6 +95,7 @@ export function ByokSettingsCard({
   const commit = useCallback(
     (next: ByokConfig) => {
       setConfig(next);
+      setDraftBaseUrl(next.customBaseUrl ?? '');
       onConfigChange?.(next);
     },
     [onConfigChange],
@@ -103,7 +105,10 @@ export function ByokSettingsCard({
     let cancelled = false;
     void loadByokConfig(db, secureStore)
       .then((loaded) => {
-        if (!cancelled) setConfig(loaded);
+        if (!cancelled) {
+          setConfig(loaded);
+          setDraftBaseUrl(loaded.customBaseUrl ?? '');
+        }
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(toSafeByokErrorMessage(err));
@@ -120,6 +125,7 @@ export function ByokSettingsCard({
     [provider],
   );
   const hasKey = config?.hasKey === true;
+  const trimmedBaseUrl = draftBaseUrl.trim();
 
   const applyPreferences = useCallback(
     async (partial: {
@@ -135,8 +141,16 @@ export function ByokSettingsCard({
       setError('');
       setFeedback('');
       try {
+        // رابط السيرفر يتخزن مع المزوّد المخصّص بس ولو المستخدم كتبه فعلاً؛
+        // الفاضي مش خطأ، والغلط بيترجع برسالة عربية هادية.
         const next = await saveByokPreferences(
-          { ...partial, now: now ? now() : undefined },
+          {
+            ...partial,
+            ...(provider === 'custom' && trimmedBaseUrl
+              ? { customBaseUrl: trimmedBaseUrl }
+              : {}),
+            now: now ? now() : undefined,
+          },
           db,
           secureStore,
         );
@@ -147,7 +161,7 @@ export function ByokSettingsCard({
         setBusy(false);
       }
     },
-    [commit, db, now, secureStore],
+    [commit, db, now, provider, secureStore, trimmedBaseUrl],
   );
 
   const handleSave = useCallback(async () => {
@@ -166,6 +180,8 @@ export function ByokSettingsCard({
           provider,
           modelId: config?.modelId,
           storageMode,
+          // للمزوّد المخصّص: رابط HTTPS إلزامي (أو null لو المستخدم سابه فاضي).
+          customBaseUrl: provider === 'custom' ? (trimmedBaseUrl || null) : undefined,
           now: now ? now() : undefined,
         },
         db,
@@ -180,7 +196,7 @@ export function ByokSettingsCard({
     } finally {
       setBusy(false);
     }
-  }, [commit, config?.modelId, db, draftKey, now, provider, secureStore, storageMode]);
+  }, [commit, config?.modelId, db, draftKey, now, provider, secureStore, storageMode, trimmedBaseUrl]);
 
   const handleDelete = useCallback(async () => {
     setBusy(true);
@@ -343,6 +359,56 @@ export function ByokSettingsCard({
           })}
         </View>
       </View>
+
+      {provider === 'custom' ? (
+        <View style={styles.section}>
+          <Text
+            style={[
+              styles.sectionTitle,
+              {
+                color: palette.text,
+                fontFamily: TYPOGRAPHY.uiFont,
+                writingDirection: isRtl ? 'rtl' : 'ltr',
+              },
+            ]}
+          >
+            رابط السيرفر (base_url)
+          </Text>
+          <View
+            style={[
+              styles.inputRow,
+              { borderColor: palette.border, backgroundColor: palette.surfaceElevated },
+            ]}
+          >
+            <TextInput
+              testID="byok-custom-base-url-input"
+              accessibilityLabel="رابط سيرفر المزوّد المخصّص"
+              value={draftBaseUrl}
+              onChangeText={setDraftBaseUrl}
+              placeholder="https://api.example.com/v1"
+              placeholderTextColor={palette.muted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              spellCheck={false}
+              keyboardType="url"
+              editable={!busy}
+              style={[styles.input, { color: palette.text, fontFamily: TYPOGRAPHY.uiFont }]}
+            />
+          </View>
+          <Text
+            style={[
+              styles.hint,
+              {
+                color: palette.muted,
+                fontFamily: TYPOGRAPHY.uiFont,
+                writingDirection: isRtl ? 'rtl' : 'ltr',
+              },
+            ]}
+          >
+            لازم يبدأ بـ https:// — مثال: https://api.example.com/v1
+          </Text>
+        </View>
+      ) : null}
 
       <View style={styles.section}>
         <Text

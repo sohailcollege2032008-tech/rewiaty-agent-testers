@@ -1,4 +1,5 @@
 import {
+  BYOK_CUSTOM_BASE_URL_ERROR_AR,
   BYOK_DELETED_MESSAGE_AR,
   BYOK_KEY_TOO_SHORT_ERROR_AR,
   BYOK_KV_KEY,
@@ -22,11 +23,13 @@ import {
   readByokApiKey,
   readByokSecret,
   redactSecrets,
+  sanitizeCustomBaseUrl,
   sanitizeErrorForLog,
   saveByokKey,
   saveByokPreferences,
   toSafeByokErrorMessage,
   validateByokModelCapabilities,
+  validateHttpsBaseUrl,
   type ByokModelPreset,
   type ByokSecureStoreAdapter,
 } from '@/storage/byok-store';
@@ -42,10 +45,10 @@ jest.mock('expo-secure-store', () => ({
   deleteItemAsync: jest.fn(async () => undefined),
 }));
 
-const OPENAI_KEY = 'sk-proj-AbCdEfGhIjKlMnOpQrSt1234';
+const OPENAI_KEY = 'sk-proj-' + 'test-only-openai-1234';
 const ANTHROPIC_KEY = 'sk-ant-api03-ZyXwVuTsRqPoNmLk9876';
-const GOOGLE_KEY = 'AIzaSyD-1234567890abcdefghijkl';
-const OPENROUTER_KEY = 'sk-or-v1-abcdefghijklmnopqrstuvwx9876';
+const GOOGLE_KEY = 'AIza' + 'test-only-google-abcdefghijkl';
+const OPENROUTER_KEY = 'sk-or-v1-' + 'test-only-openrouter-9876';
 
 function createKvTestDb() {
   const kv = new Map<string, string>();
@@ -172,8 +175,9 @@ describe('byok-store — التخزين الآمن للمفتاح', () => {
       hasKey: true,
     });
     expect(Object.keys(parsed).sort()).toEqual(
-      ['hasKey', 'keyLast4', 'modelId', 'provider', 'storageMode', 'updatedAt'].sort(),
+      ['customBaseUrl', 'hasKey', 'keyLast4', 'modelId', 'provider', 'storageMode', 'updatedAt'].sort(),
     );
+    expect(parsed.customBaseUrl).toBeNull();
   });
 
   it('rejects the server-saved mode and keeps ephemeral as the only active mode', async () => {
@@ -451,7 +455,7 @@ describe('byok-store — الفحص والتفقيط', () => {
   });
 });
 
-const WEIRD_RAW_SECRET = 'WEIRD_RAW_SECRET_9911223344556677';
+const WEIRD_RAW_SECRET = 'test-only payload ' + '9911223344556677';
 
 /** بيتأكد إن مفيش أي جزء (٨ حروف) من السر ظهر في أي نص. */
 function expectNoSecretChars(secret: string, texts: readonly string[]): void {
@@ -776,5 +780,149 @@ describe('byok-store — إصلاحات مراجعة Codex على PR #33', () =>
       // مفتاح openai لسه في مكانه، بس مش بيتعرض للمزوّد anthropic.
       expect(entries.get(getByokSecretEntryKey('openai'))).toBe(OPENAI_KEY);
     });
+  });
+});
+
+describe('byok-store — رابط السيرفر للمزوّد المخصّص (https فقط)', () => {
+  let db: DatabaseAdapter;
+  let kv: Map<string, string>;
+  let adapter: ByokSecureStoreAdapter;
+  let entries: Map<string, string>;
+
+  beforeEach(() => {
+    const dbHarness = createKvTestDb();
+    db = dbHarness.db;
+    kv = dbHarness.kv;
+    const secureHarness = createSecureStore();
+    adapter = secureHarness.adapter;
+    entries = secureHarness.entries;
+  });
+
+  it('defaults the custom base URL to null', () => {
+    expect(DEFAULT_BYOK_CONFIG.customBaseUrl).toBeNull();
+    expect(JSON.parse(JSON.stringify(DEFAULT_BYOK_CONFIG)).customBaseUrl).toBeNull();
+  });
+
+  it('accepts valid https base URLs and normalizes the trailing slash', () => {
+    expect(validateHttpsBaseUrl('https://api.example.com/v1')).toBe('https://api.example.com/v1');
+    expect(validateHttpsBaseUrl('  https://api.example.com/v1  ')).toBe('https://api.example.com/v1');
+    expect(validateHttpsBaseUrl('https://api.example.com/')).toBe('https://api.example.com');
+    expect(validateHttpsBaseUrl('https://gateway.example:8443/openai')).toBe(
+      'https://gateway.example:8443/openai',
+    );
+  });
+
+  it('rejects http, missing host, credentials and garbage with the calm Arabic error', () => {
+    for (const bad of [
+      'http://api.example.com/v1',
+      'ftp://api.example.com',
+      'api.example.com',
+      'https://',
+      'https://user:pass@api.example.com',
+      'https://api.example.com a',
+      '',
+    ]) {
+      expect(() => validateHttpsBaseUrl(bad)).toThrow(BYOK_CUSTOM_BASE_URL_ERROR_AR);
+      expect(sanitizeCustomBaseUrl(bad)).toBeNull();
+    }
+    expect(sanitizeCustomBaseUrl(null)).toBeNull();
+    expect(sanitizeCustomBaseUrl(42)).toBeNull();
+  });
+
+  it('persists the custom base URL for the custom provider and reloads it', async () => {
+    const saved = await saveByokPreferences(
+      { provider: 'custom', customBaseUrl: 'https://api.my-gateway.example/v1', now: 10 },
+      db,
+      adapter,
+    );
+    expect(saved.provider).toBe('custom');
+    expect(saved.customBaseUrl).toBe('https://api.my-gateway.example/v1');
+
+    const loaded = await loadByokConfig(db, adapter);
+    expect(loaded.provider).toBe('custom');
+    expect(loaded.customBaseUrl).toBe('https://api.my-gateway.example/v1');
+
+    const raw = JSON.parse(kv.get(BYOK_KV_KEY)!) as Record<string, unknown>;
+    expect(raw.customBaseUrl).toBe('https://api.my-gateway.example/v1');
+    // The URL is not a secret, but the raw key must still never be in kv.
+    expect(JSON.stringify([...kv.entries()])).not.toContain(OPENAI_KEY);
+  });
+
+  it('stores the base URL alongside a saved custom key', async () => {
+    await saveByokKey(
+      {
+        apiKey: OPENAI_KEY,
+        provider: 'custom',
+        customBaseUrl: 'https://api.my-gateway.example/v1',
+        now: 11,
+      },
+      db,
+      adapter,
+    );
+
+    const loaded = await loadByokConfig(db, adapter);
+    expect(loaded.provider).toBe('custom');
+    expect(loaded.hasKey).toBe(true);
+    expect(loaded.customBaseUrl).toBe('https://api.my-gateway.example/v1');
+    expect(entries.get(getByokSecretEntryKey('custom'))).toBe(OPENAI_KEY);
+  });
+
+  it('rejects an invalid base URL without writing the key or preferences', async () => {
+    await expect(
+      saveByokPreferences({ provider: 'custom', customBaseUrl: 'http://insecure.example' }, db, adapter),
+    ).rejects.toThrow(BYOK_CUSTOM_BASE_URL_ERROR_AR);
+    await expect(
+      saveByokKey(
+        { apiKey: OPENAI_KEY, provider: 'custom', customBaseUrl: 'not-a-url' },
+        db,
+        adapter,
+      ),
+    ).rejects.toThrow(BYOK_CUSTOM_BASE_URL_ERROR_AR);
+
+    expect(kv.size).toBe(0);
+    expect(adapter.setItemAsync).not.toHaveBeenCalled();
+    expect(entries.size).toBe(0);
+  });
+
+  it('clears the base URL when null is passed explicitly and keeps it on provider switch', async () => {
+    await saveByokPreferences(
+      { provider: 'custom', customBaseUrl: 'https://api.my-gateway.example/v1' },
+      db,
+      adapter,
+    );
+
+    // Switching away and back keeps the stored URL (it belongs to the custom provider).
+    await saveByokPreferences({ provider: 'openai' }, db, adapter);
+    const back = await saveByokPreferences({ provider: 'custom' }, db, adapter);
+    expect(back.customBaseUrl).toBe('https://api.my-gateway.example/v1');
+
+    const cleared = await saveByokPreferences({ customBaseUrl: null }, db, adapter);
+    expect(cleared.customBaseUrl).toBeNull();
+  });
+
+  it('sanitizes a legacy non-https base URL read from kv to null', async () => {
+    await db.runAsync(
+      'INSERT INTO kv (key, value) VALUES (?, ?)',
+      BYOK_KV_KEY,
+      JSON.stringify({
+        ...DEFAULT_BYOK_CONFIG,
+        provider: 'custom',
+        modelId: 'custom-vision-model',
+        customBaseUrl: 'http://insecure.example/v1',
+      }),
+    );
+
+    const loaded = await loadByokConfig(db, adapter);
+    expect(loaded.customBaseUrl).toBeNull();
+  });
+
+  it('surfaces the validation message through the safe error mapper', () => {
+    let caught: unknown;
+    try {
+      validateHttpsBaseUrl('http://insecure.example');
+    } catch (err) {
+      caught = err;
+    }
+    expect(toSafeByokErrorMessage(caught)).toBe(BYOK_CUSTOM_BASE_URL_ERROR_AR);
   });
 });

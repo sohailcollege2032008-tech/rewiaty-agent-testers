@@ -1,0 +1,140 @@
+appId: com.rewiaty.app
+---
+# F40 — مزوّد مخصّص (custom BYOK): القارئ عنده gateway متوافق OpenAI وبيحب يوصّله بنفسه.
+# الرحلة بتثبت الحاجة اللي اتصلحت في المسار ده: حقل `base_url` ظاهر للمزوّد المخصّص بس،
+# الرابط لازم https:// صحيح (والغلط بيترجع برسالة عربية ومن غير مفتاح نصّ-محفوظ)،
+# والرابط الصالح بيتحفظ على الجهاز وبيفضل موجود بعد إعادة فتح التطبيق.
+#
+# ليه مفيش خطوة «حمّل صور الفصل» هنا: الـ release APK في CI بيتبني من غير
+# `EXPO_PUBLIC_API_BASE_URL`، فشاشة PDF بتظهر «الخدمة السحابية لسه مش مفعّلة» ومفيش
+# staging ولا مفتاح حقيقي مسموح جوه رحلة. تنزيل صور الفصول (base_url، والـ Authorization
+# بس للسيرفر بتاعنا، ورفض أسماء الملفات الماكرة) ليه اختبار تكامل محلي:
+# `apps/mobile/src/api/__tests__/upload-service.test.ts` (createChapterAssetDownloader).
+#
+# الـ fixture كله مصنوع: `https://api.example.test/v1` نطاق محجوز للاختبار، والمفتاح
+# `sk-fixture-...` وهمي — الرحلة عمرها ما بتعمل طلب شبكة، بس تحقّق محلي وحفظ في SecureStore + kv.
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+- takeScreenshot: "01-library"
+
+# 1) إعدادات الذكاء الاصطناعي ← الكارت. حقل الرابط مبيظهرش قبل اختيار «مخصص».
+- tapOn:
+    id: "library-ai-settings-button"
+- extendedWaitUntil:
+    visible:
+      id: "byok-settings-card"
+    timeout: 10000
+- assertNotVisible:
+    id: "byok-custom-base-url-input"
+- scrollUntilVisible:
+    element:
+      id: "byok-provider-custom"
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: "byok-provider-custom"
+- scrollUntilVisible:
+    element:
+      id: "byok-custom-base-url-input"
+    direction: DOWN
+    timeout: 10000
+- takeScreenshot: "02-custom-provider-picked"
+
+# 2) المسار السلبي: رابط http (من غير s) + مفتاح وهمي ← رسالة الرابط، ومفيش مفتاح محفوظ.
+- tapOn:
+    id: "byok-custom-base-url-input"
+- inputText: "http://insecure.example.test/v1"
+- scrollUntilVisible:
+    element:
+      id: "byok-key-input"
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: "byok-key-input"
+- inputText: "sk-fixture-rewiaty-000042"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "byok-save-button"
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: "byok-save-button"
+- scrollUntilVisible:
+    element:
+      id: "byok-error"
+    direction: DOWN
+    timeout: 10000
+- assertVisible: "رابط السيرفر لازم يبدأ بـ https:// ويكون عنوان صحيح."
+- assertNotVisible:
+    id: "byok-masked-key"
+- takeScreenshot: "03-invalid-url-refused"
+
+# 3) المسار الموجب: يصحّح الرابط لـ https صحيح ويحفظ. المفتاح الوهمي لسه مكتوب في الحقل،
+#    فالحفظ بيتم على نفس القيمة — ومش بنعيد كتابته عشان نتأكد إنه ما اتمسحش بعد الخطأ.
+- scrollUntilVisible:
+    element:
+      id: "byok-custom-base-url-input"
+    direction: UP
+    timeout: 10000
+- tapOn:
+    id: "byok-custom-base-url-input"
+- eraseText: 60
+- inputText: "https://api.example.test/v1"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "byok-save-button"
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: "byok-save-button"
+- scrollUntilVisible:
+    element:
+      id: "byok-feedback"
+    direction: DOWN
+    timeout: 10000
+- assertVisible: "المفتاح محفوظ على جهازك بأمان."
+- scrollUntilVisible:
+    element:
+      id: "byok-masked-key"
+    direction: UP
+    timeout: 10000
+- assertVisible: "المحفوظ على الجهاز: ••••0042"
+- takeScreenshot: "04-saved"
+
+# 4) إعادة فتح من غير مسح الحالة: المزوّد المخصّص لسه مختار (حقل الرابط موجود)، والرابط
+#    المحفوظ هو الـ https الصحيح مش الـ http اللي اترفض، والمفتاح لسه على الجهاز.
+- stopApp
+- launchApp:
+    clearState: false
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+- tapOn:
+    id: "library-ai-settings-button"
+- extendedWaitUntil:
+    visible:
+      id: "byok-settings-card"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "byok-custom-base-url-input"
+    direction: DOWN
+    timeout: 10000
+- assertVisible:
+    id: "byok-custom-base-url-input"
+    text: "https://api.example.test/v1"
+- assertNotVisible:
+    id: "byok-custom-base-url-input"
+    text: "http://insecure.example.test/v1"
+- scrollUntilVisible:
+    element:
+      id: "byok-masked-key"
+    direction: UP
+    timeout: 10000
+- assertVisible: "المحفوظ على الجهاز: ••••0042"
+- takeScreenshot: "05-persisted-after-restart"
