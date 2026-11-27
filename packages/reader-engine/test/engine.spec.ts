@@ -774,4 +774,90 @@ test.describe('Rewiaty Reader Engine', () => {
     expect(styles.heading).toBe('#FAF5EE');
     expect(styles.titleColor).toBe('rgb(250, 245, 238)');
   });
+
+  test('(l) P1 #57: cold-open anchor restore with animations enabled never freezes at a half-turned offset', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 411, height: 915 });
+    await mountEngine(page);
+    const arBook = parseBook(sampleArText, 'sample-ar.md');
+    const targetChapter = arBook.chapters[1] ?? arBook.chapters[0]!;
+    const midBlock = targetChapter.blocks[Math.min(targetChapter.blocks.length - 1, 6)]!;
+
+    // Cold open directly to a saved anchor in chapter 2 with animations ON (real app default)
+    // and large font size (simulating Android 200% font scale).
+    await sendBridge(page, {
+      type: 'load',
+      book: arBook,
+      anchor: { blockId: midBlock.id, charOffset: 0 },
+      settings: { disableAnimation: false, fontSize: 30, lineHeight: 1.95 },
+      insets: { top: 44, bottom: 52 },
+    });
+
+    // Sample the very first 12 animation frames right after cold open: the track must SNAP
+    // immediately to an exact integer page multiple with zero mid-transition drift.
+    const samples = await page.evaluate(async () => {
+      const results: Array<{ translateX: number; pageWidth: number; transitionDuration: string; scrollLeft: number }> = [];
+      const stage = document.getElementById('reader-stage')!;
+      const track = document.getElementById('reader-track')!;
+      for (let i = 0; i < 12; i++) {
+        await new Promise((r) => requestAnimationFrame(r));
+        const pageWidth = Math.round(
+          Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--page-width')),
+        );
+        const transform = getComputedStyle(track).transform;
+        let translateX = 0;
+        if (transform && transform !== 'none') {
+          const match = /matrix\(([^)]+)\)/.exec(transform);
+          if (match?.[1]) {
+            const parts = match[1].split(',').map((v) => Number(v.trim()));
+            translateX = parts[4] ?? 0;
+          }
+        }
+        results.push({
+          translateX,
+          pageWidth,
+          transitionDuration: getComputedStyle(track).transitionDuration,
+          scrollLeft: stage.scrollLeft,
+        });
+      }
+      return results;
+    });
+
+    for (const sample of samples) {
+      expect(sample.pageWidth).toBeGreaterThan(0);
+      expect(Number.isInteger(sample.translateX)).toBe(true);
+      expect(Math.abs(sample.translateX) % sample.pageWidth).toBe(0);
+      expect(sample.transitionDuration).toBe('0s');
+      expect(sample.scrollLeft).toBe(0);
+    }
+
+    await expect.poll(async () => (await getLatestPosition(page))?.chapterId).toBe(targetChapter.id);
+    const settledPos = (await getLatestPosition(page))!;
+    expect(settledPos.chapterPage).toBeGreaterThanOrEqual(2);
+
+    // Trigger an inset/settings reflow right after cold open — must also snap cleanly with 0s transition.
+    await sendBridge(page, {
+      type: 'settings',
+      partial: {},
+      insets: { top: 48, bottom: 56 },
+    });
+    const afterInsets = await page.evaluate(async () => {
+      await new Promise((r) => requestAnimationFrame(r));
+      const track = document.getElementById('reader-track')!;
+      const pageWidth = Math.round(
+        Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--page-width')),
+      );
+      const match = /matrix\(([^)]+)\)/.exec(getComputedStyle(track).transform);
+      const translateX = match?.[1] ? Number(match[1].split(',')[4]?.trim() ?? 0) : 0;
+      return {
+        translateX,
+        pageWidth,
+        transitionDuration: getComputedStyle(track).transitionDuration,
+      };
+    });
+    expect(Number.isInteger(afterInsets.translateX)).toBe(true);
+    expect(Math.abs(afterInsets.translateX) % afterInsets.pageWidth).toBe(0);
+    expect(afterInsets.transitionDuration).toBe('0s');
+  });
 });

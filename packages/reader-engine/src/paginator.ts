@@ -348,7 +348,7 @@ export class Paginator {
   private metricsTrusted = false;
 
   private idleHandle: { kind: 'idle' | 'timeout'; id: number } | null = null;
-  private transitionResetRaf: number | null = null;
+  private transitionEndTimer: number | null = null;
   private layoutGeneration = 0;
   private highlights: EngineHighlight[] = [];
 
@@ -693,7 +693,7 @@ export class Paginator {
     this.dragging = true;
     this.dragBaseOffset = this.currentPageOffset();
     this.dragPendingDx = 0;
-    this.trackEl.style.transition = 'none';
+    this.clearTrackTransition();
   }
 
   /** Follow the finger; `dx` is the total horizontal distance from `beginDrag`. */
@@ -746,7 +746,7 @@ export class Paginator {
       this.dragRaf = null;
     }
     this.dragPendingDx = null;
-    this.trackEl.style.transition = '';
+    this.clearTrackTransition();
     this.applyTrackTransform(false);
   }
 
@@ -786,11 +786,11 @@ export class Paginator {
 
     if (turn === 0) {
       if (this.settings.disableAnimation) {
-        this.trackEl.style.transition = 'none';
+        this.clearTrackTransition();
         this.trackEl.style.transform = `translate3d(${this.dragBaseOffset}px, 0, 0)`;
-        this.restoreTrackTransition();
+        void this.trackEl.offsetWidth;
       } else {
-        this.trackEl.style.transition = '';
+        this.enableTrackTransition();
         this.trackEl.style.transform = `translate3d(${this.dragBaseOffset}px, 0, 0)`;
       }
       return;
@@ -802,7 +802,7 @@ export class Paginator {
       return;
     }
 
-    this.trackEl.style.transition = '';
+    this.enableTrackTransition();
     this.trackEl.style.transform = `translate3d(${target}px, 0, 0)`;
     this.dragSettleTimer = window.setTimeout(() => {
       this.dragSettleTimer = null;
@@ -823,13 +823,28 @@ export class Paginator {
     }
   }
 
-  private restoreTrackTransition(): void {
-    if (this.settings.disableAnimation) return;
-    if (this.transitionResetRaf !== null) return;
-    this.transitionResetRaf = window.requestAnimationFrame(() => {
-      this.transitionResetRaf = null;
-      this.trackEl.style.transition = '';
-    });
+  private clearTrackTransition(): void {
+    if (this.transitionEndTimer !== null) {
+      window.clearTimeout(this.transitionEndTimer);
+      this.transitionEndTimer = null;
+    }
+    this.trackEl.style.transition = 'none';
+  }
+
+  private enableTrackTransition(): void {
+    if (this.transitionEndTimer !== null) {
+      window.clearTimeout(this.transitionEndTimer);
+      this.transitionEndTimer = null;
+    }
+    if (this.settings.disableAnimation) {
+      this.trackEl.style.transition = 'none';
+      return;
+    }
+    this.trackEl.style.transition = 'var(--page-transition)';
+    this.transitionEndTimer = window.setTimeout(() => {
+      this.transitionEndTimer = null;
+      this.trackEl.style.transition = 'none';
+    }, DRAG_SETTLE_MS + 60);
   }
 
   setBook(
@@ -1433,6 +1448,19 @@ export class Paginator {
     if (changed || firstForSignature) {
       this.invalidatePageMap();
       this.layoutVirtualizedChapterOffsets();
+      // Why (P1 #57): once fonts/first-paint settle, re-snap to the restored anchor (or
+      // clamp inside the settled page count) with transition disabled so the track never
+      // drifts onto an outdated column or half-page offset.
+      if (this.isRestoredAnchorUsable()) {
+        this.currentChapterPage = this.alignToSpread(
+          this.resolveAnchorPageInCurrentChapter(this.restoredAnchor!),
+        );
+      } else {
+        const curr = this.rendered.get(this.currentChapterIdx);
+        const maxPage = curr ? curr.layoutPageCount - 1 : 0;
+        this.currentChapterPage = Math.max(0, Math.min(this.currentChapterPage, maxPage));
+      }
+      this.applyTrackTransform(false);
       this.renderHighlights();
     }
     // Count the rest of the book offscreen so the page number (and the total) are a
@@ -2291,15 +2319,15 @@ export class Paginator {
   }
 
   private applyTrackTransform(animate: boolean): void {
-    if (this.transitionResetRaf !== null) {
-      window.cancelAnimationFrame(this.transitionResetRaf);
-      this.transitionResetRaf = null;
+    const shouldAnimate = animate && !this.settings.disableAnimation;
+    if (shouldAnimate) {
+      this.enableTrackTransition();
+    } else {
+      this.clearTrackTransition();
     }
 
-    if (!animate) {
-      this.trackEl.style.transition = 'none';
-    } else {
-      this.trackEl.style.transition = '';
+    if (this.stageEl.scrollLeft !== 0) {
+      this.stageEl.scrollLeft = 0;
     }
 
     const pageW = Math.round(this.metrics.pageWidth);
@@ -2311,11 +2339,10 @@ export class Paginator {
 
     this.trackEl.style.transform = `translate3d(${offsetPx}px, 0, 0)`;
 
-    if (!animate && !this.settings.disableAnimation) {
-      this.transitionResetRaf = window.requestAnimationFrame(() => {
-        this.transitionResetRaf = null;
-        this.trackEl.style.transition = '';
-      });
+    if (!shouldAnimate) {
+      // Force synchronous style/layout flush while transition is 'none' so cold-open /
+      // reflow snaps commit immediately and can never animate from an earlier offset.
+      void this.trackEl.offsetWidth;
     }
   }
 
