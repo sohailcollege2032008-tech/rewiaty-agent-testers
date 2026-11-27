@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type ComponentRef, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Keyboard,
@@ -12,6 +12,7 @@ import {
   TextInput,
   useWindowDimensions,
   View,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -29,6 +30,11 @@ export type HighlightNoteModalProps = {
   onCancel: () => void;
 };
 
+type KeyboardFrame = {
+  height: number;
+  screenY: number;
+};
+
 export function HighlightNoteModal({
   visible,
   quote,
@@ -42,38 +48,50 @@ export function HighlightNoteModal({
   const { height: windowHeight } = useWindowDimensions();
   const palette = getAppThemeTokens(theme);
   const isRtl = dir === 'rtl';
+
   const [text, setText] = useState(initialNote);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
+  const [keyboardFrame, setKeyboardFrame] = useState<KeyboardFrame>({ height: 0, screenY: 0 });
+
+  const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
+  const wasVisibleRef = useRef(false);
   const keyboardVisibleRef = useRef(false);
+  const inputFocusedRef = useRef(false);
   const lastKeyboardHideAtRef = useRef(0);
 
+  // Why (Codex P3): reset draft ONLY on the closed -> open transition so a parent re-render
+  // passing a refreshed `initialNote` while the modal is open never wipes the reader's draft.
   useEffect(() => {
-    if (visible) {
+    if (visible && !wasVisibleRef.current) {
       setText(initialNote);
-    } else {
+    } else if (!visible && wasVisibleRef.current) {
       keyboardVisibleRef.current = false;
+      inputFocusedRef.current = false;
       lastKeyboardHideAtRef.current = 0;
-      setKeyboardHeight(0);
+      setKeyboardFrame({ height: 0, screenY: 0 });
     }
+    wasVisibleRef.current = visible;
   }, [visible, initialNote]);
 
-  // Why (P1 #56): Android transparent <Modal statusBarTranslucent> does not resize with
-  // adjustResize, so KeyboardAvoidingView alone leaves Save/Cancel buried under the IME on
-  // compact screens and larger font scales. Tracking the real keyboard height lifts the card
-  // cleanly above the keyboard on Android without double-padding iOS.
+  // Why (P1 #56 + Codex P1): Android <Modal> runs with `adjustResize` on some configs and
+  // overlaps the IME on others (`statusBarTranslucent` / edge-to-edge). Tracking both the real
+  // modal container height (`onLayout`) and the keyboard frame lets us compute the exact overlap
+  // against the modal window itself — lifting the card above the IME when unresized without
+  // double-subtracting keyboard height when Android already shrank the modal window.
   useEffect(() => {
     if (!visible) return;
     const showSub = Keyboard.addListener('keyboardDidShow', (event) => {
       keyboardVisibleRef.current = true;
-      const nextHeight = event?.endCoordinates?.height ?? 0;
+      const height = Math.max(0, event?.endCoordinates?.height ?? 0);
+      const screenY = Math.max(0, event?.endCoordinates?.screenY ?? 0);
       if (Platform.OS === 'android') {
-        setKeyboardHeight(Math.max(0, nextHeight));
+        setKeyboardFrame({ height, screenY });
       }
     });
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
       keyboardVisibleRef.current = false;
       lastKeyboardHideAtRef.current = Date.now();
-      setKeyboardHeight(0);
+      setKeyboardFrame({ height: 0, screenY: 0 });
     });
     return () => {
       showSub.remove();
@@ -81,9 +99,18 @@ export function HighlightNoteModal({
     };
   }, [visible]);
 
+  const handleContainerLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextHeight = event.nativeEvent.layout.height;
+    if (nextHeight > 0) {
+      setContainerHeight(nextHeight);
+    }
+  }, []);
+
   const hasUnsavedChanges = text.trim() !== initialNote.trim();
 
   const handleSave = useCallback(() => {
+    inputFocusedRef.current = false;
+    inputRef.current?.blur();
     Keyboard.dismiss();
     onSave(text.trim());
   }, [onSave, text]);
@@ -105,34 +132,56 @@ export function HighlightNoteModal({
     );
   }, [handleSave, hasUnsavedChanges, onCancel]);
 
-  // Why (P1 #56): pressing Back or tapping outside while the keyboard is up is how readers
-  // dismiss the keyboard — it must NEVER close the dialog and wipe their typed note.
-  // Also absorb a same-gesture onRequestClose arriving right after keyboardDidHide on Android.
-  const handleSystemBack = useCallback(() => {
-    if (keyboardVisibleRef.current) {
+  // Why (P1 #56 + Codex P2): on Android 10 and older with `adjustResize`, `keyboardDidShow`
+  // can be omitted. Checking both `keyboardVisibleRef` and `inputFocusedRef` ensures tapping the
+  // backdrop or pressing Back while typing always dismisses the IME first instead of closing the
+  // dialog and losing the note.
+  const dismissImeIfActive = useCallback((): boolean => {
+    if (keyboardVisibleRef.current || inputFocusedRef.current) {
+      inputFocusedRef.current = false;
+      inputRef.current?.blur();
       Keyboard.dismiss();
-      return;
+      return true;
     }
+    return false;
+  }, []);
+
+  const handleSystemBack = useCallback(() => {
+    if (dismissImeIfActive()) return;
     if (Date.now() - lastKeyboardHideAtRef.current < 250) {
       return;
     }
     requestCloseWithGuard();
-  }, [requestCloseWithGuard]);
+  }, [dismissImeIfActive, requestCloseWithGuard]);
 
   const handleBackdropPress = useCallback(() => {
-    if (keyboardVisibleRef.current) {
-      Keyboard.dismiss();
-      return;
-    }
+    if (dismissImeIfActive()) return;
     requestCloseWithGuard();
-  }, [requestCloseWithGuard]);
+  }, [dismissImeIfActive, requestCloseWithGuard]);
 
+  const effectiveHeight = containerHeight > 0 ? containerHeight : windowHeight;
+  let androidKeyboardOverlap = 0;
+  if (Platform.OS === 'android' && keyboardFrame.height > 0) {
+    const windowShrink = Math.max(0, windowHeight - effectiveHeight);
+    const modalAlreadyResized =
+      containerHeight > 0 && windowShrink >= Math.max(40, keyboardFrame.height * 0.5);
+    if (!modalAlreadyResized) {
+      androidKeyboardOverlap =
+        keyboardFrame.screenY > 0
+          ? Math.max(0, effectiveHeight - keyboardFrame.screenY)
+          : keyboardFrame.height;
+    }
+  }
+
+  const topPadding = Math.max(insets.top, 16);
   const bottomPadding =
     Platform.OS === 'android'
-      ? Math.max(keyboardHeight, insets.bottom) + 12
+      ? Math.max(androidKeyboardOverlap, insets.bottom) + 12
       : Math.max(insets.bottom, 16);
-  const topPadding = Math.max(insets.top, 16);
-  const maxCardHeight = Math.max(220, windowHeight - topPadding - bottomPadding - 16);
+  // Why (Codex P1): never clamp `maxCardHeight` above the real remaining height, otherwise the
+  // pinned Save/Cancel action row can still be pushed outside the visible modal window.
+  const availableCardHeight = effectiveHeight - topPadding - bottomPadding - 16;
+  const maxCardHeight = availableCardHeight > 0 ? availableCardHeight : undefined;
 
   return (
     <Modal
@@ -146,121 +195,136 @@ export function HighlightNoteModal({
       <KeyboardAvoidingView
         testID="highlight-note-kav"
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={[
-          styles.root,
-          {
-            paddingTop: topPadding,
-            paddingBottom: bottomPadding,
-          },
-        ]}
+        style={styles.kavFlex}
       >
-        <Pressable
-          testID="highlight-note-backdrop"
-          style={[styles.backdrop, { backgroundColor: palette.scrim }]}
-          onPress={handleBackdropPress}
-          accessibilityLabel="إغلاق نافذة الملاحظة"
-        />
+        {/* Inner layout view holds safe-area & Android overlap padding so iOS KeyboardAvoidingView
+            never overwrites safe-area `paddingBottom` when the keyboard is closed (Codex P3). */}
         <View
-          testID="highlight-note-modal"
+          testID="highlight-note-layout"
+          onLayout={handleContainerLayout}
           style={[
-            styles.card,
+            styles.root,
             {
-              backgroundColor: palette.sheetBg,
-              borderColor: palette.border,
-              maxHeight: maxCardHeight,
+              paddingTop: topPadding,
+              paddingBottom: bottomPadding,
             },
           ]}
         >
-          <Text
+          <Pressable
+            testID="highlight-note-backdrop"
+            style={[styles.backdrop, { backgroundColor: palette.scrim }]}
+            onPress={handleBackdropPress}
+            accessibilityLabel="إغلاق نافذة الملاحظة"
+          />
+          <View
+            testID="highlight-note-modal"
             style={[
-              styles.title,
-              { color: palette.heading ?? palette.text, fontFamily: TYPOGRAPHY.displayFont },
+              styles.card,
+              {
+                backgroundColor: palette.sheetBg,
+                borderColor: palette.border,
+                ...(maxCardHeight !== undefined ? { maxHeight: maxCardHeight } : null),
+              },
             ]}
           >
-            {initialNote.trim() ? 'تعديل الملاحظة' : 'إضافة ملاحظة'}
-          </Text>
+            <Text
+              style={[
+                styles.title,
+                { color: palette.heading ?? palette.text, fontFamily: TYPOGRAPHY.displayFont },
+              ]}
+            >
+              {initialNote.trim() ? 'تعديل الملاحظة' : 'إضافة ملاحظة'}
+            </Text>
 
-          <ScrollView
-            style={styles.bodyScroll}
-            contentContainerStyle={styles.bodyContent}
-            keyboardShouldPersistTaps="handled"
-            bounces={false}
-          >
-            {quote ? (
-              <Text
-                testID="highlight-note-quote"
+            <ScrollView
+              style={styles.bodyScroll}
+              contentContainerStyle={styles.bodyContent}
+              keyboardShouldPersistTaps="handled"
+              bounces={false}
+            >
+              {quote ? (
+                <Text
+                  testID="highlight-note-quote"
+                  style={[
+                    styles.quotePreview,
+                    {
+                      color: palette.muted,
+                      backgroundColor: palette.surface,
+                      borderColor: palette.border,
+                      fontFamily: TYPOGRAPHY.uiFont,
+                      writingDirection: isRtl ? 'rtl' : 'ltr',
+                    },
+                  ]}
+                  numberOfLines={3}
+                >
+                  {`«${quote}»`}
+                </Text>
+              ) : null}
+
+              <TextInput
+                ref={inputRef}
+                testID="highlight-note-input"
+                value={text}
+                onChangeText={setText}
+                onFocus={() => {
+                  inputFocusedRef.current = true;
+                }}
+                onBlur={() => {
+                  inputFocusedRef.current = false;
+                }}
+                placeholder="اكتب ملاحظتك هنا…"
+                placeholderTextColor={palette.muted}
+                multiline
+                autoFocus
                 style={[
-                  styles.quotePreview,
+                  styles.input,
                   {
-                    color: palette.muted,
+                    color: palette.text,
                     backgroundColor: palette.surface,
                     borderColor: palette.border,
                     fontFamily: TYPOGRAPHY.uiFont,
-                    writingDirection: isRtl ? 'rtl' : 'ltr',
+                    textAlign: isRtl ? 'right' : 'left',
                   },
                 ]}
-                numberOfLines={3}
-              >
-                {`«${quote}»`}
-              </Text>
-            ) : null}
+                accessibilityLabel="نص الملاحظة"
+              />
+            </ScrollView>
 
-            <TextInput
-              testID="highlight-note-input"
-              value={text}
-              onChangeText={setText}
-              placeholder="اكتب ملاحظتك هنا…"
-              placeholderTextColor={palette.muted}
-              multiline
-              autoFocus
-              style={[
-                styles.input,
-                {
-                  color: palette.text,
-                  backgroundColor: palette.surface,
-                  borderColor: palette.border,
-                  fontFamily: TYPOGRAPHY.uiFont,
-                  textAlign: isRtl ? 'right' : 'left',
-                },
-              ]}
-              accessibilityLabel="نص الملاحظة"
-            />
-          </ScrollView>
-
-          <View style={styles.actions}>
-            <Pressable
-              testID="highlight-note-cancel"
-              onPress={requestCloseWithGuard}
-              style={({ pressed }) => [
-                styles.btn,
-                styles.cancelBtn,
-                { borderColor: palette.border, backgroundColor: palette.surface },
-                pressed && styles.pressed,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="إلغاء"
-            >
-              <Text style={[styles.btnText, { color: palette.text, fontFamily: TYPOGRAPHY.uiFont }]}>
-                إلغاء
-              </Text>
-            </Pressable>
-            <Pressable
-              testID="highlight-note-save"
-              onPress={handleSave}
-              style={({ pressed }) => [
-                styles.btn,
-                { backgroundColor: palette.ctaBg },
-                pressed && styles.pressed,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="حفظ الملاحظة"
-            >
-              <Text
-                style={[styles.btnText, { color: palette.ctaText, fontFamily: TYPOGRAPHY.uiFont }]}
+            <View style={styles.actions}>
+              <Pressable
+                testID="highlight-note-cancel"
+                onPress={requestCloseWithGuard}
+                style={({ pressed }) => [
+                  styles.btn,
+                  styles.cancelBtn,
+                  { borderColor: palette.border, backgroundColor: palette.surface },
+                  pressed && styles.pressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="إلغاء"
               >
-                حفظ
-              </Text>
-            </Pressable>
+                <Text style={[styles.btnText, { color: palette.text, fontFamily: TYPOGRAPHY.uiFont }]}>
+                  إلغاء
+                </Text>
+              </Pressable>
+              <Pressable
+                testID="highlight-note-save"
+                onPress={handleSave}
+                style={({ pressed }) => [
+                  styles.btn,
+                  { backgroundColor: palette.ctaBg },
+                  pressed && styles.pressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="حفظ الملاحظة"
+              >
+                <Text
+                  style={[styles.btnText, { color: palette.ctaText, fontFamily: TYPOGRAPHY.uiFont }]}
+                >
+                  حفظ
+                </Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -269,6 +333,9 @@ export function HighlightNoteModal({
 }
 
 const styles = StyleSheet.create({
+  kavFlex: {
+    flex: 1,
+  },
   root: {
     flex: 1,
     justifyContent: 'center',
@@ -308,7 +375,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   input: {
-    minHeight: 88,
+    minHeight: 72,
     maxHeight: 160,
     borderRadius: 8,
     borderWidth: 1,

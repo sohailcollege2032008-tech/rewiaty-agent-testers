@@ -40,15 +40,19 @@ describe('HighlightNoteModal (P1 #56)', () => {
     Object.defineProperty(Platform, 'OS', { value: originalOs, configurable: true });
   });
 
-  const emitKeyboard = async (name: 'keyboardDidShow' | 'keyboardDidHide', height = 0) => {
+  const emitKeyboard = async (
+    name: 'keyboardDidShow' | 'keyboardDidHide',
+    height = 0,
+    screenY = 0,
+  ) => {
     await act(async () => {
       for (const cb of listeners.get(name) ?? []) {
-        cb({ endCoordinates: { height } });
+        cb({ endCoordinates: { height, screenY } });
       }
     });
   };
 
-  it('lifts the modal container above the Android soft keyboard so Save/Cancel stay visible', async () => {
+  it('lifts unresized Android modal by exact keyboard overlap and avoids double-padding when adjustResize shrinks the modal (Codex P1)', async () => {
     const { getByTestId } = await render(
       <HighlightNoteModal
         visible
@@ -58,10 +62,10 @@ describe('HighlightNoteModal (P1 #56)', () => {
       />,
     );
 
-    await emitKeyboard('keyboardDidShow', 320);
-
-    const kavStyle = StyleSheet.flatten(getByTestId('highlight-note-kav').props.style);
-    expect(kavStyle.paddingBottom).toBeGreaterThanOrEqual(320);
+    // Case 1: unresized translucent modal (container height == full window height ~1334 in jest)
+    await emitKeyboard('keyboardDidShow', 320, 0);
+    const unresizedLayout = StyleSheet.flatten(getByTestId('highlight-note-layout').props.style);
+    expect(unresizedLayout.paddingBottom).toBeGreaterThanOrEqual(320);
 
     const saveStyle = StyleSheet.flatten(
       typeof getByTestId('highlight-note-save').props.style === 'function'
@@ -70,12 +74,21 @@ describe('HighlightNoteModal (P1 #56)', () => {
     );
     expect(saveStyle.minHeight).toBeGreaterThanOrEqual(48);
 
+    // Case 2: Android adjustResize already shrank the Modal container to 420dp -> ZERO double-padding
+    await fireEvent(getByTestId('highlight-note-layout'), 'layout', {
+      nativeEvent: { layout: { width: 360, height: 420 } },
+    });
+    const resizedLayout = StyleSheet.flatten(getByTestId('highlight-note-layout').props.style);
+    expect(resizedLayout.paddingBottom).toBe(28); // insets.bottom (16) + 12, not 332!
+    const resizedCard = StyleSheet.flatten(getByTestId('highlight-note-modal').props.style);
+    expect(resizedCard.maxHeight).toBeLessThanOrEqual(420 - 24 - 28 - 16);
+
     await emitKeyboard('keyboardDidHide');
-    const collapsedStyle = StyleSheet.flatten(getByTestId('highlight-note-kav').props.style);
-    expect(collapsedStyle.paddingBottom).toBeLessThan(100);
+    const collapsedLayout = StyleSheet.flatten(getByTestId('highlight-note-layout').props.style);
+    expect(collapsedLayout.paddingBottom).toBe(28);
   });
 
-  it('dismisses only the keyboard on Android Back/backdrop without closing or wiping the note', async () => {
+  it('dismisses only the keyboard on Back/backdrop even when keyboardDidShow was omitted (Android 10, Codex P2)', async () => {
     const onCancel = jest.fn();
     const onSave = jest.fn();
     const { getByTestId } = await render(
@@ -87,25 +100,26 @@ describe('HighlightNoteModal (P1 #56)', () => {
       />,
     );
 
+    await fireEvent(getByTestId('highlight-note-input'), 'focus');
     await fireEvent.changeText(getByTestId('highlight-note-input'), 'ملاحظة مهمة جداً');
-    await emitKeyboard('keyboardDidShow', 300);
 
-    // Back press while keyboard is open -> dismiss keyboard ONLY, keep dialog & text
-    const modal = getByTestId('highlight-note-native-modal');
-    await act(async () => {
-      (modal.props.onRequestClose as () => void)();
-    });
+    // No keyboardDidShow emitted, yet input is focused -> backdrop tap dismisses keyboard ONLY
+    await fireEvent.press(getByTestId('highlight-note-backdrop'));
     expect(dismissSpy).toHaveBeenCalledTimes(1);
     expect(onCancel).not.toHaveBeenCalled();
     expect(alertSpy).not.toHaveBeenCalled();
     expect(getByTestId('highlight-note-input').props.value).toBe('ملاحظة مهمة جداً');
 
-    // Backdrop tap while keyboard is still open -> dismiss keyboard ONLY
-    await fireEvent.press(getByTestId('highlight-note-backdrop'));
+    // Back press while keyboardDidShow IS active -> dismisses keyboard ONLY
+    await emitKeyboard('keyboardDidShow', 300);
+    const modal = getByTestId('highlight-note-native-modal');
+    await act(async () => {
+      (modal.props.onRequestClose as () => void)();
+    });
     expect(dismissSpy).toHaveBeenCalledTimes(2);
     expect(onCancel).not.toHaveBeenCalled();
 
-    // Same-gesture onRequestClose arriving right after keyboardDidHide -> still ignored
+    // Same-gesture onRequestClose right after keyboardDidHide -> still ignored
     await emitKeyboard('keyboardDidHide');
     await act(async () => {
       (modal.props.onRequestClose as () => void)();
@@ -114,7 +128,8 @@ describe('HighlightNoteModal (P1 #56)', () => {
     expect(alertSpy).not.toHaveBeenCalled();
   });
 
-  it('prompts before discarding unsaved note when closing after keyboard is dismissed', async () => {
+  it('prompts before discarding unsaved note and preserves safe-area padding on iOS (Codex P3)', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'ios', configurable: true });
     const onCancel = jest.fn();
     const onSave = jest.fn();
     const { getByTestId } = await render(
@@ -125,6 +140,10 @@ describe('HighlightNoteModal (P1 #56)', () => {
         onCancel={onCancel}
       />,
     );
+
+    // Safe-area padding lives on inner layout view, not KeyboardAvoidingView
+    const iosLayout = StyleSheet.flatten(getByTestId('highlight-note-layout').props.style);
+    expect(iosLayout.paddingBottom).toBe(16);
 
     await fireEvent.changeText(getByTestId('highlight-note-input'), 'مسودة لم تُحفظ');
     await fireEvent.press(getByTestId('highlight-note-cancel'));
@@ -141,9 +160,9 @@ describe('HighlightNoteModal (P1 #56)', () => {
     expect(onSave).toHaveBeenCalledWith('مسودة لم تُحفظ');
   });
 
-  it('closes immediately without confirmation when there are no unsaved changes', async () => {
+  it('preserves draft if initialNote changes while open, and resets on close/reopen (Codex P3)', async () => {
     const onCancel = jest.fn();
-    const { getByTestId } = await render(
+    const { getByTestId, rerender } = await render(
       <HighlightNoteModal
         visible
         quote="وكان البحر هادئاً"
@@ -153,6 +172,41 @@ describe('HighlightNoteModal (P1 #56)', () => {
       />,
     );
 
+    await fireEvent.changeText(getByTestId('highlight-note-input'), 'تعديل جاري');
+    // Parent re-renders with updated initialNote while modal is still visible -> keep draft!
+    await rerender(
+      <HighlightNoteModal
+        visible
+        quote="وكان البحر هادئاً"
+        initialNote="نسخة أخرى"
+        onSave={jest.fn()}
+        onCancel={onCancel}
+      />,
+    );
+    expect(getByTestId('highlight-note-input').props.value).toBe('تعديل جاري');
+
+    // Close and reopen -> resets cleanly to current initialNote
+    await rerender(
+      <HighlightNoteModal
+        visible={false}
+        quote="وكان البحر هادئاً"
+        initialNote="نسخة أخرى"
+        onSave={jest.fn()}
+        onCancel={onCancel}
+      />,
+    );
+    await rerender(
+      <HighlightNoteModal
+        visible
+        quote="وكان البحر هادئاً"
+        initialNote="نسخة أخرى"
+        onSave={jest.fn()}
+        onCancel={onCancel}
+      />,
+    );
+    expect(getByTestId('highlight-note-input').props.value).toBe('نسخة أخرى');
+
+    // Closing with no edits closes immediately without confirmation
     await fireEvent.press(getByTestId('highlight-note-cancel'));
     expect(alertSpy).not.toHaveBeenCalled();
     expect(onCancel).toHaveBeenCalledTimes(1);
