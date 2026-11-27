@@ -4,7 +4,7 @@ import type { AppThemeTokens } from '../types';
 export const oledCrimsonTheme: AppThemeTokens = {
   ...THEMES['oled-crimson'],
   id: 'oled-crimson',
-  labelAr: 'عتمة OLED',
+  labelAr: 'عتمة ليلية',
   contrastLabel: '١٥.٨:١ AAA',
   isDark: true,
   deskBg: '#000000',

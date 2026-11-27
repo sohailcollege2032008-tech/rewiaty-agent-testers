@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { I18nManager, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   ARABIC_MONTHS,
@@ -39,8 +40,10 @@ export function ReadingStatsPanel({
   dir = 'rtl',
   now = Date.now(),
 }: ReadingStatsPanelProps) {
+  const insets = useSafeAreaInsets();
   const palette = getAppThemeTokens(theme);
   const isRtl = dir === 'rtl';
+  const startAlign: 'left' | 'right' = I18nManager.isRTL ? 'left' : 'right';
   const todayKey = toLocalDateKey(now);
   const streak = computeStreak(stats.days, todayKey);
 
@@ -54,21 +57,32 @@ export function ReadingStatsPanel({
   return (
     <ScrollView
       testID="reading-stats-panel"
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: Math.max(insets.bottom, 20) + 28 },
+      ]}
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.section}>
         <Text
           style={[
             styles.sectionTitle,
-            { color: palette.text, fontFamily: TYPOGRAPHY.displayFont, writingDirection: isRtl ? 'rtl' : 'ltr' },
+            {
+              color: palette.text,
+              fontFamily: TYPOGRAPHY.displayFont,
+              writingDirection: isRtl ? 'rtl' : 'ltr',
+              textAlign: startAlign,
+            },
           ]}
         >
           سرعة القراءة
         </Text>
         <Text
           testID="stats-wpm"
-          style={[styles.metric, { color: palette.accent, fontFamily: TYPOGRAPHY.uiFont }]}
+          style={[
+            styles.metric,
+            { color: palette.accent, fontFamily: TYPOGRAPHY.uiFont, textAlign: startAlign },
+          ]}
         >
           {`${toArabicDigits(Math.round(wpm))} كلمة/دقيقة`}
         </Text>
@@ -218,12 +232,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 15,
     fontWeight: '700',
-    textAlign: 'right',
+    textAlign: I18nManager.isRTL ? 'left' : 'right',
   },
   metric: {
     fontSize: 26,
     fontWeight: '700',
-    textAlign: 'right',
+    textAlign: I18nManager.isRTL ? 'left' : 'right',
     fontVariant: ['tabular-nums'],
   },
   metricRow: {
@@ -240,12 +254,12 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     fontWeight: '600',
     flexShrink: 0,
-    textAlign: 'left',
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
   calendarTitle: {
     fontSize: 16,
     fontWeight: '700',
-    textAlign: 'right',
+    textAlign: I18nManager.isRTL ? 'left' : 'right',
   },
   calendarGrid: {
     flexDirection: 'row',
@@ -275,7 +289,7 @@ const styles = StyleSheet.create({
   },
   todayNote: {
     fontSize: 11.5,
-    textAlign: 'right',
+    textAlign: I18nManager.isRTL ? 'left' : 'right',
     opacity: 0.8,
   },
 });

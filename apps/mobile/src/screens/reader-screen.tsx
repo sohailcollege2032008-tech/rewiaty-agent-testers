@@ -137,9 +137,34 @@ export function extractLookupWord(quote: string): string {
 }
 
 export const HUD_HINT_KV_KEY = 'reader_hud_hint_seen_v1';
-// Why (product, R5/A4): edges no longer turn pages — the hint used to teach a gesture the
-// engine now ignores. Swiping is the only way to turn, so say that instead.
-export const HUD_HINT_TEXT = 'اضغط في نص الصفحة عشان تظهر الإعدادات والفهرس، واسحب بإيدك عشان تقلّب.';
+// Why (product, R5/A4 + P2 #60): edges no longer turn pages — teach the exact swipe
+// direction in plain Arabic so first-time readers know which way advances vs goes back,
+// matching `effectiveDir` (RTL advances right, LTR advances left).
+export const HUD_HINT_TEXT =
+  'اضغط في نص الصفحة للإعدادات والفهرس، واسحب لليمين للصفحة الجاية ولليسار للي فاتت.';
+export const HUD_HINT_TEXT_LTR =
+  'اضغط في نص الصفحة للإعدادات والفهرس، واسحب لليسار للصفحة الجاية ولليمين للي فاتت.';
+
+export function getHudHintText(dir: 'rtl' | 'ltr'): string {
+  return dir === 'ltr' ? HUD_HINT_TEXT_LTR : HUD_HINT_TEXT;
+}
+
+const LRI = '\u2066';
+const PDI = '\u2069';
+
+/**
+ * Formats the running footer counter so Unicode BiDi (FriBidi / Android ICU) never flips
+ * `~13` into `13~` or `58%` into `%58` inside an Arabic RTL paragraph.
+ */
+export function formatRunningFooterCounter(
+  page: number,
+  pageCount: number,
+  estimated: boolean | undefined,
+  pctRead: number,
+): string {
+  const totalPart = estimated ? `${LRI}~${pageCount}${PDI}` : `${pageCount}`;
+  return `صفحة ${page} من ${totalPart} · ${LRI}${pctRead}%${PDI}`;
+}
 
 // `spread` comes from the engine's ReaderSettings ('auto' | 'single').
 type EngineSettingsPayload = Partial<ReaderSettings>;
@@ -1430,13 +1455,14 @@ export function ReaderScreen() {
               </Text>
             ) : null}
             <Text
+              testID="reader-running-numbers"
               numberOfLines={1}
               style={[
                 styles.runningFootNumbers,
                 { color: themeTokens.muted, fontFamily: TYPOGRAPHY.uiFont },
               ]}
             >
-              {`${pageInfo.page} / ${pageInfo.estimated ? '~' : ''}${pageInfo.pageCount} · ${pctRead}%`}
+              {formatRunningFooterCounter(pageInfo.page, pageInfo.pageCount, pageInfo.estimated, pctRead)}
             </Text>
           </View>
         ) : null}
@@ -1516,7 +1542,7 @@ export function ReaderScreen() {
                 ]}
               >
                 <Text style={[styles.hudHintText, { color: themeTokens.text, fontFamily: TYPOGRAPHY.uiFont }]}>
-                  {HUD_HINT_TEXT}
+                  {getHudHintText(effectiveDir)}
                 </Text>
               </Animated.View>
             ) : null}
