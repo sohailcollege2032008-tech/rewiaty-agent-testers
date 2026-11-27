@@ -747,14 +747,17 @@ export function ReaderScreen() {
                 ? parsed.bookProgress
                 : 0;
             const reportedPage = typeof parsed.page === 'number' ? parsed.page : 0;
+            const explicitUserNav = parsed.userNavigated === true;
             const regressedToStart =
+              !explicitUserNav &&
               reportedProgress === 0 &&
               reportedPage <= 1 &&
               (firstChapterId === undefined || parsed.chapterId === firstChapterId);
             if (regressedToStart) {
               persistPosition = false;
             } else {
-              // Any other position is real navigation (a page turn or a jump): resume saving.
+              // Any explicit navigation (including swiping back to page 1) or any non-start
+              // position confirms the session is live: resume normal persistence.
               restoreGuardRef.current = null;
             }
           }

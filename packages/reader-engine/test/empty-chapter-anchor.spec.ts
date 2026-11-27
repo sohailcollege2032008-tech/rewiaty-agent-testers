@@ -194,4 +194,29 @@ test.describe('Issue #44 — empty-chapter anchor restore', () => {
     expect(byStaleBlock.page).toBeGreaterThan(1);
     expect(byStaleBlock.bookProgress).toBeGreaterThan(0);
   });
+
+  test('longest chapter-id prefix wins over a shorter prefix and over fallback chapterId (Codex P3)', async ({
+    page,
+  }) => {
+    await mountEngine(page);
+    const base = buildEmptyChapterBook();
+    const book: Book = {
+      ...base,
+      chapters: [
+        base.chapters[0]!,
+        { id: 'ch02', title: 'الفصل الثاني', blocks: [], wordCount: 0, hash: 'h-ch02' },
+        { id: 'ch02_part', title: 'الجزء الفرعي', blocks: [], wordCount: 0, hash: 'h-ch02-part' },
+        base.chapters[2]!,
+      ],
+    };
+
+    await sendBridge(page, {
+      type: 'load',
+      book,
+      anchor: { blockId: 'ch02_part_p0007', charOffset: 0 },
+      chapterId: 'ch02',
+      settings: { disableAnimation: true },
+    });
+    await expect.poll(async () => (await getLatestPosition(page))?.chapterId).toBe('ch02_part');
+  });
 });

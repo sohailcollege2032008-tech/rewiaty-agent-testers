@@ -243,8 +243,6 @@ export type RNToWebMessage =
        * reopen at the start of the book and overwrite their real position with 0%.
        */
       chapterId?: string;
-      /** Last saved global page, a last-resort fallback when no chapter can be resolved. */
-      page?: number;
       settings?: Partial<ReaderSettings>;
       insets?: ReaderInsets;
       fontBaseUrl?: string;
@@ -328,6 +326,13 @@ export type WebToRNMessage =
        * counter should read "~N" (or drop the total) instead of presenting it as final.
        */
       estimated?: boolean;
+      /**
+       * true when this position report was triggered by an explicit reader navigation
+       * (finger swipe turn, next/prev command, or goto jump), as opposed to initial restore
+       * or background reflow settling. Lets the host distinguish an intentional return to
+       * page 1 from a fallback restore at 0% (Issue #44 / Codex P2).
+       */
+      userNavigated?: boolean;
     }
   | {
       type: 'tap';
