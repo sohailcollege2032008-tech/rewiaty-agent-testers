@@ -1,9 +1,16 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import * as Brightness from 'expo-brightness';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as ReactNative from 'react-native';
-import { Dimensions, Linking, Platform } from 'react-native';
+import { AppState, Dimensions, Linking, Platform } from 'react-native';
 
-import { ReaderScreen } from '@/screens/reader-screen';
+import {
+  EDGE_SWIPE_HORIZONTAL_MIN,
+  ReaderScreen,
+  edgeSwipeIntent,
+  edgeSwipePage,
+  extractEngineSettingsPartial,
+} from '@/screens/reader-screen';
 import { readAssetText, readBookBundle, saveBookReaderState } from '@/storage/bundle';
 import { touchBookOpened } from '@/storage/database';
 import { ensureOfflineFontsDir } from '@/storage/font-assets';
@@ -118,6 +125,9 @@ describe('ReaderScreen', () => {
       screen: { width: 390, height: 844, scale: 2, fontScale: 1 },
     });
     colorSchemeSpy = jest.spyOn(ReactNative, 'useColorScheme').mockReturnValue('light');
+    // The RN jest mock types `AppState.currentState` as a bare jest.fn; a foreground reader needs
+    // the real value or the eye-rest heartbeat treats every tick as backgrounded.
+    (ReactNative.AppState as unknown as { currentState: string }).currentState = 'active';
 
     (readAssetText as jest.Mock).mockResolvedValue('<html><body>reader</body></html>');
     (touchBookOpened as jest.Mock).mockResolvedValue(undefined);
@@ -181,6 +191,15 @@ describe('ReaderScreen', () => {
     capturedOnMessage?.({
       nativeEvent: { data: JSON.stringify(payload) },
     });
+  }
+
+  async function openThemeSettingsTab(getByTestId: Awaited<ReturnType<typeof render>>['getByTestId']) {
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+    await fireEvent.press(getByTestId('reader-settings-button'));
+    await fireEvent.press(getByTestId('settings-tab-theme'));
   }
 
   function mockStaleBundle(updatedAt: number) {
@@ -411,13 +430,39 @@ describe('ReaderScreen', () => {
   it('respects manual theme override even when system colorScheme is dark', async () => {
     colorSchemeSpy.mockReturnValue('dark');
     (loadThemePreference as jest.Mock).mockResolvedValue({
-      settings: { ...DEFAULT_SETTINGS, theme: 'sepia' },
+      settings: { ...DEFAULT_SETTINGS, theme: 'sepia', autoThemeMode: 'manual' },
       hasManualTheme: true,
     });
     await renderLoadedReader();
 
     const loadPayload = JSON.parse(postedToWebView[0]!);
     expect(loadPayload.settings.theme).toBe('sepia');
+  });
+
+  it('reopens in «حسب الجهاز» from the stored mode, not from a stale manual theme (P1)', async () => {
+    // Codex F31 review P1: a manual theme used to win on reopen even after the reader switched
+    // back to «حسب الجهاز», because the legacy `hasManualTheme` boolean decided here.
+    (loadThemePreference as jest.Mock).mockResolvedValue({
+      settings: { ...DEFAULT_SETTINGS, theme: 'sepia', autoThemeMode: 'system' },
+      hasManualTheme: true,
+    });
+    await renderLoadedReader();
+
+    const loadPayload = JSON.parse(postedToWebView[0]!);
+    expect(loadPayload.settings.autoThemeMode).toBe('system');
+    expect(loadPayload.settings.theme).toBe('warraq');
+  });
+
+  it('reopens on the saved theme in «يدوي» mode even when the device is dark (P1)', async () => {
+    colorSchemeSpy.mockReturnValue('dark');
+    (loadThemePreference as jest.Mock).mockResolvedValue({
+      settings: { ...DEFAULT_SETTINGS, theme: 'parchment', autoThemeMode: 'manual' },
+      hasManualTheme: true,
+    });
+    await renderLoadedReader();
+
+    const loadPayload = JSON.parse(postedToWebView[0]!);
+    expect(loadPayload.settings.theme).toBe('parchment');
   });
 
   it('debounces position saves by 500ms', async () => {
@@ -1427,6 +1472,147 @@ describe('ReaderScreen', () => {
     expect(readerErrorMessage(new Error("Call to function 'FileSystemFile.text' has been rejected"))).toBe(READER_OPEN_FAILED_MESSAGE);
     expect(readerErrorMessage(new Error('تعذّر العثور على ملف الكتاب.'))).toBe('تعذّر العثور على ملف الكتاب.');
     expect(readerErrorMessage(undefined)).toBe(READER_OPEN_FAILED_MESSAGE);
+  });
+
+  it('restores the saved pre-reader brightness on iOS instead of the Android restore call (P2)', async () => {
+    (loadThemePreference as jest.Mock).mockResolvedValue({
+      settings: { ...DEFAULT_SETTINGS, brightnessMode: 'custom', brightness: 0.45 },
+      hasManualTheme: false,
+    });
+    const { getByTestId } = await renderLoadedReader();
+
+    // The custom value is applied after the current device value was captured (mock: 0.8).
+    await waitFor(() => expect(Brightness.setBrightnessAsync).toHaveBeenCalledWith(0.45));
+    expect(Brightness.getBrightnessAsync).toHaveBeenCalled();
+    const restoreCallsBefore = (Brightness.restoreSystemBrightnessAsync as jest.Mock).mock.calls.length;
+
+    await openThemeSettingsTab(getByTestId);
+    await fireEvent(getByTestId('settings-brightness-auto-switch'), 'valueChange', true);
+
+    // iOS has no per-app restore: the saved value must be written back by hand.
+    await waitFor(() => expect(Brightness.setBrightnessAsync).toHaveBeenLastCalledWith(0.8));
+    expect((Brightness.restoreSystemBrightnessAsync as jest.Mock).mock.calls.length).toBe(
+      restoreCallsBefore,
+    );
+  });
+
+  it('hands the saved brightness back when the reader unmounts on iOS (P2)', async () => {
+    (loadThemePreference as jest.Mock).mockResolvedValue({
+      settings: { ...DEFAULT_SETTINGS, brightnessMode: 'custom', brightness: 0.45 },
+      hasManualTheme: false,
+    });
+    const utils = await renderLoadedReader();
+    await waitFor(() => expect(Brightness.setBrightnessAsync).toHaveBeenCalledWith(0.45));
+
+    utils.unmount();
+
+    await waitFor(() => expect(Brightness.setBrightnessAsync).toHaveBeenLastCalledWith(0.8));
+  });
+
+  it('restores the saved brightness when the app goes to the background on iOS (P2)', async () => {
+    (loadThemePreference as jest.Mock).mockResolvedValue({
+      settings: { ...DEFAULT_SETTINGS, brightnessMode: 'custom', brightness: 0.45 },
+      hasManualTheme: false,
+    });
+    await renderLoadedReader();
+    await waitFor(() => expect(Brightness.setBrightnessAsync).toHaveBeenCalledWith(0.45));
+
+    const listeners = (AppState.addEventListener as jest.Mock).mock.calls.map(
+      ([, cb]: [string, (state: string) => void]) => cb,
+    );
+    expect(listeners.length).toBeGreaterThan(0);
+
+    await act(async () => {
+      for (const listener of listeners) listener('background');
+    });
+
+    expect(Brightness.setBrightnessAsync).toHaveBeenLastCalledWith(0.8);
+  });
+
+  it('never posts React-Native-only lighting fields to the WebView (P2)', async () => {
+    const { getByTestId } = await renderLoadedReader();
+    await openThemeSettingsTab(getByTestId);
+    const postedBefore = postedToWebView.length;
+
+    await fireEvent.press(getByTestId('settings-dimmer-inc'));
+    await fireEvent.press(getByTestId('settings-warmth-inc'));
+    await fireEvent.press(getByTestId('settings-brightness-inc'));
+    await fireEvent(getByTestId('settings-eye-rest-switch'), 'valueChange', false);
+
+    // Dimmer, warmth, brightness and the eye-rest clock only repaint the RN chrome. Posting them
+    // re-ran the engine's column layout for nothing.
+    expect(postedToWebView.length).toBe(postedBefore);
+  });
+
+  it('drops every RN-only comfort key and keeps the real engine fields (P2)', () => {
+    const rnOnly = {
+      dimmer: 0.2,
+      warmth: 0.3,
+      brightness: 0.6,
+      brightnessMode: 'custom',
+      edgeBrightnessSwipe: false,
+      eyeRestReminder: false,
+      eyeRestIntervalMinutes: 20,
+      autoThemeMode: 'manual',
+      dayTheme: 'sepia',
+      nightTheme: 'oled-crimson',
+      nightStartHour: 20,
+      nightEndHour: 6,
+      scheduleStartHour: 20,
+      scheduleEndHour: 6,
+    } as never;
+
+    expect(extractEngineSettingsPartial(rnOnly)).toEqual({});
+    expect(extractEngineSettingsPartial({ ...(rnOnly as object), fontSize: 22, theme: 'sepia' } as never)).toEqual({
+      fontSize: 22,
+      theme: 'sepia',
+    });
+    expect(extractEngineSettingsPartial({})).toEqual({});
+  });
+
+  it('retires a visible eye-rest banner the moment the reminder is switched off (P3)', async () => {
+    (loadThemePreference as jest.Mock).mockResolvedValue({
+      settings: { ...DEFAULT_SETTINGS, eyeRestIntervalMinutes: 15 },
+      hasManualTheme: false,
+    });
+
+    jest.useFakeTimers();
+    const { getByTestId, queryByTestId } = await renderLoadedReader();
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(15 * 60_000 + 1_000);
+    });
+    expect(queryByTestId('eye-rest-banner')).toBeTruthy();
+
+    await act(async () => {
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+    await fireEvent.press(getByTestId('reader-settings-button'));
+    await fireEvent.press(getByTestId('settings-tab-theme'));
+    await fireEvent(getByTestId('settings-eye-rest-switch'), 'valueChange', false);
+
+    // Turning the reminder off used to stop only the future clock; the banner already on screen
+    // stayed until the reader dismissed it. It must go immediately.
+    expect(queryByTestId('eye-rest-banner')).toBeNull();
+  });
+
+  it('classifies an edge swipe on the brightness strip by its dominant axis (P2)', () => {
+    expect(edgeSwipeIntent(EDGE_SWIPE_HORIZONTAL_MIN + 8, 0)).toBe('horizontal');
+    expect(edgeSwipeIntent(-(EDGE_SWIPE_HORIZONTAL_MIN + 8), 0)).toBe('horizontal');
+    expect(edgeSwipeIntent(0, 48)).toBe('vertical');
+    expect(edgeSwipeIntent(12, 10)).toBe('none');
+    // A diagonal that is clearly more vertical belongs to brightness, not the page.
+    expect(edgeSwipeIntent(40, 60)).toBe('vertical');
+  });
+
+  it('turns the page in the reading direction for a horizontal edge swipe (P2)', () => {
+    // RTL: a rightward flick goes forward, matching the book's own page order.
+    expect(edgeSwipePage(60, 'rtl')).toBe('next');
+    expect(edgeSwipePage(-60, 'rtl')).toBe('prev');
+    expect(edgeSwipePage(60, 'ltr')).toBe('prev');
+    expect(edgeSwipePage(-60, 'ltr')).toBe('next');
   });
 
   it('feeds the HUD scrubber a word-weighted chapter timeline with the reader bookmarks and highlights (F29)', async () => {

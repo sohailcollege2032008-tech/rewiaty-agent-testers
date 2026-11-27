@@ -29,6 +29,22 @@ const VALID_ALIGNS = new Set<TextAlignMode>(['start', 'justify']);
 const VALID_INDENTS = new Set<IndentMode>(['classic', 'block']);
 const VALID_TASHKEEL = new Set<TashkeelMode>(['full', 'none', 'shadda-tanween']);
 const VALID_DIRS = new Set<'auto' | 'rtl' | 'ltr'>(['auto', 'rtl', 'ltr']);
+// F31 — lighting, auto-theme and eye-rest enums.
+const VALID_BRIGHTNESS_MODES = new Set<'system' | 'custom'>(['system', 'custom']);
+/**
+ * F31 P1 — `autoThemeMode` is the ONE source of truth for which theme is active.
+ *
+ * `THEME_MANUAL_KV_KEY` predates the three-mode control and is kept only as a migration input:
+ * every write below keeps it in sync, so a build that still reads the boolean cannot disagree
+ * with this one.
+ */
+export type AutoThemeMode = 'system' | 'schedule' | 'manual' | 'ambient';
+const VALID_AUTO_THEME_MODES = new Set<AutoThemeMode>([
+  'system',
+  'schedule',
+  'manual',
+  'ambient',
+]);
 /** F22: the two reading layouts the engine can render. */
 const VALID_READING_MODES = new Set<ReadingMode>(['paginated', 'scroll']);
 
@@ -151,6 +167,55 @@ export function sanitizeSettingsPartial(
     next.showScrollProgressBar = partial.showScrollProgressBar;
   }
 
+  // F31 — الإضاءة وراحة العين.
+  if (partial.dimmer !== undefined) {
+    const clamped = clampNumber(partial.dimmer, 0, 0.7, current.dimmer ?? 0);
+    next.dimmer = Number(roundToStep(clamped, 0.05).toFixed(2));
+  }
+  if (partial.warmth !== undefined) {
+    const clamped = clampNumber(partial.warmth, 0, 0.6, current.warmth ?? 0);
+    next.warmth = Number(roundToStep(clamped, 0.05).toFixed(2));
+  }
+  if (partial.brightnessMode !== undefined && VALID_BRIGHTNESS_MODES.has(partial.brightnessMode)) {
+    next.brightnessMode = partial.brightnessMode;
+  }
+  if (partial.brightness !== undefined) {
+    const clamped = clampNumber(partial.brightness, 0.05, 1, current.brightness ?? 0.8);
+    next.brightness = Number(roundToStep(clamped, 0.05).toFixed(2));
+  }
+  if (typeof partial.edgeBrightnessSwipe === 'boolean') {
+    next.edgeBrightnessSwipe = partial.edgeBrightnessSwipe;
+  }
+  if (partial.autoThemeMode !== undefined && VALID_AUTO_THEME_MODES.has(partial.autoThemeMode)) {
+    next.autoThemeMode = partial.autoThemeMode;
+  }
+  if (partial.dayTheme !== undefined) {
+    const migrated = migrateThemeId(partial.dayTheme);
+    if (migrated) next.dayTheme = migrated;
+  }
+  if (partial.nightTheme !== undefined) {
+    const migrated = migrateThemeId(partial.nightTheme);
+    if (migrated) next.nightTheme = migrated;
+  }
+  if (partial.nightStartHour !== undefined) {
+    next.nightStartHour = Math.round(
+      clampNumber(partial.nightStartHour, 0, 23, current.nightStartHour ?? 19),
+    );
+  }
+  if (partial.nightEndHour !== undefined) {
+    next.nightEndHour = Math.round(
+      clampNumber(partial.nightEndHour, 0, 23, current.nightEndHour ?? 6),
+    );
+  }
+  if (typeof partial.eyeRestReminder === 'boolean') {
+    next.eyeRestReminder = partial.eyeRestReminder;
+  }
+  if (partial.eyeRestIntervalMinutes !== undefined) {
+    next.eyeRestIntervalMinutes = Math.round(
+      clampNumber(partial.eyeRestIntervalMinutes, 15, 120, current.eyeRestIntervalMinutes ?? 45),
+    );
+  }
+
   return next;
 }
 
@@ -190,10 +255,8 @@ export async function loadThemePreference(db?: DatabaseAdapter): Promise<ThemePr
     await setKv(FONT_DEFAULT_MIGRATED_KV_KEY, true, db);
   }
 
-  if (shouldPersistSettings) {
-    await setKv(SETTINGS_KV_KEY, merged, db);
-  }
-
+  // Pre-F31 rows carry no `autoThemeMode`, only the `hasManualTheme` boolean. Use it as the
+  // migration input exactly once, then never again: from here on the mode decides.
   let hasManualTheme = manualStored === true;
   if (manualStored === null && stored && typeof rawTheme === 'string') {
     // Existing users who chose a non-default theme before automatic scheme tracking keep their choice.
@@ -202,13 +265,35 @@ export async function loadThemePreference(db?: DatabaseAdapter): Promise<ThemePr
     // default (Warraq by day, Burnt Paper at night) — the behaviour Sohail chose for the app.
     if (rawTheme === 'charcoal' || rawTheme === 'oled' || rawTheme === 'sepia') {
       hasManualTheme = true;
-      await setKv(THEME_MANUAL_KV_KEY, true, db);
     }
+  }
+
+  const storedMode = stored?.autoThemeMode;
+  const hasStoredMode =
+    typeof storedMode === 'string' && VALID_AUTO_THEME_MODES.has(storedMode as AutoThemeMode);
+  const autoThemeMode: AutoThemeMode = hasStoredMode
+    ? (storedMode as AutoThemeMode)
+    : hasManualTheme
+      ? 'manual'
+      : 'system';
+  if (!hasStoredMode) {
+    merged = { ...merged, autoThemeMode };
+    shouldPersistSettings = true;
+  }
+  if (shouldPersistSettings) {
+    await setKv(SETTINGS_KV_KEY, merged, db);
+  }
+
+  const isManual = autoThemeMode === 'manual';
+  // Keep the legacy boolean in sync so an older build reading it cannot resurrect a manual theme
+  // after the reader switched back to «حسب الجهاز» (Codex F31 review P1).
+  if (manualStored !== isManual) {
+    await setKv(THEME_MANUAL_KV_KEY, isManual, db);
   }
 
   return {
     settings: merged,
-    hasManualTheme,
+    hasManualTheme: isManual,
   };
 }
 
@@ -224,6 +309,9 @@ export async function saveReaderSettings(
   const sanitized = mergeReaderSettings(DEFAULT_SETTINGS, settings);
   await setKv(SETTINGS_KV_KEY, sanitized, db);
   await setKv(FONT_DEFAULT_MIGRATED_KV_KEY, true, db);
+  // P1: the legacy boolean mirrors the mode, so switching back to «حسب الجهاز» clears it on disk
+  // even when no new theme was picked, and switching to «يدوي» sets it without a new theme.
+  await setKv(THEME_MANUAL_KV_KEY, (sanitized.autoThemeMode ?? 'system') === 'manual', db);
   return sanitized;
 }
 
@@ -232,12 +320,14 @@ export async function updateReaderSettings(
   db?: DatabaseAdapter,
 ): Promise<ReaderSettings> {
   const current = await loadReaderSettings(db);
-  const next = mergeReaderSettings(current, partial);
+  const withMode: Partial<ReaderSettings> =
+    partial.theme !== undefined && partial.autoThemeMode === undefined
+      ? { ...partial, autoThemeMode: 'manual' }
+      : partial;
+  const next = mergeReaderSettings(current, withMode);
   await setKv(SETTINGS_KV_KEY, next, db);
   await setKv(FONT_DEFAULT_MIGRATED_KV_KEY, true, db);
-  if (partial.theme !== undefined) {
-    await setKv(THEME_MANUAL_KV_KEY, true, db);
-  }
+  await setKv(THEME_MANUAL_KV_KEY, (next.autoThemeMode ?? 'system') === 'manual', db);
   return next;
 }
 
@@ -245,11 +335,12 @@ export async function selectManualTheme(
   theme: ThemeId,
   db?: DatabaseAdapter,
 ): Promise<ReaderSettings> {
-  return updateReaderSettings({ theme }, db);
+  return updateReaderSettings({ theme, autoThemeMode: 'manual' }, db);
 }
 
 export async function clearManualThemeOverride(db?: DatabaseAdapter): Promise<void> {
   await setKv(THEME_MANUAL_KV_KEY, false, db);
+  await updateReaderSettings({ autoThemeMode: 'system' }, db);
 }
 
 export function getSectionResetPartial(
@@ -282,8 +373,22 @@ export function getSectionResetPartial(
         showScrollProgressBar: DEFAULT_SETTINGS.showScrollProgressBar,
       };
     case 'theme':
+      // F31: «المظهر» owns the lighting/auto-theme/eye-rest comfort settings too, so «افتراضي»
+      // must put all of them back — otherwise a reader is stuck with 60% warmth forever.
       return {
         theme: systemTheme,
+        dimmer: DEFAULT_SETTINGS.dimmer,
+        warmth: DEFAULT_SETTINGS.warmth,
+        brightnessMode: DEFAULT_SETTINGS.brightnessMode,
+        brightness: DEFAULT_SETTINGS.brightness,
+        edgeBrightnessSwipe: DEFAULT_SETTINGS.edgeBrightnessSwipe,
+        autoThemeMode: DEFAULT_SETTINGS.autoThemeMode,
+        dayTheme: DEFAULT_SETTINGS.dayTheme,
+        nightTheme: DEFAULT_SETTINGS.nightTheme,
+        nightStartHour: DEFAULT_SETTINGS.nightStartHour,
+        nightEndHour: DEFAULT_SETTINGS.nightEndHour,
+        eyeRestReminder: DEFAULT_SETTINGS.eyeRestReminder,
+        eyeRestIntervalMinutes: DEFAULT_SETTINGS.eyeRestIntervalMinutes,
         // F32: resetting «المظهر» also drops the custom pair, so the preset is what paints.
         customColors: { ...DEFAULT_CUSTOM_COLORS, enabled: false },
       };

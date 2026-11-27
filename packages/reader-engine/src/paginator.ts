@@ -16,6 +16,7 @@ import { hitTestHighlightAtPoint, renderEngineHighlights } from './highlights.js
 import {
   HIGHLIGHT_COLORS,
   THEMES,
+  isDarkThemeId,
   type EngineHighlight,
   type ReaderInsets,
   type ReaderSettings,
@@ -2325,11 +2326,14 @@ export class Paginator {
     rootStyle.setProperty('--popover-bg', theme.popoverBg);
     rootStyle.setProperty('--popover-border', theme.popoverBorder);
 
-    // Highlight fills follow the *accepted* pair's paper luminance: a light custom page keeps the
-    // light fills even if the preset behind it is dark, and vice versa.
+    // F31 + F32 — highlight fills follow the paper that is actually painted:
+    // - a custom pair's own luminance wins, so a light custom page keeps the light fills even if the
+    //   preset behind it is dark, and a dark custom page gets the dark fills;
+    // - otherwise the theme's own background luminance decides, so the 9 encyclopedia themes
+    //   (night-ink, forest-night, espresso, twilight-plum, oled-amber, …) get their dark fills too.
     const isDarkTheme = customTokens
       ? isDarkHexColor(customTokens.bg)
-      : this.settings.theme === 'burnt-paper' || this.settings.theme === 'oled-crimson';
+      : isDarkThemeId(this.settings.theme);
     for (const meta of HIGHLIGHT_COLORS) {
       rootStyle.setProperty(`--hl-${meta.id}`, isDarkTheme ? meta.fillDark : meta.fillLight);
     }

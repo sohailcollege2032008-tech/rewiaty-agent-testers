@@ -8,6 +8,16 @@ jest.mock('expo-status-bar', () => ({
   StatusBar: () => null,
 }));
 
+// F31 — screen brightness. The real module only works on a device; tests get silent no-ops with
+// the same async contract so the reader's `.catch(() => undefined)` guards stay honest.
+jest.mock('expo-brightness', () => ({
+  getBrightnessAsync: jest.fn(async () => 0.8),
+  setBrightnessAsync: jest.fn(async () => undefined),
+  getSystemBrightnessAsync: jest.fn(async () => 0.8),
+  restoreSystemBrightnessAsync: jest.fn(async () => undefined),
+  requestPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
+}));
+
 jest.mock('react-native-worklets', () => ({
   scheduleOnRN: (fn: (...args: unknown[]) => unknown, ...args: unknown[]) => fn(...args),
 }));

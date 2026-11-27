@@ -13,10 +13,12 @@ import {
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { READER_FONT_FAMILIES, type SettingsTabId } from '@/storage/settings-store';
+import { ThemeEncyclopediaModal } from '@/components/theme-encyclopedia-modal';
+import { DEFAULT_SETTINGS, READER_FONT_FAMILIES, type SettingsTabId } from '@/storage/settings-store';
 import { buildCustomAppTheme } from '@/theme/custom-theme';
 import { FONT_LABELS_AR, RADIUS, TYPOGRAPHY, useResponsiveLayout } from '@/theme/layout';
 import { getAppThemeTokens, THEME_OPTIONS, type AppThemeTokens } from '@/theme/reader-theme';
+import { toArabicDigits } from '@/theme/themes/build-theme';
 import {
   DEFAULT_CUSTOM_COLORS,
   type IndentMode,
@@ -24,6 +26,7 @@ import {
   type ReaderSettings,
   type TashkeelMode,
   type TextAlignMode,
+  type ThemeId,
 } from '@/types/reader';
 
 export type ReaderSettingsSheetProps = {
@@ -65,6 +68,32 @@ const DIR_OPTIONS: ReadonlyArray<{ value: 'auto' | 'rtl' | 'ltr'; label: string 
   { value: 'rtl', label: 'يمين لليسار' },
   { value: 'ltr', label: 'يسار لليمين' },
 ];
+
+/** F31 — auto theme modes: follow the phone / follow the clock / the reader's hand. */
+const AUTO_THEME_OPTIONS: ReadonlyArray<{
+  value: 'system' | 'schedule' | 'manual';
+  label: string;
+}> = [
+  { value: 'system', label: 'النظام' },
+  { value: 'schedule', label: 'بالوقت' },
+  { value: 'manual', label: 'يدوي' },
+];
+
+function percentText(ratio: number): string {
+  return `${toArabicDigits(String(Math.round((Number.isFinite(ratio) ? ratio : 0) * 100)))}٪`;
+}
+
+function formatHourArabic(hour: number): string {
+  const h = ((Math.round(hour) % 24) + 24) % 24;
+  if (h === 0) return '١٢ ص';
+  if (h === 12) return '١٢ م';
+  if (h < 12) return `${toArabicDigits(String(h))} ص`;
+  return `${toArabicDigits(String(h - 12))} م`;
+}
+
+function themeLabel(themeId: ThemeId): string {
+  return getAppThemeTokens(themeId).labelAr;
+}
 
 /** F22 — وضع القراءة: صفحات تتقلّب، أو تمرير رأسي متصل. */
 const READING_MODE_OPTIONS: ReadonlyArray<{ value: ReadingMode; label: string }> = [
@@ -188,6 +217,7 @@ function SettingsContent({
   const { fontScale } = useWindowDimensions();
   const stackControlRow = fontScale > 1.35;
   const [activeTab, setActiveTab] = useState<SettingsTabId>('font');
+  const [encyclopediaVisible, setEncyclopediaVisible] = useState(false);
   const sectionOffsets = useRef<Record<SettingsTabId, number>>({
     font: 0,
     layout: 0,
@@ -813,7 +843,7 @@ function SettingsContent({
           </View>
         </View>
         ) : null}
-        {/* Section 3: Theme (Data-driven from THEME_OPTIONS) */}
+        {/* Section 3: Theme (F31 — core 4 + «موسوعة الثيمات» + الإضاءة وراحة العين) */}
         {activeTab === 'theme' ? (
         <View
           style={styles.section}
@@ -948,6 +978,218 @@ function SettingsContent({
               {customColorsActive ? 'مفعّلة' : 'تخصيص'}
             </Text>
           </Pressable>
+
+          {/* F31 — «موسوعة الثيمات» above the registry: 13 themes, browsable by mood. */}
+          <Pressable
+            testID="open-theme-encyclopedia-btn"
+            onPress={() => setEncyclopediaVisible(true)}
+            hitSlop={4}
+            style={({ pressed }) => [
+              styles.encyclopediaBtn,
+              { backgroundColor: palette.accentSoft, borderColor: palette.border },
+              pressed && styles.pressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="فتح موسوعة الثيمات"
+          >
+            <Text
+              style={[styles.encyclopediaIcon, { color: palette.accent }]}
+              accessibilityElementsHidden
+            >
+              ✦
+            </Text>
+            <View style={styles.encyclopediaTitles}>
+              <Text
+                style={[styles.encyclopediaTitle, { color: palette.text, fontFamily: TYPOGRAPHY.uiFont }]}
+                numberOfLines={1}
+              >
+                موسوعة الثيمات
+              </Text>
+              <Text
+                style={[styles.encyclopediaSub, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}
+                numberOfLines={1}
+              >
+                ١٣ ثيمًا · حِبْر اللَّيْل أولها
+              </Text>
+            </View>
+            <Text style={[styles.encyclopediaChevron, { color: palette.muted }]}>‹</Text>
+          </Pressable>
+
+          {/* F31 — auto theme: النظام | بالوقت | يدوي */}
+          <View style={stackControlRow ? styles.ctrlRowStacked : styles.ctrlRow}>
+            <Text
+              style={[styles.ctrlLabel, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}
+              numberOfLines={1}
+            >
+              الثيم تلقائيًا
+            </Text>
+            <View
+              style={[
+                styles.segGroup,
+                stackControlRow && styles.segGroupStacked,
+                { borderColor: palette.border, backgroundColor: palette.surface },
+              ]}
+            >
+              {AUTO_THEME_OPTIONS.map((opt) => {
+                const active = (settings.autoThemeMode ?? 'system') === opt.value;
+                return (
+                  <Pressable
+                    key={opt.value}
+                    testID={`settings-auto-theme-${opt.value}`}
+                    onPress={() => onChange({ autoThemeMode: opt.value })}
+                    hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+                    style={({ pressed }) => [
+                      styles.segBtn,
+                      active && { backgroundColor: palette.ctaBg },
+                      pressed && styles.pressed,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.65}
+                      style={[
+                        styles.segBtnText,
+                        {
+                          color: active ? palette.ctaText : palette.muted,
+                          fontWeight: active ? '600' : '500',
+                          fontFamily: TYPOGRAPHY.uiFont,
+                        },
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          {(settings.autoThemeMode ?? 'system') === 'schedule' ? (
+            <Text
+              testID="settings-auto-theme-info"
+              style={[styles.hintText, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}
+            >
+              {`نهارًا ${themeLabel(settings.dayTheme ?? DEFAULT_SETTINGS.dayTheme!)} من ${formatHourArabic(
+                settings.nightEndHour ?? DEFAULT_SETTINGS.nightEndHour!,
+              )} · ليلًا ${themeLabel(settings.nightTheme ?? DEFAULT_SETTINGS.nightTheme!)} من ${formatHourArabic(
+                settings.nightStartHour ?? DEFAULT_SETTINGS.nightStartHour!,
+              )}`}
+            </Text>
+          ) : null}
+
+          {/* F31 — التعتيم: black veil over the page, no CSS filter. */}
+          <StepperControl
+            label="التعتيم"
+            valueText={percentText(settings.dimmer ?? 0)}
+            testIdPrefix="settings-dimmer"
+            canDecrement={(settings.dimmer ?? 0) > 0}
+            canIncrement={(settings.dimmer ?? 0) < 0.7 - 1e-9}
+            onDecrement={() =>
+              onChange({ dimmer: Math.max(0, Number(((settings.dimmer ?? 0) - 0.1).toFixed(2))) })
+            }
+            onIncrement={() =>
+              onChange({ dimmer: Math.min(0.7, Number(((settings.dimmer ?? 0) + 0.1).toFixed(2))) })
+            }
+            palette={palette}
+          />
+
+          {/* F31 — دفء الشاشة: amber blue-light filter. */}
+          <StepperControl
+            label="دفء الشاشة"
+            valueText={percentText(settings.warmth ?? 0)}
+            testIdPrefix="settings-warmth"
+            canDecrement={(settings.warmth ?? 0) > 0}
+            canIncrement={(settings.warmth ?? 0) < 0.6 - 1e-9}
+            onDecrement={() =>
+              onChange({ warmth: Math.max(0, Number(((settings.warmth ?? 0) - 0.1).toFixed(2))) })
+            }
+            onIncrement={() =>
+              onChange({ warmth: Math.min(0.6, Number(((settings.warmth ?? 0) + 0.1).toFixed(2))) })
+            }
+            palette={palette}
+          />
+
+          {/* F31 — real screen brightness (expo-brightness). */}
+          <StepperControl
+            label="السطوع"
+            valueText={percentText(settings.brightness ?? 0.8)}
+            testIdPrefix="settings-brightness"
+            canDecrement={(settings.brightness ?? 0.8) > 0.05 + 1e-9}
+            canIncrement={(settings.brightness ?? 0.8) < 1 - 1e-9}
+            onDecrement={() =>
+              onChange({
+                brightness: Math.max(0.05, Number(((settings.brightness ?? 0.8) - 0.05).toFixed(2))),
+                brightnessMode: 'custom',
+              })
+            }
+            onIncrement={() =>
+              onChange({
+                brightness: Math.min(1, Number(((settings.brightness ?? 0.8) + 0.05).toFixed(2))),
+                brightnessMode: 'custom',
+              })
+            }
+            palette={palette}
+          />
+
+          <View style={[styles.switchRow, { borderTopColor: palette.border }]}>
+            <Text style={[styles.switchLabel, { color: palette.text, fontFamily: TYPOGRAPHY.uiFont }]}>
+              سطوع تلقائي (سطوع الجهاز)
+            </Text>
+            <Switch
+              testID="settings-brightness-auto-switch"
+              value={(settings.brightnessMode ?? 'system') === 'system'}
+              onValueChange={(auto) =>
+                onChange({ brightnessMode: auto ? 'system' : 'custom' })
+              }
+              trackColor={{ false: palette.border, true: palette.accent }}
+              thumbColor={palette.surfaceElevated}
+            />
+          </View>
+
+          <View style={[styles.switchRow, { borderTopColor: palette.border }]}>
+            <Text style={[styles.switchLabel, { color: palette.text, fontFamily: TYPOGRAPHY.uiFont }]}>
+              سحب الحافة للسطوع
+            </Text>
+            <Switch
+              testID="settings-edge-swipe-switch"
+              value={settings.edgeBrightnessSwipe ?? true}
+              onValueChange={(value) => onChange({ edgeBrightnessSwipe: value })}
+              trackColor={{ false: palette.border, true: palette.accent }}
+              thumbColor={palette.surfaceElevated}
+            />
+          </View>
+
+          <View style={[styles.switchRow, { borderTopColor: palette.border }]}>
+            <Text style={[styles.switchLabel, { color: palette.text, fontFamily: TYPOGRAPHY.uiFont }]}>
+              {`تذكير راحة العين (${toArabicDigits(String(settings.eyeRestIntervalMinutes ?? 45))} د)`}
+            </Text>
+            <Switch
+              testID="settings-eye-rest-switch"
+              value={settings.eyeRestReminder ?? true}
+              onValueChange={(value) => onChange({ eyeRestReminder: value })}
+              trackColor={{ false: palette.border, true: palette.accent }}
+              thumbColor={palette.surfaceElevated}
+            />
+          </View>
+
+          <ThemeEncyclopediaModal
+            visible={encyclopediaVisible}
+            activeTheme={settings.theme}
+            onSelect={(theme) => {
+              // Same rule as a preset swatch (F32): choosing a preset ends a live custom pair, so
+              // the theme the reader just picked is what actually paints.
+              onChange(
+                customColorsActive
+                  ? { theme, customColors: { ...customColors, enabled: false } }
+                  : { theme },
+              );
+              setEncyclopediaVisible(false);
+            }}
+            onClose={() => setEncyclopediaVisible(false)}
+          />
         </View>
         ) : null}
       </View>
@@ -1358,5 +1600,39 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.72,
+  },
+  encyclopediaBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: RADIUS.button,
+    borderWidth: 1,
+  },
+  encyclopediaIcon: {
+    fontSize: 14,
+  },
+  encyclopediaTitles: {
+    flex: 1,
+    gap: 1,
+  },
+  encyclopediaTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  encyclopediaSub: {
+    fontSize: 10.5,
+    textAlign: 'right',
+  },
+  encyclopediaChevron: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  hintText: {
+    fontSize: 10.5,
+    lineHeight: 16,
+    textAlign: 'right',
   },
 });

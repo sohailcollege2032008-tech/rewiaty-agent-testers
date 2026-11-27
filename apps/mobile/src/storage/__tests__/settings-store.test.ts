@@ -1,4 +1,5 @@
 import { type DatabaseAdapter } from '@/storage/database';
+import { resolveAutoTheme } from '@/theme/auto-theme';
 import { DEFAULT_CUSTOM_COLORS } from '../../../../../packages/reader-engine/src/types';
 import {
   DEFAULT_SETTINGS,
@@ -14,6 +15,7 @@ import {
   saveReaderSettings,
   selectManualTheme,
   updateReaderSettings,
+  type ThemePreferenceState,
 } from '@/storage/settings-store';
 
 function createKvTestDb(): DatabaseAdapter {
@@ -329,6 +331,100 @@ describe('settings-store', () => {
     expect(pref.hasManualTheme).toBe(false);
   });
 
+  it('sanitizes and persists the F31 lighting, auto-theme and eye-rest settings', async () => {
+    const updated = await updateReaderSettings(
+      {
+        dimmer: 0.5,
+        warmth: 0.3,
+        brightnessMode: 'custom',
+        brightness: 0.65,
+        edgeBrightnessSwipe: false,
+        autoThemeMode: 'schedule',
+        dayTheme: 'parchment',
+        nightTheme: 'night-ink',
+        nightStartHour: 20,
+        nightEndHour: 6,
+        eyeRestReminder: false,
+        eyeRestIntervalMinutes: 60,
+      },
+      db,
+    );
+
+    expect(updated.dimmer).toBe(0.5);
+    expect(updated.warmth).toBe(0.3);
+    expect(updated.brightnessMode).toBe('custom');
+    expect(updated.brightness).toBeCloseTo(0.65, 2);
+    expect(updated.edgeBrightnessSwipe).toBe(false);
+    expect(updated.autoThemeMode).toBe('schedule');
+    expect(updated.dayTheme).toBe('parchment');
+    expect(updated.nightTheme).toBe('night-ink');
+    expect(updated.nightStartHour).toBe(20);
+    expect(updated.nightEndHour).toBe(6);
+    expect(updated.eyeRestReminder).toBe(false);
+    expect(updated.eyeRestIntervalMinutes).toBe(60);
+    expect(await loadReaderSettings(db)).toEqual(updated);
+
+    const clamped = await updateReaderSettings(
+      {
+        dimmer: 5,
+        warmth: -1,
+        brightness: 9,
+        nightStartHour: 30,
+        nightEndHour: -4,
+        eyeRestIntervalMinutes: 1000,
+        autoThemeMode: 'lunar',
+        brightnessMode: 'auto',
+        dayTheme: 'nope',
+      } as unknown as Partial<typeof DEFAULT_SETTINGS>,
+      db,
+    );
+    expect(clamped.dimmer).toBe(0.7);
+    expect(clamped.warmth).toBe(0);
+    expect(clamped.brightness).toBe(1);
+    expect(clamped.nightStartHour).toBe(23);
+    expect(clamped.nightEndHour).toBe(0);
+    expect(clamped.eyeRestIntervalMinutes).toBe(120);
+    // Unknown enum values are ignored, never stored.
+    expect(clamped.autoThemeMode).toBe('schedule');
+    expect(clamped.brightnessMode).toBe('custom');
+    expect(clamped.dayTheme).toBe('parchment');
+  });
+
+  it('resets every F31 comfort field with the theme tab («افتراضي»)', async () => {
+    await updateReaderSettings(
+      {
+        dimmer: 0.6,
+        warmth: 0.45,
+        brightnessMode: 'custom',
+        brightness: 0.4,
+        edgeBrightnessSwipe: false,
+        autoThemeMode: 'schedule',
+        dayTheme: 'morning-mist',
+        nightTheme: 'forest-night',
+        nightStartHour: 21,
+        nightEndHour: 5,
+        eyeRestReminder: false,
+        eyeRestIntervalMinutes: 90,
+      },
+      db,
+    );
+
+    const afterReset = await resetSection('theme', db, 'warraq');
+    expect(afterReset.theme).toBe('warraq');
+    expect(afterReset.dimmer).toBe(DEFAULT_SETTINGS.dimmer);
+    expect(afterReset.warmth).toBe(DEFAULT_SETTINGS.warmth);
+    expect(afterReset.brightnessMode).toBe(DEFAULT_SETTINGS.brightnessMode);
+    expect(afterReset.brightness).toBe(DEFAULT_SETTINGS.brightness);
+    expect(afterReset.edgeBrightnessSwipe).toBe(DEFAULT_SETTINGS.edgeBrightnessSwipe);
+    expect(afterReset.autoThemeMode).toBe(DEFAULT_SETTINGS.autoThemeMode);
+    expect(afterReset.dayTheme).toBe(DEFAULT_SETTINGS.dayTheme);
+    expect(afterReset.nightTheme).toBe(DEFAULT_SETTINGS.nightTheme);
+    expect(afterReset.nightStartHour).toBe(DEFAULT_SETTINGS.nightStartHour);
+    expect(afterReset.nightEndHour).toBe(DEFAULT_SETTINGS.nightEndHour);
+    expect(afterReset.eyeRestReminder).toBe(DEFAULT_SETTINGS.eyeRestReminder);
+    expect(afterReset.eyeRestIntervalMinutes).toBe(DEFAULT_SETTINGS.eyeRestIntervalMinutes);
+  });
+
   it('persists the custom pair canonically — uppercase, hashed, and reloaded as chosen (F32)', async () => {
     // A reader who types lowercase (or forgets the hash) still gets one stored spelling.
     const saved = await updateReaderSettings(
@@ -412,19 +508,46 @@ describe('settings-store', () => {
     });
   });
 
-  it('resetting «المظهر» drops the custom pair as well as the theme (F32)', async () => {
+  it('resetting «المظهر» drops the custom pair as well as the theme (F32 + F31)', async () => {
+    // The «المظهر» tab owns the theme, the custom pair AND the F31 comfort fields, so its reset
+    // returns every one of them (exact object: no key may be silently dropped).
     expect(getSectionResetPartial('theme', 'burnt-paper')).toEqual({
       theme: 'burnt-paper',
+      dimmer: DEFAULT_SETTINGS.dimmer,
+      warmth: DEFAULT_SETTINGS.warmth,
+      brightnessMode: DEFAULT_SETTINGS.brightnessMode,
+      brightness: DEFAULT_SETTINGS.brightness,
+      edgeBrightnessSwipe: DEFAULT_SETTINGS.edgeBrightnessSwipe,
+      autoThemeMode: DEFAULT_SETTINGS.autoThemeMode,
+      dayTheme: DEFAULT_SETTINGS.dayTheme,
+      nightTheme: DEFAULT_SETTINGS.nightTheme,
+      nightStartHour: DEFAULT_SETTINGS.nightStartHour,
+      nightEndHour: DEFAULT_SETTINGS.nightEndHour,
+      eyeRestReminder: DEFAULT_SETTINGS.eyeRestReminder,
+      eyeRestIntervalMinutes: DEFAULT_SETTINGS.eyeRestIntervalMinutes,
       customColors: { ...DEFAULT_CUSTOM_COLORS, enabled: false },
     });
 
     await updateReaderSettings(
-      { theme: 'sepia', fontSize: 25, customColors: { enabled: true, bg: '#101820', text: '#F2E8D5' } },
+      {
+        theme: 'sepia',
+        fontSize: 25,
+        customColors: { enabled: true, bg: '#101820', text: '#F2E8D5' },
+        dimmer: 0.4,
+        warmth: 0.3,
+        brightnessMode: 'custom',
+        brightness: 0.5,
+      },
       db,
     );
     const afterThemeReset = await resetSection('theme', db, 'burnt-paper');
     expect(afterThemeReset.theme).toBe('burnt-paper');
     expect(afterThemeReset.customColors).toEqual({ ...DEFAULT_CUSTOM_COLORS, enabled: false });
+    // F31 comfort fields come back with the same reset.
+    expect(afterThemeReset.dimmer).toBe(DEFAULT_SETTINGS.dimmer);
+    expect(afterThemeReset.warmth).toBe(DEFAULT_SETTINGS.warmth);
+    expect(afterThemeReset.brightnessMode).toBe(DEFAULT_SETTINGS.brightnessMode);
+    expect(afterThemeReset.brightness).toBe(DEFAULT_SETTINGS.brightness);
     // Other tabs are untouched by a theme reset.
     expect(afterThemeReset.fontSize).toBe(25);
   });
@@ -434,5 +557,123 @@ describe('settings-store', () => {
     const reset = await resetReaderSettings(db);
     expect(reset).toEqual(DEFAULT_SETTINGS);
     expect(await loadReaderSettings(db)).toEqual(DEFAULT_SETTINGS);
+  });
+});
+
+/**
+ * Codex F31 review P1 — reopening the reader used the legacy `hasManualTheme` boolean instead of
+ * the mode, so «حسب الجهاز» was lost on reopen (manual theme came back) and «يدوي» without a new
+ * theme was lost too. `openTheme` below is exactly what the reader now does on open.
+ */
+function openTheme(pref: ThemePreferenceState, scheme: 'light' | 'dark') {
+  return resolveAutoTheme({
+    mode: pref.settings.autoThemeMode ?? 'system',
+    manualTheme: pref.settings.theme,
+    dayTheme: pref.settings.dayTheme ?? 'warraq',
+    nightTheme: pref.settings.nightTheme ?? 'burnt-paper',
+    nightStartHour: pref.settings.nightStartHour ?? 19,
+    nightEndHour: pref.settings.nightEndHour ?? 6,
+    systemColorScheme: scheme,
+  });
+}
+
+async function legacyManualFlag(db: DatabaseAdapter): Promise<boolean> {
+  const row = await db.getFirstAsync<{ value: string }>(
+    'SELECT value FROM kv WHERE key = ?',
+    THEME_MANUAL_KV_KEY,
+  );
+  return row ? (JSON.parse(row.value) as boolean) : false;
+}
+
+describe('F31 P1 — autoThemeMode is the single source of truth', () => {
+  it('a theme pick, then «حسب الجهاز», reopens on the device scheme and clears the manual mark', async () => {
+    const db = createKvTestDb();
+
+    await updateReaderSettings({ theme: 'sepia' }, db);
+    let pref = await loadThemePreference(db);
+    expect(pref.settings.autoThemeMode).toBe('manual');
+    expect(pref.hasManualTheme).toBe(true);
+    expect(openTheme(pref, 'light')).toBe('sepia');
+    expect(await legacyManualFlag(db)).toBe(true);
+
+    // The reader goes back to «حسب الجهاز» without picking another theme.
+    const next = await saveReaderSettings({ ...pref.settings, autoThemeMode: 'system' }, db);
+    expect(next.autoThemeMode).toBe('system');
+
+    // Reopening the reader: the stored mode decides, not the old boolean.
+    pref = await loadThemePreference(db);
+    expect(pref.settings.autoThemeMode).toBe('system');
+    expect(pref.hasManualTheme).toBe(false);
+    expect(await legacyManualFlag(db)).toBe(false);
+    expect(openTheme(pref, 'light')).toBe('warraq');
+    expect(openTheme(pref, 'dark')).toBe('burnt-paper');
+  });
+
+  it('«يدوي» without a new theme reopens on the saved theme even when the device is dark', async () => {
+    const db = createKvTestDb();
+
+    await updateReaderSettings({ theme: 'night-ink' }, db);
+    await updateReaderSettings({ autoThemeMode: 'system' }, db);
+    // Picking «يدوي» alone used to clear the in-memory flag only; on disk the manual mark stayed off.
+    await updateReaderSettings({ autoThemeMode: 'manual' }, db);
+
+    const pref = await loadThemePreference(db);
+    expect(pref.settings.theme).toBe('night-ink');
+    expect(pref.settings.autoThemeMode).toBe('manual');
+    expect(pref.hasManualTheme).toBe(true);
+    expect(await legacyManualFlag(db)).toBe(true);
+    expect(openTheme(pref, 'dark')).toBe('night-ink');
+    expect(openTheme(pref, 'light')).toBe('night-ink');
+  });
+
+  it('migrates the pre-F31 boolean exactly once and lets a stored mode win afterwards', async () => {
+    const legacyDb = createKvTestDb();
+    await legacyDb.runAsync(
+      'INSERT INTO kv (key, value) VALUES (?, ?)',
+      SETTINGS_KV_KEY,
+      JSON.stringify({ fontSize: 22, theme: 'oled-crimson' }),
+    );
+    await legacyDb.runAsync(
+      'INSERT INTO kv (key, value) VALUES (?, ?)',
+      THEME_MANUAL_KV_KEY,
+      JSON.stringify(true),
+    );
+
+    const migrated = await loadThemePreference(legacyDb);
+    expect(migrated.settings.autoThemeMode).toBe('manual');
+    expect(migrated.hasManualTheme).toBe(true);
+    const storedRow = await legacyDb.getFirstAsync<{ value: string }>(
+      'SELECT value FROM kv WHERE key = ?',
+      SETTINGS_KV_KEY,
+    );
+    expect(JSON.parse(storedRow!.value).autoThemeMode).toBe('manual');
+
+    // A row where a newer build already wrote a mode: the stale boolean must not override it.
+    const staleDb = createKvTestDb();
+    await staleDb.runAsync(
+      'INSERT INTO kv (key, value) VALUES (?, ?)',
+      SETTINGS_KV_KEY,
+      JSON.stringify({ theme: 'charcoal', autoThemeMode: 'system' }),
+    );
+    await staleDb.runAsync(
+      'INSERT INTO kv (key, value) VALUES (?, ?)',
+      THEME_MANUAL_KV_KEY,
+      JSON.stringify(true),
+    );
+    const modern = await loadThemePreference(staleDb);
+    expect(modern.settings.autoThemeMode).toBe('system');
+    expect(modern.hasManualTheme).toBe(false);
+    expect(openTheme(modern, 'dark')).toBe('burnt-paper');
+    // …and the legacy flag is corrected on disk to match.
+    expect(await legacyManualFlag(staleDb)).toBe(false);
+  });
+
+  it('keeps the legacy mark in sync when a theme is selected directly', async () => {
+    const db = createKvTestDb();
+    await selectManualTheme('parchment', db);
+    const pref = await loadThemePreference(db);
+    expect(pref.settings.autoThemeMode).toBe('manual');
+    expect(pref.settings.theme).toBe('parchment');
+    expect(await legacyManualFlag(db)).toBe(true);
   });
 });
