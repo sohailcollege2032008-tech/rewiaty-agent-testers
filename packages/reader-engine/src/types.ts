@@ -236,6 +236,13 @@ export type RNToWebMessage =
       type: 'load';
       book: Book;
       anchor?: Anchor;
+      /**
+       * Chapter the reader was last in, used as a fallback when `anchor` cannot be resolved
+       * to a block. An empty chapter has no blocks, so its saved anchor is the chapter id
+       * itself (or a block that has since been removed) — without this the reader used to
+       * reopen at the start of the book and overwrite their real position with 0%.
+       */
+      chapterId?: string;
       settings?: Partial<ReaderSettings>;
       insets?: ReaderInsets;
       fontBaseUrl?: string;
@@ -319,6 +326,13 @@ export type WebToRNMessage =
        * counter should read "~N" (or drop the total) instead of presenting it as final.
        */
       estimated?: boolean;
+      /**
+       * true when this position report was triggered by an explicit reader navigation
+       * (finger swipe turn, next/prev command, or goto jump), as opposed to initial restore
+       * or background reflow settling. Lets the host distinguish an intentional return to
+       * page 1 from a fallback restore at 0% (Issue #44 / Codex P2).
+       */
+      userNavigated?: boolean;
     }
   | {
       type: 'tap';

@@ -312,7 +312,7 @@ export class ReaderEngine {
       if (gesture.dragging) {
         this.dragSamples.push({ x: e.clientX, t: performance.now() });
         this.paginator.endDrag(e.clientX - gesture.startX, this.releaseVelocity(), () =>
-          this.emitPosition(),
+          this.emitPosition(true),
         );
         return;
       }
@@ -709,7 +709,14 @@ export class ReaderEngine {
           msg.sceneDisplayMode ?? 'expanded',
           false,
         );
-        this.paginator.setBook(msg.book, merged, msg.anchor, msg.insets, msg.highlights);
+        this.paginator.setBook(
+          msg.book,
+          merged,
+          msg.anchor,
+          msg.insets,
+          msg.highlights,
+          msg.chapterId,
+        );
         postToHost({ type: 'ready' });
         this.paginator.scheduleBackgroundWork();
         this.emitAfterSettle();
@@ -739,7 +746,7 @@ export class ReaderEngine {
         this.clearSelection();
         this.closeFootnote();
         if (this.paginator.goto(msg)) {
-          this.emitPosition();
+          this.emitPosition(true);
           // A TOC jump remounts chapters without a `load`/`error` event when the figure is
           // already decoded, so ask the pump to look at what is on screen now.
           this.scheduleImageProof();
@@ -896,13 +903,13 @@ export class ReaderEngine {
 
   private goNext(): void {
     if (this.paginator.nextPage()) {
-      this.emitPosition();
+      this.emitPosition(true);
     }
   }
 
   private goPrev(): void {
     if (this.paginator.prevPage()) {
-      this.emitPosition();
+      this.emitPosition(true);
     }
   }
 
@@ -934,7 +941,7 @@ export class ReaderEngine {
     return (last.x - first.x) / dt;
   }
 
-  private emitPosition(): void {
+  private emitPosition(userNavigated = false): void {
     const pos = this.paginator.getPositionSnapshot();
     if (!pos) return;
     // A number is on screen now; stop withholding the rest of the session's reports.
@@ -942,6 +949,7 @@ export class ReaderEngine {
     postToHost({
       type: 'position',
       ...pos,
+      ...(userNavigated ? { userNavigated: true } : {}),
     });
   }
 
