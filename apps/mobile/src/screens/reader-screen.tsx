@@ -2160,7 +2160,7 @@ export function ReaderScreen() {
             overlap. Only a live, filter-free 3% tile counts as «مفعّل». */}
         {paperGrainProof ? (
           <View pointerEvents="none" style={styles.paperGrainProof}>
-            <Text testID="reader-paper-grain-proof" style={styles.imageProofLabel}>
+            <Text accessible testID="reader-paper-grain-proof" style={styles.imageProofLabel}>
               {paperGrainProof}
             </Text>
           </View>
@@ -2497,12 +2497,11 @@ const styles = StyleSheet.create({
     start: 0,
     bottom: 0,
   },
-  // F27: one line above the figure proof's strip. Transparent, non-interactive, and separate so a
-  // dark theme's «متوقّف» never sits on the same pixel row as a painted figure's proof.
   paperGrainProof: {
     position: 'absolute',
-    start: 0,
-    bottom: 16,
+    start: 24,
+    top: '40%',
+    zIndex: 5,
   },
   imageProofLabel: {
     color: 'transparent',
