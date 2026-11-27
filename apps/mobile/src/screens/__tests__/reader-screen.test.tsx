@@ -841,6 +841,127 @@ describe('ReaderScreen', () => {
 
     addListenerSpy.mockRestore();
   });
+  it('sends the saved chapterId to the engine so an empty chapter can be restored (#44)', async () => {
+    // An empty chapter has no block to anchor to: the saved anchor is the chapter id itself,
+    // and `chapterId` is what lets the engine find it even when the anchor is missing.
+    (readBookBundle as jest.Mock).mockResolvedValueOnce({
+      book: {
+        id: 'book_123',
+        meta: { title: 'أوراق البحر', author: 'مؤلف', lang: 'ar', dir: 'rtl' },
+        chapters: [
+          { id: 'ch01', title: 'الفصل الأول', blocks: [], wordCount: 100, hash: 'h1' },
+          { id: 'ch02', title: 'فصل فارغ', blocks: [], wordCount: 0, hash: 'h2' },
+          { id: 'ch03', title: 'الفصل الثالث', blocks: [], wordCount: 120, hash: 'h3' },
+        ],
+        footnotes: {},
+        wordCount: 220,
+      },
+      manifest: {
+        id: 'book_123',
+        meta: { title: 'أوراق البحر', author: 'مؤلف', lang: 'ar', dir: 'rtl' },
+        chapters: [],
+        wordCount: 220,
+        parserVersion: 1,
+      },
+      state: {
+        anchor: { blockId: 'ch02', charOffset: 0 },
+        progress: 0.666667,
+        chapterId: 'ch02',
+        page: 3,
+        pageCount: 4,
+        updatedAt: 2000,
+      },
+    });
+
+    await renderLoadedReader();
+
+    const loadPayload = JSON.parse(postedToWebView[0]!);
+    expect(loadPayload.type).toBe('load');
+    expect(loadPayload.chapterId).toBe('ch02');
+    expect(loadPayload.anchor).toEqual({ blockId: 'ch02', charOffset: 0 });
+  });
+
+  it('does not overwrite a saved position with a regressed 0% report before the reader navigates (#44)', async () => {
+    (readBookBundle as jest.Mock).mockResolvedValueOnce({
+      book: {
+        id: 'book_123',
+        meta: { title: 'أوراق البحر', author: 'مؤلف', lang: 'ar', dir: 'rtl' },
+        chapters: [
+          { id: 'ch01', title: 'الفصل الأول', blocks: [], wordCount: 100, hash: 'h1' },
+          { id: 'ch02', title: 'فصل فارغ', blocks: [], wordCount: 0, hash: 'h2' },
+          { id: 'ch03', title: 'الفصل الثالث', blocks: [], wordCount: 120, hash: 'h3' },
+        ],
+        footnotes: {},
+        wordCount: 220,
+      },
+      manifest: {
+        id: 'book_123',
+        meta: { title: 'أوراق البحر', author: 'مؤلف', lang: 'ar', dir: 'rtl' },
+        chapters: [],
+        wordCount: 220,
+        parserVersion: 1,
+      },
+      state: {
+        anchor: { blockId: 'ch02', charOffset: 0 },
+        progress: 0.666667,
+        chapterId: 'ch02',
+        page: 3,
+        pageCount: 4,
+        updatedAt: 2000,
+      },
+    });
+
+    await renderLoadedReader();
+
+    jest.useFakeTimers();
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      // The engine failed to restore and reported the start of the book. This must not be
+      // written over the reader's real position.
+      emitWebMessage({
+        type: 'position',
+        anchor: { blockId: 'ch01_p0001', charOffset: 0 },
+        chapterId: 'ch01',
+        page: 1,
+        pageCount: 4,
+        chapterPage: 1,
+        chapterPageCount: 1,
+        bookProgress: 0,
+      });
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    expect(saveBookReaderState).not.toHaveBeenCalled();
+
+    // A genuine page turn / jump resumes normal persistence immediately.
+    await act(async () => {
+      emitWebMessage({
+        type: 'position',
+        anchor: { blockId: 'ch03_p0001', charOffset: 0 },
+        chapterId: 'ch03',
+        page: 4,
+        pageCount: 4,
+        chapterPage: 1,
+        chapterPageCount: 1,
+        bookProgress: 1,
+      });
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    jest.useRealTimers();
+
+    expect(saveBookReaderState).toHaveBeenCalledWith(
+      'book_123',
+      expect.objectContaining({
+        chapterId: 'ch03',
+        page: 4,
+        progress: 1,
+      }),
+    );
+  });
+
   it('never shows a raw English error to the reader', () => {
     const { readerErrorMessage, READER_OPEN_FAILED_MESSAGE } = jest.requireActual('@/screens/reader-screen');
     expect(readerErrorMessage(new Error("Call to function 'FileSystemFile.text' has been rejected"))).toBe(READER_OPEN_FAILED_MESSAGE);

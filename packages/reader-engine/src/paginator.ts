@@ -838,6 +838,7 @@ export class Paginator {
     initialAnchor?: Anchor,
     insets?: ReaderInsets,
     highlights?: EngineHighlight[],
+    initialChapterId?: string,
   ): void {
     this.cancelIdleWork();
     this.cancelExactPagination();
@@ -861,18 +862,34 @@ export class Paginator {
     let targetBlockIdx = 0;
     let targetBlockId: string | undefined;
     let targetOffset = 0;
+    let restoredAnchor: Anchor | null = null;
+    let anchorResolved = false;
 
     if (initialAnchor) {
-      for (let c = 0; c < book.chapters.length; c++) {
-        const ch = book.chapters[c]!;
-        const bIdx = ch.blocks.findIndex((b) => b.id === initialAnchor.blockId);
-        if (bIdx >= 0) {
-          targetChapterIdx = c;
-          targetBlockIdx = bIdx;
+      const resolved = this.resolveAnchorTarget(book, initialAnchor.blockId);
+      if (resolved) {
+        anchorResolved = true;
+        targetChapterIdx = resolved.chapterIdx;
+        targetBlockIdx = resolved.blockIdx;
+        targetOffset = initialAnchor.charOffset;
+        // Only an actual block can carry a page-relevant character offset; a chapter-level
+        // or prefix anchor (empty chapter, or a block deleted from that chapter) has none,
+        // so it resumes at the chapter's start instead.
+        const resolvedBlock = book.chapters[resolved.chapterIdx]?.blocks[resolved.blockIdx];
+        if (resolvedBlock?.id === initialAnchor.blockId) {
           targetBlockId = initialAnchor.blockId;
-          targetOffset = initialAnchor.charOffset;
-          break;
         }
+        restoredAnchor = { blockId: initialAnchor.blockId, charOffset: initialAnchor.charOffset };
+      }
+    }
+
+    // Fallback: the host also persists the chapter id, so a saved position can still be
+    // restored when the anchor is missing or points at a chapter that no longer resolves.
+    if (!anchorResolved && initialChapterId) {
+      const idx = book.chapters.findIndex((ch) => ch.id === initialChapterId);
+      if (idx >= 0) {
+        targetChapterIdx = idx;
+        targetBlockIdx = 0;
       }
     }
 
@@ -898,13 +915,49 @@ export class Paginator {
           charOffset: targetOffset,
         }),
       );
+    }
+    if (restoredAnchor) {
       // A deep link must report the very anchor it was opened at, not the block that
       // happens to sit on top of the page its column landed on.
-      this.rememberRestoredAnchor({ blockId: targetBlockId, charOffset: targetOffset });
+      this.rememberRestoredAnchor(restoredAnchor);
     }
 
     this.applyTrackTransform(false);
     this.renderHighlights();
+  }
+
+  /**
+   * Map a saved anchor block id to a chapter.
+   *
+   * Order: an actual block in a chapter first (the normal case), then a chapter id (what
+   * `captureCurrentAnchor()` emits for a chapter with zero blocks), then a `${chapter.id}_`
+   * prefix (a block that was edited/deleted out of its chapter). Longest chapter id wins so
+   * `ch1_p0001` cannot be claimed by a `ch1` chapter when `ch10` is the real owner.
+   */
+  private resolveAnchorTarget(
+    book: Book,
+    blockId: string,
+  ): { chapterIdx: number; blockIdx: number } | null {
+    for (let c = 0; c < book.chapters.length; c++) {
+      const blockIdx = book.chapters[c]!.blocks.findIndex((b) => b.id === blockId);
+      if (blockIdx >= 0) return { chapterIdx: c, blockIdx };
+    }
+
+    const exactChapter = book.chapters.findIndex((ch) => ch.id === blockId);
+    if (exactChapter >= 0) return { chapterIdx: exactChapter, blockIdx: 0 };
+
+    let best = -1;
+    let bestLength = -1;
+    for (let c = 0; c < book.chapters.length; c++) {
+      const chapter = book.chapters[c]!;
+      if (chapter.id.length > bestLength && blockId.startsWith(`${chapter.id}_`)) {
+        best = c;
+        bestLength = chapter.id.length;
+      }
+    }
+    if (best >= 0) return { chapterIdx: best, blockIdx: 0 };
+
+    return null;
   }
 
   setHighlights(highlights: EngineHighlight[]): void {
@@ -1534,35 +1587,35 @@ export class Paginator {
     if (!this.book) return false;
 
     if (target.anchor) {
-      let chIdx = -1;
-      let blockIdx = 0;
-      for (let i = 0; i < this.book.chapters.length; i++) {
-        const idx = this.book.chapters[i]!.blocks.findIndex((b) => b.id === target.anchor!.blockId);
-        if (idx >= 0) {
-          chIdx = i;
-          blockIdx = idx;
-          break;
-        }
-      }
-      if (chIdx < 0) return false;
-
-      if (chIdx !== this.currentChapterIdx) {
-        this.currentChapterIdx = chIdx;
-        this.syncActiveAndEvict(blockIdx);
+      const resolved = this.resolveAnchorTarget(this.book, target.anchor.blockId);
+      if (!resolved) {
+        // The anchor could not be mapped. A caller that also supplied a chapter id can
+        // still land somewhere sensible; otherwise the jump is genuinely invalid.
+        if (!target.chapterId) return false;
       } else {
-        const curr = this.rendered.get(this.currentChapterIdx);
-        if (curr && blockIdx >= curr.mountedBlockCount) {
-          this.mountThroughBlockIndex(curr, blockIdx);
-          this.layoutVirtualizedChapterOffsets();
-        }
-      }
+        const chIdx = resolved.chapterIdx;
+        const blockIdx = resolved.blockIdx;
 
-      this.currentChapterPage = this.alignToSpread(this.resolveAnchorPageInCurrentChapter(target.anchor));
-      this.clearRestoredAnchor();
-      this.applyTrackTransform(false);
-      this.renderHighlights();
-      this.scheduleBackgroundWork();
-      return true;
+        if (chIdx !== this.currentChapterIdx) {
+          this.currentChapterIdx = chIdx;
+          this.syncActiveAndEvict(blockIdx);
+        } else {
+          const curr = this.rendered.get(this.currentChapterIdx);
+          if (curr && blockIdx >= curr.mountedBlockCount) {
+            this.mountThroughBlockIndex(curr, blockIdx);
+            this.layoutVirtualizedChapterOffsets();
+          }
+        }
+
+        this.currentChapterPage = this.alignToSpread(
+          this.resolveAnchorPageInCurrentChapter(target.anchor),
+        );
+        this.clearRestoredAnchor();
+        this.applyTrackTransform(false);
+        this.renderHighlights();
+        this.scheduleBackgroundWork();
+        return true;
+      }
     }
 
     if (target.chapterId) {
@@ -1717,7 +1770,11 @@ export class Paginator {
   private isRestoredAnchorUsable(): boolean {
     if (!this.restoredAnchor) return false;
     const curr = this.rendered.get(this.currentChapterIdx);
-    return Boolean(curr?.blockById.has(this.restoredAnchor.blockId));
+    if (!curr) return false;
+    if (curr.blockById.has(this.restoredAnchor.blockId)) return true;
+    // An empty chapter has no block to hold the anchor: `captureCurrentAnchor()` emits the
+    // chapter id itself, and that stays authoritative while the chapter stays empty.
+    return curr.chapter.id === this.restoredAnchor.blockId && curr.blockEls.length === 0;
   }
 
   captureCurrentAnchor(): Anchor {

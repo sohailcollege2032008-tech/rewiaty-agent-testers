@@ -236,6 +236,15 @@ export type RNToWebMessage =
       type: 'load';
       book: Book;
       anchor?: Anchor;
+      /**
+       * Chapter the reader was last in, used as a fallback when `anchor` cannot be resolved
+       * to a block. An empty chapter has no blocks, so its saved anchor is the chapter id
+       * itself (or a block that has since been removed) — without this the reader used to
+       * reopen at the start of the book and overwrite their real position with 0%.
+       */
+      chapterId?: string;
+      /** Last saved global page, a last-resort fallback when no chapter can be resolved. */
+      page?: number;
       settings?: Partial<ReaderSettings>;
       insets?: ReaderInsets;
       fontBaseUrl?: string;

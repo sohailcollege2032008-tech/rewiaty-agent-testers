@@ -709,7 +709,14 @@ export class ReaderEngine {
           msg.sceneDisplayMode ?? 'expanded',
           false,
         );
-        this.paginator.setBook(msg.book, merged, msg.anchor, msg.insets, msg.highlights);
+        this.paginator.setBook(
+          msg.book,
+          merged,
+          msg.anchor,
+          msg.insets,
+          msg.highlights,
+          msg.chapterId,
+        );
         postToHost({ type: 'ready' });
         this.paginator.scheduleBackgroundWork();
         this.emitAfterSettle();
