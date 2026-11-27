@@ -15,6 +15,7 @@ import {
 } from '@/storage/reading-stats';
 import { RADIUS, TYPOGRAPHY, useResponsiveLayout } from '@/theme/layout';
 import { getAppThemeTokens } from '@/theme/reader-theme';
+import type { AppThemeTokens } from '@/theme/types';
 import {
   HIGHLIGHT_COLORS,
   type BookmarkItem,
@@ -45,6 +46,8 @@ export type TocModalProps = {
   activeChapterId: string;
   dir: 'rtl' | 'ltr';
   theme?: ThemeId;
+  /** Resolved chrome tokens (custom pair) so the sheet follows the page the HUD is already using. */
+  tokens?: AppThemeTokens;
   onSelectChapter: (chapterId: string) => void;
   onClose: () => void;
   /** Text-anchored bookmarks (F16). */
@@ -71,6 +74,7 @@ export function TocModal({
   activeChapterId,
   dir,
   theme,
+  tokens,
   onSelectChapter,
   onClose,
   bookmarks,
@@ -88,7 +92,7 @@ export function TocModal({
 }: TocModalProps) {
   const insets = useSafeAreaInsets();
   const layout = useResponsiveLayout();
-  const palette = getAppThemeTokens(theme);
+  const palette = tokens ?? getAppThemeTokens(theme);
   const isRtl = dir === 'rtl';
 
   const [activeTab, setActiveTab] = useState<TocTab>('chapters');

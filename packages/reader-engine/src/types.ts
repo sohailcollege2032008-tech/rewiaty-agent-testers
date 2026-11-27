@@ -12,6 +12,23 @@ export type IndentMode = 'classic' | 'block';
 export type TapZone = 'prev' | 'next' | 'center';
 
 /**
+ * F32 — ألوان مخصّصة: a background/text pair the reader picked, plus whether it is in force.
+ * `bg`/`text` are validated `#RRGGBB` strings; the engine still re-validates before painting, so
+ * a corrupted stored value can never reach the stylesheet.
+ */
+export type CustomReaderColors = {
+  enabled: boolean;
+  bg: string;
+  text: string;
+};
+
+export const DEFAULT_CUSTOM_COLORS: CustomReaderColors = {
+  enabled: false,
+  bg: '#FAF7F0',
+  text: '#231F1A',
+};
+
+/**
  * F22 — how the book is presented.
  * - `paginated` (default): the classic one-column page that turns horizontally.
  * - `scroll`: one continuous vertical column; chapters stack, the page map still drives
@@ -123,6 +140,12 @@ export type ReaderSettings = {
    * - 'single': never spread, even on a tablet in landscape.
    */
   spread?: 'auto' | 'single';
+  /**
+   * F32 — ألوان مخصّصة. When `enabled` and both colours are valid hex, the paginator paints the
+   * page from this pair (and derives every supporting token from it) instead of `THEMES[theme]`.
+   * When disabled / malformed the preset theme is used untouched, so the two can never mix.
+   */
+  customColors?: CustomReaderColors;
   /** F22 — `paginated` (default) or continuous vertical `scroll`. */
   readingMode?: ReadingMode;
   /**

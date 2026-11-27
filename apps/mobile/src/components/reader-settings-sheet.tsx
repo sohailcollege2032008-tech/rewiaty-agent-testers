@@ -14,14 +14,16 @@ import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { READER_FONT_FAMILIES, type SettingsTabId } from '@/storage/settings-store';
+import { buildCustomAppTheme } from '@/theme/custom-theme';
 import { FONT_LABELS_AR, RADIUS, TYPOGRAPHY, useResponsiveLayout } from '@/theme/layout';
 import { getAppThemeTokens, THEME_OPTIONS, type AppThemeTokens } from '@/theme/reader-theme';
-import type {
-  IndentMode,
-  ReadingMode,
-  ReaderSettings,
-  TashkeelMode,
-  TextAlignMode,
+import {
+  DEFAULT_CUSTOM_COLORS,
+  type IndentMode,
+  type ReadingMode,
+  type ReaderSettings,
+  type TashkeelMode,
+  type TextAlignMode,
 } from '@/types/reader';
 
 export type ReaderSettingsSheetProps = {
@@ -29,6 +31,8 @@ export type ReaderSettingsSheetProps = {
   settings: ReaderSettings;
   onChange: (partial: Partial<ReaderSettings>) => void;
   onReset?: (tab: SettingsTabId) => void;
+  /** F32: opens the custom-colours picker (the modal lives on the reader screen). */
+  onOpenCustomColors?: () => void;
   onClose: () => void;
 };
 
@@ -171,12 +175,14 @@ function SettingsContent({
   isSidePanel,
   onChange,
   onReset,
+  onOpenCustomColors,
 }: {
   settings: ReaderSettings;
   palette: AppThemeTokens;
   isSidePanel: boolean;
   onChange: (partial: Partial<ReaderSettings>) => void;
   onReset?: (tab: SettingsTabId) => void;
+  onOpenCustomColors?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const { fontScale } = useWindowDimensions();
@@ -200,6 +206,9 @@ function SettingsContent({
   };
 
   const ScrollContainer = isSidePanel ? ScrollView : BottomSheetScrollView;
+  // F32: the sheet mirrors the stored pair, so the theme tab can show what is currently painting.
+  const customColors = settings.customColors ?? DEFAULT_CUSTOM_COLORS;
+  const customColorsActive = customColors.enabled;
 
   return (
     <ScrollContainer
@@ -817,12 +826,21 @@ function SettingsContent({
           </Text>
           <View style={isSidePanel ? styles.themeGridSide : styles.themeGrid}>
             {THEME_OPTIONS.map((t) => {
-              const active = settings.theme === t.id;
+              const active = settings.theme === t.id && !customColorsActive;
               return (
                 <Pressable
                   key={t.id}
                   testID={`theme-option-${t.id}`}
-                  onPress={() => onChange({ theme: t.id })}
+                  // F32: picking a preset always wins immediately — a lingering custom pair would
+                  // otherwise keep painting over the swatch the reader just tapped. With no custom
+                  // pair live, the partial stays exactly `{ theme }` as before.
+                  onPress={() =>
+                    onChange(
+                      customColorsActive
+                        ? { theme: t.id, customColors: { ...customColors, enabled: false } }
+                        : { theme: t.id },
+                    )
+                  }
                   hitSlop={4}
                   style={({ pressed }) => [
                     isSidePanel ? styles.themeSwatchSide : styles.themeSwatch,
@@ -884,6 +902,52 @@ function SettingsContent({
               );
             })}
           </View>
+
+          {/* F32 — ألوان مخصّصة: المدخل بيفتح الـ picker اللي فيه المعاينة الحيّة وعدّاد التباين. */}
+          <Pressable
+            testID="open-custom-colors-btn"
+            onPress={onOpenCustomColors}
+            hitSlop={4}
+            style={({ pressed }) => [
+              styles.customColorsBtn,
+              {
+                backgroundColor: palette.surface,
+                borderColor: customColorsActive ? palette.accent : palette.border,
+                borderWidth: customColorsActive ? 1.5 : 1,
+              },
+              pressed && styles.pressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="ألوان مخصّصة للصفحة والنص"
+          >
+            <View
+              testID="open-custom-colors-preview"
+              style={[styles.customColorsChip, { backgroundColor: customColors.bg, borderColor: palette.border }]}
+            >
+              <Text
+                numberOfLines={1}
+                style={[styles.customColorsChipText, { color: customColors.text, fontFamily: TYPOGRAPHY.displayFont }]}
+              >
+                أ
+              </Text>
+            </View>
+            <View style={styles.customColorsMeta}>
+              <Text
+                style={[
+                  styles.customColorsTitle,
+                  { color: customColorsActive ? palette.accent : palette.text, fontFamily: TYPOGRAPHY.uiFont },
+                ]}
+              >
+                ألوان مخصّصة
+              </Text>
+              <Text style={[styles.customColorsHint, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}>
+                {customColorsActive ? `${customColors.bg} · ${customColors.text}` : 'اختار لون الورق والحبر'}
+              </Text>
+            </View>
+            <Text style={[styles.customColorsState, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}>
+              {customColorsActive ? 'مفعّلة' : 'تخصيص'}
+            </Text>
+          </Pressable>
         </View>
         ) : null}
       </View>
@@ -896,12 +960,17 @@ export function ReaderSettingsSheet({
   settings,
   onChange,
   onReset,
+  onOpenCustomColors,
   onClose,
 }: ReaderSettingsSheetProps) {
   const sheetRef = useRef<BottomSheet>(null);
   const insets = useSafeAreaInsets();
   const layout = useResponsiveLayout();
-  const palette = getAppThemeTokens(settings.theme);
+  const basePalette = getAppThemeTokens(settings.theme);
+  // F32: with a custom pair live, the sheet itself wears it — the settings should look like the page.
+  const palette = settings.customColors?.enabled
+    ? buildCustomAppTheme(basePalette, settings.customColors.bg, settings.customColors.text)
+    : basePalette;
   const maxSheetHeight = Math.round(layout.height * 0.6);
   const isSidePanel = layout.settingsMode === 'side-panel';
 
@@ -956,6 +1025,7 @@ export function ReaderSettingsSheet({
             isSidePanel
             onChange={onChange}
             onReset={onReset}
+            onOpenCustomColors={onOpenCustomColors}
           />
         </View>
       </View>
@@ -996,6 +1066,7 @@ export function ReaderSettingsSheet({
           isSidePanel={false}
           onChange={onChange}
           onReset={onReset}
+          onOpenCustomColors={onOpenCustomColors}
         />
       </BottomSheet>
     </View>
@@ -1246,6 +1317,44 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontVariant: ['tabular-nums'],
     textAlign: RTL_START_ALIGN,
+  },
+  customColorsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: RADIUS.button,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  customColorsChip: {
+    width: 34,
+    height: 30,
+    borderRadius: 5,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  customColorsChipText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  customColorsMeta: {
+    flex: 1,
+    gap: 1,
+  },
+  customColorsTitle: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  customColorsHint: {
+    fontSize: 10.5,
+    textAlign: 'right',
+    fontVariant: ['tabular-nums'],
+  },
+  customColorsState: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   pressed: {
     opacity: 0.72,

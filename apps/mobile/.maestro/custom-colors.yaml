@@ -1,0 +1,100 @@
+appId: com.rewiaty.app
+---
+# F32 — ألوان مخصّصة: قارئ مش مرتاح لأي مظهر جاهز، بيعمل لون ورق وحبر بنفسه وبيشوف
+# نسبة التباين (WCAG) بتتحدّث مع كل لمسة قبل ما يطبّق.
+- launchApp
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 20000
+- waitForAnimationToEnd
+# Open the bars only if they are closed (they open on their own with a hint on first launch).
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-settings-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-settings-button"
+    timeout: 5000
+- tapOn:
+    id: "reader-settings-button"
+- tapOn:
+    id: "settings-tab-theme"
+# The theme grid scrolls; bring the custom-colours entry into view before tapping it.
+- scrollUntilVisible:
+    element:
+      id: "open-custom-colors-btn"
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: "open-custom-colors-btn"
+- extendedWaitUntil:
+    visible:
+      id: "custom-colors-modal"
+    timeout: 5000
+# The picker opens on the pair the page is using now, with a live WCAG badge.
+- assertVisible:
+    id: "wcag-contrast-badge"
+- assertVisible:
+    id: "custom-preview-text"
+- takeScreenshot: "01-custom-colors-opened"
+# Pick ليل (dark paper) then أبيض ورق (pale ink) — the badge must recompute on each tap.
+- tapOn:
+    id: "custom-bg-101820"
+- scrollUntilVisible:
+    element:
+      id: "custom-text-f5f0e6"
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: "custom-text-f5f0e6"
+# Both colours picked: the badge recalculates to AAA. Scroll back to it (the swatches scrolled away).
+- scrollUntilVisible:
+    element:
+      id: "wcag-contrast-badge"
+    direction: UP
+    timeout: 10000
+- extendedWaitUntil:
+    visible: "ممتاز AAA"
+    timeout: 5000
+- takeScreenshot: "02-custom-colors-night-preview"
+# Apply: the page (and the settings sheet behind it) is repainted with the picked pair.
+- tapOn:
+    id: "custom-colors-apply-btn"
+- extendedWaitUntil:
+    notVisible:
+      id: "custom-colors-modal"
+    timeout: 5000
+- waitForAnimationToEnd
+- assertVisible:
+    text: ".*#101820.*"
+- takeScreenshot: "03-custom-colors-applied"
+# Reopen: «إلغاء التخصيص» hands the page back to the preset, and the preset option becomes selected.
+- tapOn:
+    id: "open-custom-colors-btn"
+- extendedWaitUntil:
+    visible:
+      id: "custom-colors-modal"
+    timeout: 5000
+- tapOn:
+    id: "custom-colors-disable-btn"
+- extendedWaitUntil:
+    notVisible:
+      id: "custom-colors-modal"
+    timeout: 5000
+- waitForAnimationToEnd
+- takeScreenshot: "04-custom-colors-disabled"
+- tapOn:
+    id: "theme-option-warraq"
+- tapOn:
+    point: "50%,15%"
+- waitForAnimationToEnd
+- takeScreenshot: "05-reader-preset-restored"

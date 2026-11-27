@@ -12,6 +12,7 @@ import Svg, { Circle, Path } from 'react-native-svg';
 
 import { TYPOGRAPHY } from '@/theme/layout';
 import { getAppThemeTokens, THEME_OPTIONS } from '@/theme/reader-theme';
+import type { AppThemeTokens } from '@/theme/types';
 import type { ReadingMode, ThemeId } from '@/types/reader';
 import type {
   ChapterSegment,
@@ -40,6 +41,15 @@ export type ReaderHudProps = {
   isTabletLandscape?: boolean;
   dir: 'rtl' | 'ltr';
   theme?: ThemeId;
+  /**
+   * Fully resolved chrome tokens. When a custom pair is enabled the screen passes
+   * `buildCustomAppTheme(...)` here so the HUD paints in the reader's own colours instead of the
+   * preset's — the bars sit directly on the custom page, so a cream HUD over a dark custom page
+   * would look like a bug.
+   */
+  tokens?: AppThemeTokens;
+  /** A custom pair is painting: no preset in the quick menu may look active. */
+  customColorsActive?: boolean;
   /** F29 — weighted chapter timeline data, forwarded to the page scrubber. */
   timelineChapters?: readonly TimelineChapterInput[];
   timelineSegments?: readonly ChapterSegment[];
@@ -67,6 +77,8 @@ export function ReaderHud({
   isTabletLandscape = false,
   dir,
   theme,
+  tokens,
+  customColorsActive = false,
   timelineChapters,
   timelineSegments,
   timelineMarkers,
@@ -78,7 +90,7 @@ export function ReaderHud({
   onBarsLayout,
 }: ReaderHudProps) {
   const insets = useSafeAreaInsets();
-  const palette = getAppThemeTokens(theme);
+  const palette = tokens ?? getAppThemeTokens(theme);
   const reducedMotion = useReducedMotion();
   const progress = useSharedValue(visible ? 1 : 0);
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
@@ -352,7 +364,9 @@ export function ReaderHud({
             ]}
           >
             {THEME_OPTIONS.map((opt) => {
-              const active = palette.id === opt.id;
+              // With a custom pair painting, none of these presets is the active surface — showing
+              // a tick on Warraq would claim a theme the page is not using.
+              const active = !customColorsActive && palette.id === opt.id;
               return (
                 <Pressable
                   key={opt.id}
@@ -453,6 +467,7 @@ export function ReaderHud({
             pageCount={pageCount}
             dir={dir}
             theme={theme}
+            tokens={tokens}
             onSeekPage={onSeekPage}
             timelineChapters={timelineChapters}
             timelineSegments={timelineSegments}

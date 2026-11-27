@@ -106,6 +106,12 @@ flows:
     target: release-apk
     run: "bash scripts/ci-flows.sh mission-control-byok"
     artifact: ".factory/evidence/latest/apk/app.apk"
+  - id: custom-colors
+    who: "قارئ مش مرتاح لأي مظهر جاهز"
+    steps: "يفتح الرواية ← الإعدادات ← المظهر ← «ألوان مخصّصة» ← يختار لون الورق والحبر ← نسبة التباين (WCAG) بتتحدّث مع كل لمسة وبتقول AAA ← تطبيق ← الصفحة والورقة اتغيّرت للون اللي اختاره ← يفتح تاني ويضغط «إلغاء التخصيص» ← المظهر الجاهز رجع"
+    target: release-apk
+    run: "bash scripts/ci-flows.sh custom-colors"
+    artifact: ".factory/evidence/latest/apk/app.apk"
   - id: jump-back
     who: "قارئ قفز من الفهرس لفصل تاني وضاع مكانه"
     steps: "يفتح الرواية ← يفتح الفهرس ← يختار الفصل التالت ← الزرار العائم «ارجع لصفحة N» بيظهر ← يدوسه ← يرجع لنفس صفحة 1 اللي كان فيها والزرار يختفي"

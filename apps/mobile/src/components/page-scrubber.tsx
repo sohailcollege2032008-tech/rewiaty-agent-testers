@@ -11,6 +11,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { TYPOGRAPHY } from '@/theme/layout';
 import { getAppThemeTokens } from '@/theme/reader-theme';
+import type { AppThemeTokens } from '@/theme/types';
 import { HIGHLIGHT_COLORS, type ThemeId } from '@/types/reader';
 import {
   buildChapterTimeline,
@@ -35,6 +36,8 @@ export type PageScrubberProps = {
   pageCount: number;
   dir: 'rtl' | 'ltr';
   theme?: ThemeId;
+  /** Resolved chrome tokens (custom pair), so the scrubber matches the HUD above it. */
+  tokens?: AppThemeTokens;
   onSeekPage: (targetPage: number) => void;
   /**
    * F29 — optional chapter timeline. Callers that omit these get exactly the pre-F29 scrubber.
@@ -134,12 +137,13 @@ export function PageScrubber({
   pageCount,
   dir,
   theme,
+  tokens,
   onSeekPage,
   timelineChapters,
   timelineSegments,
   timelineMarkers,
 }: PageScrubberProps) {
-  const palette = getAppThemeTokens(theme);
+  const palette = tokens ?? getAppThemeTokens(theme);
   const isRtl = dir === 'rtl';
   const [previewPage, setPreviewPage] = useState<number | null>(null);
   const lingerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

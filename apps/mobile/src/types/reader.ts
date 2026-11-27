@@ -1,7 +1,8 @@
 import type { Anchor } from '@rewiaty/book-format';
 
-export { HIGHLIGHT_COLORS } from '../../../../packages/reader-engine/src/types';
+export { HIGHLIGHT_COLORS, DEFAULT_CUSTOM_COLORS } from '../../../../packages/reader-engine/src/types';
 export type {
+  CustomReaderColors,
   EngineHighlight,
   HighlightColor,
   HighlightColorMeta,

@@ -3,8 +3,14 @@ import { escapeHtml } from '@rewiaty/book-format';
 import {
   SPREAD_GUTTER_PX,
   SPREAD_MIN_VIEWPORT_PX,
+  WCAG_AA_MIN_RATIO,
+  buildCustomThemeTokens,
+  contrastRatioHex,
+  isDarkHexColor,
   measureChToPx,
+  normalizeHexColor,
   spineTokensFor,
+  spineTokensForColors,
 } from './spread.js';
 import { hitTestHighlightAtPoint, renderEngineHighlights } from './highlights.js';
 import {
@@ -2187,8 +2193,24 @@ export class Paginator {
   }
 
   private applyStylesAndMeasureViewport(): void {
-    const theme = THEMES[this.settings.theme] ?? THEMES.warraq;
-    const spine = spineTokensFor(this.settings.theme);
+    // F32 — ألوان مخصّصة. A custom pair wins over the preset theme, but only when it is enabled,
+    // both colours are real hex *and* the pair clears WCAG AA: the engine is the last line of
+    // defence, so a corrupted or unreadable stored value degrades to the chosen preset instead of
+    // painting a page whose ink disappears. `enabled` is compared strictly, not truthily — a
+    // mangled `"yes"` from an old build must not paint.
+    const customEnabled = this.settings.customColors?.enabled === true;
+    const customBg = customEnabled ? normalizeHexColor(this.settings.customColors!.bg) : null;
+    const customText = customEnabled ? normalizeHexColor(this.settings.customColors!.text) : null;
+    const customTokens =
+      customBg && customText && contrastRatioHex(customText, customBg) >= WCAG_AA_MIN_RATIO
+        ? buildCustomThemeTokens(customBg, customText)
+        : null;
+    const theme = customTokens ?? (THEMES[this.settings.theme] ?? THEMES.warraq);
+    // The spine follows the *accepted* pair, not just a valid background: a readable background
+    // with a broken ink falls back to the preset page, so the fold must fall back with it.
+    const spine = customTokens
+      ? spineTokensForColors(customTokens.bg)
+      : spineTokensFor(this.settings.theme);
     const rootStyle = document.documentElement.style;
 
     const maxCh = Math.max(45, Math.min(85, Math.round(this.settings.maxReadingWidth)));
@@ -2271,9 +2293,16 @@ export class Paginator {
     const bookLang = this.book?.meta.lang?.trim() || (this.dir === 'rtl' ? 'ar' : 'en');
     document.documentElement.setAttribute('dir', this.dir);
     document.documentElement.setAttribute('lang', bookLang);
-    // Themes other than the light ones tone images down so a white illustration does not glare on
-    // a dark page; the attribute lets the stylesheet target them without guessing from colours.
-    document.documentElement.setAttribute('data-theme', this.settings.theme);
+    // Preset dark themes tone images down so a white illustration does not glare on a dark page
+    // (`styles.css` targets `data-theme='burnt-paper'`). A custom page must NOT borrow that rule:
+    // its background can be any colour, and a live CSS `filter` on every image would dim artwork on
+    // a page the reader deliberately chose. Custom colours get their own theme key instead, and
+    // `data-custom-colors` still tells tests/app code that a pair is painting.
+    document.documentElement.setAttribute(
+      'data-theme',
+      customTokens ? 'custom' : this.settings.theme,
+    );
+    document.documentElement.setAttribute('data-custom-colors', customTokens ? 'true' : 'false');
     this.rootEl.setAttribute('dir', this.dir);
     this.rootEl.classList.toggle('spread-mode', spread);
     // F22: the root class drives the whole scroll layout in CSS, so it has to follow the
@@ -2296,7 +2325,11 @@ export class Paginator {
     rootStyle.setProperty('--popover-bg', theme.popoverBg);
     rootStyle.setProperty('--popover-border', theme.popoverBorder);
 
-    const isDarkTheme = this.settings.theme === 'burnt-paper' || this.settings.theme === 'oled-crimson';
+    // Highlight fills follow the *accepted* pair's paper luminance: a light custom page keeps the
+    // light fills even if the preset behind it is dark, and vice versa.
+    const isDarkTheme = customTokens
+      ? isDarkHexColor(customTokens.bg)
+      : this.settings.theme === 'burnt-paper' || this.settings.theme === 'oled-crimson';
     for (const meta of HIGHLIGHT_COLORS) {
       rootStyle.setProperty(`--hl-${meta.id}`, isDarkTheme ? meta.fillDark : meta.fillLight);
     }
