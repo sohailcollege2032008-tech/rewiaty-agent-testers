@@ -51,6 +51,12 @@ jobs:
             ~/.gradle/wrapper
           key: gradle-${{ hashFiles('app/package-lock.json') }}
 
+      - name: Cache pinned arwiktionary dump (F49)
+        uses: actions/cache@v4
+        with:
+          path: app/.cache/arwiktionary
+          key: arwiktionary-${{ hashFiles('app/scripts/dictionary-meta.json') }}
+
       - name: Build release APK
         working-directory: app
         run: bash scripts/build-apk.sh
@@ -101,6 +107,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         env:
           FLOW: ${{ inputs.flow }}
+          DICT_REQUIRED: "1"
         with:
           api-level: 34
           # Why (tech): the google_apis image boots Pixel Launcher + GMS, which ANR on the CPU-only runner and

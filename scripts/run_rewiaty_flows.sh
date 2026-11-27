@@ -94,8 +94,9 @@ run_flow() {
   adb shell screenrecord --bit-rate 2000000 --time-limit 180 "/sdcard/rec_${flow_id}.mp4" >/dev/null 2>&1 &
   rec_pid=$!
 
-  echo "==> Running Maestro flow: $flow_id"
-  maestro test --format junit --output "$junit_file" --debug-output "$debug_dir" "$flow_file" \
+  echo "==> Running Maestro flow: $flow_id (DICT_REQUIRED=${DICT_REQUIRED:-0})"
+  maestro test --format junit --output "$junit_file" --debug-output "$debug_dir" \
+    -e "DICT_REQUIRED=${DICT_REQUIRED:-0}" "$flow_file" \
     > "results/logs/${flow_id}-maestro.log" 2>&1 || flow_rc=$?
 
   adb shell pkill -INT screenrecord >/dev/null 2>&1 || true
