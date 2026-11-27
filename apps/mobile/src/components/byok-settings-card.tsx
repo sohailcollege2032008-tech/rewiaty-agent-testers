@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import {
+  BYOK_CUSTOM_BASE_URL_REQUIRED_ERROR_AR,
   BYOK_MODELS_BADGE_AR,
   BYOK_PROVIDERS,
   type ByokConfig,
@@ -15,6 +16,8 @@ import {
   getByokModel,
   getByokModelsForProvider,
   getByokStatusLabel,
+  isLegacyCustomModelId,
+  isValidCustomModelId,
   loadByokConfig,
   saveByokKey,
   saveByokPreferences,
@@ -85,6 +88,8 @@ export function ByokSettingsCard({
 
   const [config, setConfig] = useState<ByokConfig | null>(null);
   const [draftKey, setDraftKey] = useState('');
+  const [draftBaseUrl, setDraftBaseUrl] = useState('');
+  const [draftModelId, setDraftModelId] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -94,6 +99,10 @@ export function ByokSettingsCard({
   const commit = useCallback(
     (next: ByokConfig) => {
       setConfig(next);
+      setDraftBaseUrl(next.customBaseUrl ?? '');
+      // اسم الموديل المخصّص هو اسم حقيقي بيكتبه المستخدم. الـ placeholder القديم
+      // مايتحطش في الحقل (كان هيتبعت غلط) — بنسيبه فاضي وبنعرض رسالة تحديث.
+      setDraftModelId(isValidCustomModelId(next.modelId) ? next.modelId : '');
       onConfigChange?.(next);
     },
     [onConfigChange],
@@ -103,7 +112,11 @@ export function ByokSettingsCard({
     let cancelled = false;
     void loadByokConfig(db, secureStore)
       .then((loaded) => {
-        if (!cancelled) setConfig(loaded);
+        if (!cancelled) {
+          setConfig(loaded);
+          setDraftBaseUrl(loaded.customBaseUrl ?? '');
+          setDraftModelId(isValidCustomModelId(loaded.modelId) ? loaded.modelId : '');
+        }
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(toSafeByokErrorMessage(err));
@@ -120,6 +133,9 @@ export function ByokSettingsCard({
     [provider],
   );
   const hasKey = config?.hasKey === true;
+  const trimmedBaseUrl = draftBaseUrl.trim();
+  const trimmedModelId = draftModelId.trim();
+  const legacyCustomModel = provider === 'custom' && isLegacyCustomModelId(config?.modelId);
 
   const applyPreferences = useCallback(
     async (partial: {
@@ -135,8 +151,16 @@ export function ByokSettingsCard({
       setError('');
       setFeedback('');
       try {
+        // رابط السيرفر يتخزن مع المزوّد المخصّص بس ولو المستخدم كتبه فعلاً؛
+        // الفاضي مش خطأ، والغلط بيترجع برسالة عربية هادية.
         const next = await saveByokPreferences(
-          { ...partial, now: now ? now() : undefined },
+          {
+            ...partial,
+            ...(provider === 'custom' && trimmedBaseUrl
+              ? { customBaseUrl: trimmedBaseUrl }
+              : {}),
+            now: now ? now() : undefined,
+          },
           db,
           secureStore,
         );
@@ -147,12 +171,42 @@ export function ByokSettingsCard({
         setBusy(false);
       }
     },
-    [commit, db, now, secureStore],
+    [commit, db, now, provider, secureStore, trimmedBaseUrl],
   );
 
   const handleSave = useCallback(async () => {
     const trimmed = draftKey.trim();
     if (!trimmed) {
+      // If a custom key is already stored, allow updating customBaseUrl/modelId via the same
+      // Save button without forcing the user to re-type their key, refusing empty base_url.
+      if (hasKey && provider === 'custom') {
+        if (!trimmedBaseUrl) {
+          setError(BYOK_CUSTOM_BASE_URL_REQUIRED_ERROR_AR);
+          return;
+        }
+        setBusy(true);
+        setError('');
+        setFeedback('');
+        try {
+          const updated = await saveByokPreferences(
+            {
+              provider: 'custom',
+              modelId: trimmedModelId,
+              customBaseUrl: trimmedBaseUrl,
+              now: now ? now() : undefined,
+            },
+            db,
+            secureStore,
+          );
+          commit(updated);
+          setFeedback(BYOK_SAVED_MESSAGE_AR);
+        } catch (err: unknown) {
+          setError(toSafeByokErrorMessage(err));
+        } finally {
+          setBusy(false);
+        }
+        return;
+      }
       setError('اكتب مفتاح الـ API الأول.');
       return;
     }
@@ -164,8 +218,11 @@ export function ByokSettingsCard({
         {
           apiKey: trimmed,
           provider,
-          modelId: config?.modelId,
+          // المزوّد المخصّص بياخد اسم الموديل الحقيقي اللي المستخدم كتبه، مش placeholder.
+          modelId: provider === 'custom' ? trimmedModelId : config?.modelId,
           storageMode,
+          // للمزوّد المخصّص: رابط HTTPS إلزامي. الفاضي بيترفض برسالة واضحة جوه الـ store.
+          customBaseUrl: provider === 'custom' ? (trimmedBaseUrl || null) : undefined,
           now: now ? now() : undefined,
         },
         db,
@@ -180,7 +237,19 @@ export function ByokSettingsCard({
     } finally {
       setBusy(false);
     }
-  }, [commit, config?.modelId, db, draftKey, now, provider, secureStore, storageMode]);
+  }, [
+    commit,
+    config?.modelId,
+    db,
+    draftKey,
+    hasKey,
+    now,
+    provider,
+    secureStore,
+    storageMode,
+    trimmedBaseUrl,
+    trimmedModelId,
+  ]);
 
   const handleDelete = useCallback(async () => {
     setBusy(true);
@@ -295,17 +364,18 @@ export function ByokSettingsCard({
         </View>
       </View>
 
-      <View style={styles.section}>
-        <Text
-          style={[
-            styles.sectionTitle,
-            { color: palette.text, fontFamily: TYPOGRAPHY.uiFont, writingDirection: isRtl ? 'rtl' : 'ltr' },
-          ]}
-        >
-          الموديل
-        </Text>
-        <View style={styles.modelList}>
-          {models.map((model) => {
+      {models.length > 0 ? (
+        <View style={styles.section}>
+          <Text
+            style={[
+              styles.sectionTitle,
+              { color: palette.text, fontFamily: TYPOGRAPHY.uiFont, writingDirection: isRtl ? 'rtl' : 'ltr' },
+            ]}
+          >
+            الموديل
+          </Text>
+          <View style={styles.modelList}>
+            {models.map((model) => {
             const selected = model.id === config?.modelId;
             return (
               <Pressable
@@ -343,6 +413,140 @@ export function ByokSettingsCard({
           })}
         </View>
       </View>
+      ) : null}
+
+      {provider === 'custom' ? (
+        <View style={styles.section}>
+          <Text
+            style={[
+              styles.sectionTitle,
+              {
+                color: palette.text,
+                fontFamily: TYPOGRAPHY.uiFont,
+                writingDirection: isRtl ? 'rtl' : 'ltr',
+              },
+            ]}
+          >
+            اسم الموديل
+          </Text>
+          <View
+            style={[
+              styles.inputRow,
+              { borderColor: palette.border, backgroundColor: palette.surfaceElevated },
+            ]}
+          >
+            <TextInput
+              testID="byok-custom-model-input"
+              accessibilityLabel="اسم موديل المزوّد المخصّص"
+              value={draftModelId}
+              onChangeText={setDraftModelId}
+              placeholder="deepseek-chat"
+              placeholderTextColor={palette.muted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              spellCheck={false}
+              editable={!busy}
+              style={[styles.input, { color: palette.text, fontFamily: TYPOGRAPHY.uiFont }]}
+            />
+          </View>
+          <Text
+            style={[
+              styles.hint,
+              {
+                color: palette.muted,
+                fontFamily: TYPOGRAPHY.uiFont,
+                writingDirection: isRtl ? 'rtl' : 'ltr',
+              },
+            ]}
+          >
+            اكتب اسم الموديل الحقيقي من مزوّدك — مثال: deepseek-chat أو meta-llama/Llama-3.1-70B-Instruct
+          </Text>
+          {legacyCustomModel ? (
+            <Text
+              testID="byok-custom-model-legacy-notice"
+              style={[
+                styles.hint,
+                {
+                  color: palette.danger,
+                  fontFamily: TYPOGRAPHY.uiFont,
+                  writingDirection: isRtl ? 'rtl' : 'ltr',
+                },
+              ]}
+            >
+              الموديل المحفوظ قديم («custom-vision-model») ومش اسم موديل حقيقي. اكتب اسم الموديل
+              من مزوّدك واحفظ تاني.
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
+      {provider === 'custom' ? (
+        <View style={styles.section}>
+          <Text
+            style={[
+              styles.sectionTitle,
+              {
+                color: palette.text,
+                fontFamily: TYPOGRAPHY.uiFont,
+                writingDirection: isRtl ? 'rtl' : 'ltr',
+              },
+            ]}
+          >
+            رابط السيرفر (base_url)
+          </Text>
+          <View
+            style={[
+              styles.inputRow,
+              { borderColor: palette.border, backgroundColor: palette.surfaceElevated },
+            ]}
+          >
+            <TextInput
+              testID="byok-custom-base-url-input"
+              accessibilityLabel="رابط سيرفر المزوّد المخصّص"
+              value={draftBaseUrl}
+              onChangeText={setDraftBaseUrl}
+              placeholder="https://api.example.com/v1"
+              placeholderTextColor={palette.muted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              spellCheck={false}
+              keyboardType="url"
+              editable={!busy}
+              style={[styles.input, { color: palette.text, fontFamily: TYPOGRAPHY.uiFont }]}
+            />
+            {draftBaseUrl.length > 0 && !busy ? (
+              <Pressable
+                testID="byok-custom-base-url-clear"
+                accessibilityRole="button"
+                accessibilityLabel="مسح رابط السيرفر"
+                onPress={() => setDraftBaseUrl('')}
+                style={styles.visibilityButton}
+              >
+                <Text
+                  style={[
+                    styles.visibilityText,
+                    { color: palette.accent, fontFamily: TYPOGRAPHY.uiFont },
+                  ]}
+                >
+                  مسح
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+          <Text
+            style={[
+              styles.hint,
+              {
+                color: palette.muted,
+                fontFamily: TYPOGRAPHY.uiFont,
+                writingDirection: isRtl ? 'rtl' : 'ltr',
+              },
+            ]}
+          >
+            لازم يبدأ بـ https:// — مثال: https://api.example.com/v1
+          </Text>
+        </View>
+      ) : null}
 
       <View style={styles.section}>
         <Text

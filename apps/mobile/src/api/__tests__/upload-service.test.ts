@@ -7,12 +7,16 @@
  */
 import {
   CONVERSION_NEEDS_BYOK_AR,
+  CUSTOM_BASE_URL_NEEDED_AR,
+  createChapterAssetDownloader,
   createRewiatyApiUploadService,
+  isSafeChapterAssetName,
   SAMPLE_NEEDS_BYOK_AR,
   toProgressEvent,
 } from '@/api/upload-service';
 import type {
   BookArtDirection,
+  ChapterBundleAsset,
   CostEstimateResponse,
   JobCreateRequest,
   OnboardingSampleResponse,
@@ -21,21 +25,51 @@ import type {
 import type { PickedPdf } from '@/types/upload-contract';
 import { subscribeToJobEvents, type SubscribeJobEventsOptions } from '@/api/sse';
 import { ProgressiveBookImporter } from '@/api/progressive-import';
+import {
+  BYOK_CUSTOM_MODEL_LEGACY_ERROR_AR,
+  LEGACY_CUSTOM_MODEL_ID,
+  loadByokConfig,
+  readByokSecret,
+} from '@/storage/byok-store';
 
 jest.mock('expo-document-picker', () => ({
   getDocumentAsync: jest.fn(),
 }));
 
-jest.mock('expo-file-system', () => ({
-  File: class MockFile {
-    uri: string;
-    constructor(uri: string) {
-      this.uri = uri;
+jest.mock('expo-file-system', () => {
+  const join = (parts: Array<string | { uri: string }>): string =>
+    parts.map((part) => (typeof part === 'string' ? part : part.uri)).join('/');
+  const writes: Array<{ uri: string; bytes: Uint8Array }> = [];
+
+  class MockDirectory {
+    readonly uri: string;
+    constructor(...parts: Array<string | { uri: string }>) {
+      this.uri = join(parts);
+    }
+    create(): void {}
+  }
+
+  class MockFile {
+    readonly uri: string;
+    constructor(...parts: Array<string | { uri: string }>) {
+      this.uri = join(parts);
     }
     bytes(): Promise<Uint8Array> {
       return Promise.resolve(new Uint8Array([1, 2, 3]));
     }
-  },
+    async write(bytes: Uint8Array): Promise<void> {
+      writes.push({ uri: this.uri, bytes });
+    }
+  }
+
+  return { Directory: MockDirectory, File: MockFile, __mockWrites: writes };
+});
+
+jest.mock('@/storage/bundle', () => ({
+  getBookDir: jest.fn((bookId: string) => ({
+    uri: `file:///documents/books/${bookId}`,
+    create: jest.fn(),
+  })),
 }));
 
 jest.mock('@/storage/byok-store', () => {
@@ -58,6 +92,35 @@ jest.mock('@/api/progressive-import', () => ({
 
 const subscribeMock = subscribeToJobEvents as unknown as jest.Mock;
 const importerMock = ProgressiveBookImporter as unknown as jest.Mock;
+const loadByokConfigMock = loadByokConfig as unknown as jest.Mock;
+const readByokSecretMock = readByokSecret as unknown as jest.Mock;
+
+const fsMock = jest.requireMock('expo-file-system') as {
+  __mockWrites: Array<{ uri: string; bytes: Uint8Array }>;
+};
+const fetchMock = jest.fn();
+
+function okResponse(bytes: number[] = [9, 8, 7]): {
+  ok: boolean;
+  status: number;
+  arrayBuffer: () => Promise<ArrayBuffer>;
+} {
+  return {
+    ok: true,
+    status: 200,
+    arrayBuffer: async () => Uint8Array.from(bytes).buffer,
+  };
+}
+
+function chapterAsset(overrides: Partial<ChapterBundleAsset> = {}): ChapterBundleAsset {
+  return {
+    name: 'fig-001.webp',
+    url: '/v1/books/book_1/assets/fig-001.webp',
+    width: 900,
+    height: 1200,
+    ...overrides,
+  };
+}
 
 const PDF: PickedPdf = {
   uri: 'file:///cache/riwaya.pdf',
@@ -140,6 +203,21 @@ describe('createRewiatyApiUploadService', () => {
     client = makeClient();
     readPdfBytes.mockResolvedValue(new Uint8Array([1, 2, 3]));
     resolveByok.mockResolvedValue(BYOK);
+    fsMock.__mockWrites.length = 0;
+    fetchMock.mockReset();
+    (global as unknown as { fetch: unknown }).fetch = fetchMock;
+
+    // Defaults for the real `resolveByokFromStorage` path (used by the custom-provider tests).
+    loadByokConfigMock.mockResolvedValue({
+      provider: 'openai',
+      modelId: 'gpt-4.1',
+      storageMode: 'ephemeral',
+      keyLast4: '1234',
+      hasKey: true,
+      updatedAt: 1,
+      customBaseUrl: null,
+    });
+    readByokSecretMock.mockResolvedValue('test-openai-key');
   });
 
   function build(overrides: Partial<Parameters<typeof createRewiatyApiUploadService>[0]> = {}) {
@@ -383,7 +461,10 @@ describe('createRewiatyApiUploadService', () => {
     await service.ensureChapterImported!('book_1', 'ch_02');
 
     expect(importerMock).toHaveBeenCalledTimes(1);
-    expect(importerMock).toHaveBeenCalledWith(client, 'book_1', db);
+    // The importer must receive a downloader, otherwise chapter images never reach disk.
+    expect(importerMock).toHaveBeenCalledWith(client, 'book_1', db, {
+      downloadAsset: expect.any(Function),
+    });
     expect(importReadyChapters).toHaveBeenNthCalledWith(1, ['ch_01']);
     expect(importReadyChapters).toHaveBeenNthCalledWith(2, ['ch_02']);
   });
@@ -442,7 +523,8 @@ describe('createRewiatyApiUploadService', () => {
     });
   });
 
-  it('throws when the initial chapter import persists no bundle on disk', async () => {    const importReadyChapters = jest.fn(async () => ({
+  it('throws when the initial chapter import persists no bundle on disk', async () => {
+    const importReadyChapters = jest.fn(async () => ({
       importedCount: 0,
       skippedCount: 1,
       totalChapters: 3,
@@ -493,6 +575,183 @@ describe('createRewiatyApiUploadService', () => {
       byok: BYOK,
       include_style_previews: true,
     });
+  });
+
+  it('passes an injected downloadAsset through to ProgressiveBookImporter', async () => {
+    const importReadyChapters = jest.fn(async () => ({
+      importedCount: 1,
+      skippedCount: 0,
+      totalChapters: 1,
+      isComplete: true,
+      bookRecord: { id: 'book_1' } as never,
+    }));
+    importerMock.mockImplementation(() => ({ importReadyChapters }));
+    const downloadAsset = jest.fn(async () => undefined);
+    const service = build({ downloadAsset });
+
+    await service.ensureChapterImported!('book_1', 'ch_01');
+
+    expect(importerMock).toHaveBeenCalledWith(client, 'book_1', undefined, { downloadAsset });
+  });
+
+  it('maps the custom provider to openai_compatible with its https base_url and real model', async () => {
+    loadByokConfigMock.mockResolvedValue({
+      provider: 'custom',
+      modelId: 'deepseek-chat',
+      storageMode: 'ephemeral',
+      keyLast4: '3456',
+      hasKey: true,
+      updatedAt: 1,
+      customBaseUrl: 'https://api.my-gateway.example/v1',
+    });
+    readByokSecretMock.mockResolvedValue('test-custom-key');
+
+    // No `resolveByok` override: exercise the real storage resolver.
+    const service = createRewiatyApiUploadService({
+      client: client as never,
+      readPdfBytes,
+    });
+    await service.startConversion({
+      book_id: 'book_1',
+      upload_id: 'up_1',
+      ai_level: 'essential',
+    });
+
+    expect(client.createJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        byok: {
+          mode: 'ephemeral',
+          provider: 'openai_compatible',
+          api_key: 'test-custom-key',
+          base_url: 'https://api.my-gateway.example/v1',
+          model: 'deepseek-chat',
+        },
+      }),
+    );
+  });
+
+  it('refuses to send the legacy custom placeholder as a model, with a clear message', async () => {
+    loadByokConfigMock.mockResolvedValue({
+      provider: 'custom',
+      modelId: LEGACY_CUSTOM_MODEL_ID,
+      storageMode: 'ephemeral',
+      keyLast4: '3456',
+      hasKey: true,
+      updatedAt: 1,
+      customBaseUrl: 'https://api.my-gateway.example/v1',
+    });
+    readByokSecretMock.mockResolvedValue('test-custom-key');
+
+    const service = createRewiatyApiUploadService({
+      client: client as never,
+      readPdfBytes,
+    });
+
+    await expect(
+      service.startConversion({ book_id: 'book_1', upload_id: 'up_1', ai_level: 'essential' }),
+    ).rejects.toThrow(BYOK_CUSTOM_MODEL_LEGACY_ERROR_AR);
+    expect(client.createJob).not.toHaveBeenCalled();
+  });
+
+  it('refuses a custom provider whose base_url is missing or not https', async () => {
+    for (const customBaseUrl of [null, 'http://insecure.example/v1', 'api.example/v1']) {
+      loadByokConfigMock.mockResolvedValue({
+        provider: 'custom',
+        modelId: 'custom-vision-model',
+        storageMode: 'ephemeral',
+        keyLast4: '3456',
+        hasKey: true,
+        updatedAt: 1,
+        customBaseUrl,
+      });
+      readByokSecretMock.mockResolvedValue('test-custom-key');
+      client.createJob.mockClear();
+
+      const service = createRewiatyApiUploadService({
+        client: client as never,
+        readPdfBytes,
+      });
+
+      await expect(
+        service.startConversion({ book_id: 'book_1', upload_id: 'up_1', ai_level: 'essential' }),
+      ).rejects.toThrow(CUSTOM_BASE_URL_NEEDED_AR);
+      expect(client.createJob).not.toHaveBeenCalled();
+    }
+  });
+});
+
+describe('createChapterAssetDownloader', () => {
+  let client: ReturnType<typeof makeClient>;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    client = makeClient();
+    fsMock.__mockWrites.length = 0;
+    fetchMock.mockReset();
+    (global as unknown as { fetch: unknown }).fetch = fetchMock;
+  });
+
+  it.each([
+    '../secret.webp',
+    'sub/img.webp',
+    'a\\b.webp',
+    '..\\evil.webp',
+    '.',
+    '..',
+    '',
+  ])('rejects the unsafe asset name %p before touching the filesystem', async (name) => {
+    expect(isSafeChapterAssetName(name)).toBe(false);
+
+    const download = createChapterAssetDownloader(client as never);
+    await expect(download(chapterAsset({ name }), 'book_1')).rejects.toThrow(/غير صالح/);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fsMock.__mockWrites).toHaveLength(0);
+  });
+
+  it('accepts plain flat filenames', () => {
+    for (const name of ['fig-001.webp', 'cover.png', 'a.b.c.jpeg', '_x_.webp']) {
+      expect(isSafeChapterAssetName(name)).toBe(true);
+    }
+    expect(isSafeChapterAssetName(42)).toBe(false);
+    expect(isSafeChapterAssetName(null)).toBe(false);
+  });
+
+  it('writes a relative API asset into books/<book_id>/assets/<name> with Authorization', async () => {
+    fetchMock.mockResolvedValueOnce(okResponse([1, 2, 3, 4]));
+
+    const download = createChapterAssetDownloader(client as never);
+    await download(chapterAsset(), 'book_1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.rewiaty.example/v1/books/book_1/assets/fig-001.webp',
+      expect.objectContaining({ method: 'GET', headers: { Authorization: 'Bearer token_1' } }),
+    );
+    expect(fsMock.__mockWrites).toHaveLength(1);
+    expect(fsMock.__mockWrites[0]!.uri).toBe(
+      'file:///documents/books/book_1/assets/fig-001.webp',
+    );
+    expect(Array.from(fsMock.__mockWrites[0]!.bytes)).toEqual([1, 2, 3, 4]);
+  });
+
+  it('never sends the app JWT to an absolute presigned https URL', async () => {
+    fetchMock.mockResolvedValueOnce(okResponse([7, 7]));
+
+    const download = createChapterAssetDownloader(client as never);
+    const presigned = 'https://s3.example/presigned/fig-001.webp?X-Amz-Signature=abc';
+    await download(chapterAsset({ url: presigned }), 'book_1');
+
+    const [url, options] = fetchMock.mock.calls[0] as [string, { headers?: Record<string, string> }];
+    expect(url).toBe(presigned);
+    expect(options.headers).toBeUndefined();
+    expect(JSON.stringify(options)).not.toContain('token_1');
+  });
+
+  it('throws when the asset response is not ok and writes nothing', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 404, arrayBuffer: async () => new ArrayBuffer(0) });
+
+    const download = createChapterAssetDownloader(client as never);
+    await expect(download(chapterAsset(), 'book_1')).rejects.toThrow('404');
+    expect(fsMock.__mockWrites).toHaveLength(0);
   });
 });
 

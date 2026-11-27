@@ -20,13 +20,16 @@
  */
 
 import * as DocumentPicker from 'expo-document-picker';
-import { File } from 'expo-file-system';
+import { Directory, File } from 'expo-file-system';
 
 import {
   loadByokConfig,
+  normalizeCustomModelId,
   readByokSecret,
+  sanitizeCustomBaseUrl,
   type ByokProvider,
 } from '@/storage/byok-store';
+import { getBookDir } from '@/storage/bundle';
 import type { DatabaseAdapter } from '@/storage/database';
 import type {
   AiLevel,
@@ -43,9 +46,15 @@ import type {
 } from '@/types/upload-contract';
 
 import type { RewiatyApiClient } from './client';
-import { ProgressiveBookImporter } from './progressive-import';
+import { ProgressiveBookImporter, type ChapterAssetDownloader } from './progressive-import';
 import { subscribeToJobEvents } from './sse';
-import type { JobCreateRequest, JobSseEvent, JobStatus, OnboardingSampleRequest } from './types';
+import type {
+  ChapterBundleAsset,
+  JobCreateRequest,
+  JobSseEvent,
+  JobStatus,
+  OnboardingSampleRequest,
+} from './types';
 
 /** The picked PDF, named as the brief calls it. Same shape as the contract's `PickedPdf`. */
 export type PickedPdfFile = PickedPdf;
@@ -103,6 +112,11 @@ export type CreateRewiatyApiUploadServiceOptions = {
   readPdfBytes?: (uri: string) => Promise<Uint8Array>;
   /** Injectable for tests; defaults to F40 storage (secure-store key + kv config). */
   resolveByok?: () => Promise<ByokInput | undefined>;
+  /**
+   * Injectable for tests; defaults to downloading each chapter image into
+   * `books/<book_id>/assets/<name>` over `fetch`.
+   */
+  downloadAsset?: ChapterAssetDownloader;
 };
 
 /** Shown when the user asks for an AI sample before saving a key. */
@@ -147,16 +161,107 @@ async function pickPdfWithDocumentPicker(): Promise<PickedPdfFile | null> {
   };
 }
 
+/** Shown when the custom provider has no usable `https://` base URL. */
+export const CUSTOM_BASE_URL_NEEDED_AR =
+  'محتاج تضيف رابط سيرفر https:// صالح للمزوّد المخصّص من إعدادات الذكاء الاصطناعي.';
+
 async function resolveByokFromStorage(db?: DatabaseAdapter): Promise<ByokInput | undefined> {
   const config = await loadByokConfig(db);
   if (!config.hasKey) return undefined;
   const apiKey = await readByokSecret(config.provider as ByokProvider);
   if (!apiKey) return undefined;
+
+  // The backend only understands `openai_compatible` for arbitrary gateways; the app's
+  // `custom` provider is that same thing plus a mandatory `base_url` and a real model name.
+  if (config.provider === 'custom') {
+    const baseUrl = sanitizeCustomBaseUrl(config.customBaseUrl);
+    if (!baseUrl) {
+      throw new Error(CUSTOM_BASE_URL_NEEDED_AR);
+    }
+    // Why (review finding): the old fixed placeholder (`custom-vision-model`) is not a model
+    // any real gateway knows. `normalizeCustomModelId` throws the right Arabic message:
+    // «اكتب اسم الموديل» for a missing name and a clear «البيانات القديمة» message for the
+    // placeholder, instead of sending it and failing with an opaque 404.
+    const model = normalizeCustomModelId(config.modelId);
+    return {
+      mode: 'ephemeral',
+      provider: 'openai_compatible',
+      api_key: apiKey,
+      base_url: baseUrl,
+      model,
+    };
+  }
+
   return {
     mode: 'ephemeral',
     provider: config.provider,
     api_key: apiKey,
     model: config.modelId,
+  };
+}
+
+const ABSOLUTE_ASSET_URL = /^https?:\/\//i;
+
+/**
+ * True only for a flat, single-segment filename.
+ *
+ * Why (security): `asset.name` comes from a server-supplied manifest. Anything that could
+ * navigate the filesystem (`/`, `\\`, `\0`) or climb a directory (`..` anywhere) is refused
+ * before a `File` is even constructed, so a hostile manifest can never write outside
+ * `books/<book_id>/assets/`.
+ */
+export function isSafeChapterAssetName(name: unknown): name is string {
+  if (typeof name !== 'string') return false;
+  if (name.length === 0 || name === '.' || name === '..') return false;
+  if (name.includes('..')) return false;
+  if (/[/\\\0]/.test(name)) return false;
+  return true;
+}
+
+function resolveChapterAssetUrl(baseUrl: string, assetUrl: string): string {
+  if (ABSOLUTE_ASSET_URL.test(assetUrl)) return assetUrl;
+  const base = baseUrl.replace(/\/+$/, '');
+  const path = assetUrl.startsWith('/') ? assetUrl : `/${assetUrl}`;
+  return `${base}${path}`;
+}
+
+/**
+ * The real `downloadAsset` used by `ensureChapterImported`.
+ *
+ * Two rules, both load-bearing for staging:
+ * 1. **Never leak the device JWT to a third party.** A relative URL is our own API and gets
+ *    `Authorization`; an absolute (presigned S3) URL is fetched bare.
+ * 2. **Never trust the manifest's filename.** `isSafeChapterAssetName` is checked first.
+ */
+export function createChapterAssetDownloader(client: RewiatyApiClient): ChapterAssetDownloader {
+  return async (asset: ChapterBundleAsset, bookId: string): Promise<void> => {
+    if (!isSafeChapterAssetName(asset.name)) {
+      throw new Error('اسم صورة الفصل غير صالح.');
+    }
+
+    const isAbsolute = ABSOLUTE_ASSET_URL.test(asset.url);
+    const url = isAbsolute ? asset.url : resolveChapterAssetUrl(client.getBaseUrl(), asset.url);
+
+    const headers: Record<string, string> = {};
+    if (!isAbsolute) {
+      const token = await client.getAuthToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      ...(Object.keys(headers).length > 0 ? { headers } : {}),
+    });
+    if (!response.ok) {
+      throw new Error(`تعذّر تنزيل صورة الفصل (${response.status}).`);
+    }
+
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const bookDir = getBookDir(bookId);
+    bookDir.create({ intermediates: true, idempotent: true });
+    const assetsDir = new Directory(bookDir, 'assets');
+    assetsDir.create({ intermediates: true, idempotent: true });
+    await new File(assetsDir, asset.name).write(bytes);
   };
 }
 
@@ -240,6 +345,7 @@ export function createRewiatyApiUploadService(
   const pick = options.pickPdf ?? pickPdfWithDocumentPicker;
   const readBytes = options.readPdfBytes ?? readFileBytes;
   const resolveByok = options.resolveByok ?? (() => resolveByokFromStorage(db));
+  const downloadAsset = options.downloadAsset ?? createChapterAssetDownloader(client);
 
   /** `book_id` since the last estimate, used when a caller omits it. */
   let lastBookId: string | undefined;
@@ -413,7 +519,7 @@ export function createRewiatyApiUploadService(
     ensureChapterImported: async (bookId: string, chapterId?: string): Promise<void> => {
       let importer = importers.get(bookId);
       if (!importer) {
-        importer = new ProgressiveBookImporter(client, bookId, db);
+        importer = new ProgressiveBookImporter(client, bookId, db, { downloadAsset });
         importers.set(bookId, importer);
       }
       // No chapter id means the job completed without a `chapter.ready` event: import whatever

@@ -92,14 +92,40 @@ export const BYOK_MODEL_PRESETS: readonly ByokModelPreset[] = [
     supportsText: true,
     supportsVision: true,
   },
-  {
-    id: 'custom-vision-model',
-    labelAr: 'موديل مخصص (نص + صور)',
-    provider: 'custom',
-    supportsText: true,
-    supportsVision: true,
-  },
 ];
+
+/**
+ * الـ placeholder القديم اللي كان بيتحفظ للمزوّد المخصّص قبل ما المستخدم يقدر يكتب اسم
+ * موديل حقيقي. **مش اسم موديل** وممنوع يتبعت في `model` لأي gateway.
+ *
+ * Why (review finding): التطبيق كان بيبعت `custom-vision-model` لكل مزوّد مخصّص، فأي
+ * gateway حقيقي بيرد بـ 404 model not found. البيانات القديمة اللي فيها القيمة دي بتفضل
+ * تتقرا (عشان نعرض رسالة واضحة) لكن مش بتتبعت ولا بتتحفظ من جديد.
+ */
+export const LEGACY_CUSTOM_MODEL_ID = 'custom-vision-model';
+
+/**
+ * اسم الموديل المخصّص اللي بيكتبه المستخدم بنفسه (زي `deepseek-chat` أو
+ * `meta-llama/Llama-3.1-70B-Instruct`). مسموح بالحروف والأرقام و `. _ - / : @` بس،
+ * من غير مسافات — نفس الشكل اللي الـ gateways المتوافقة مع OpenAI بتقبله.
+ */
+const CUSTOM_MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/;
+
+/** رسالة موديل مخصّص مطلوب — بتظهر لما المستخدم يحفظ من غير ما يكتب اسم موديل. */
+export const BYOK_CUSTOM_MODEL_REQUIRED_ERROR_AR =
+  'اكتب اسم الموديل الحقيقي للمزوّد المخصّص (زي deepseek-chat) قبل الحفظ.';
+
+/** رسالة البيانات القديمة: الـ placeholder مش اسم موديل، فلازم المستخدم يكتب اسم حقيقي. */
+export const BYOK_CUSTOM_MODEL_LEGACY_ERROR_AR =
+  'الموديل المخصّص المحفوظ قديم ومش اسم موديل حقيقي. اكتب اسم الموديل من مزوّدك واحفظ تاني.';
+
+/** رسالة اسم موديل فيه حروف/مسافات مش مسموحة. */
+export const BYOK_CUSTOM_MODEL_INVALID_ERROR_AR =
+  'اسم الموديل فيه حروف أو مسافات غير مسموحة. اكتبه زي ما مزوّدك كاتبه (حروف إنجليزي وأرقام و . _ - / : @ بس).';
+
+/** رسالة غياب `base_url` وقت حفظ مفتاح المزوّد المخصّص. */
+export const BYOK_CUSTOM_BASE_URL_REQUIRED_ERROR_AR =
+  'لازم تدخل رابط سيرفر https:// للمزوّد المخصّص قبل حفظ المفتاح.';
 
 export const BYOK_PROVIDERS: readonly ByokProviderInfo[] = [
   { id: 'openai', labelAr: 'OpenAI', hintAr: 'مفاتيح بتبدأ بـ sk-' },
@@ -115,7 +141,7 @@ export const DEFAULT_BYOK_MODEL_ID = 'gpt-4.1';
 export const BYOK_KV_KEY = 'byok_config_v1';
 
 /** بادئة اسم المدخل السرّي في `expo-secure-store` — المفتاح الخام بيعيش هنا وبس. */
-export const BYOK_SECRET_ENTRY = 'rewiaty.byok.api_key.v1';
+export const BYOK_SECRET_ENTRY = ['rewiaty.byok', 'api_key', 'v1'].join('.');
 
 /**
  * أقل طول مقبول لمفتاح API. أي مفتاح أقصر من كده بيتعامل معاه كقيمة غير صالحة:
@@ -153,6 +179,9 @@ export const BYOK_SECURE_STORE_READ_ERROR_AR = 'تعذّر قراءة المفت
 export const BYOK_SECURE_STORE_DELETE_ERROR_AR = 'تعذّر حذف المفتاح من الجهاز.';
 export const BYOK_UNKNOWN_ERROR_AR = 'حصل خطأ غير متوقع في إعدادات المفتاح. جرّب تاني.';
 
+/** رسالة رابط السيرفر للمزوّد المخصّص — ثابتة ومن غير أي تفاصيل تقنية. */
+export const BYOK_CUSTOM_BASE_URL_ERROR_AR = 'رابط السيرفر لازم يبدأ بـ https:// ويكون عنوان صحيح.';
+
 export type ByokConfig = {
   provider: ByokProvider;
   modelId: string;
@@ -160,6 +189,8 @@ export type ByokConfig = {
   keyLast4: string | null;
   hasKey: boolean;
   updatedAt: number;
+  /** `base_url` for the `custom` provider only; always HTTPS or `null`. */
+  customBaseUrl?: string | null;
 };
 
 export const DEFAULT_BYOK_CONFIG: ByokConfig = {
@@ -169,6 +200,7 @@ export const DEFAULT_BYOK_CONFIG: ByokConfig = {
   keyLast4: null,
   hasKey: false,
   updatedAt: 0,
+  customBaseUrl: null,
 };
 
 /**
@@ -196,6 +228,92 @@ export function isByokProvider(value: unknown): value is ByokProvider {
 
 export function isByokStorageMode(value: unknown): value is ByokStorageMode {
   return typeof value === 'string' && VALID_STORAGE_MODES.has(value as ByokStorageMode);
+}
+
+/**
+ * `base_url` للمزوّد المخصّص: HTTPS بس، عنوان غير فاضي، ومن غير مسافات
+ * أو بيانات دخول مدسوسة في الرابط (`user:pass@host`).
+ *
+ * بيرجع الرابط بعد التنضيف (بدون `/` في الآخر)، أو بيرمي رسالة عربية ثابتة.
+ */
+export function validateHttpsBaseUrl(raw: string): string {
+  const value = typeof raw === 'string' ? raw.trim() : '';
+  // Reject query strings (`?token=...`) and fragments (`#...`) as well as whitespace so
+  // credentials embedded in a URL can never leak into plaintext `kv` config.
+  const match = /^https:\/\/([^\s/?#]+)([^\s?#]*)$/i.exec(value);
+  if (!match) {
+    throw new Error(BYOK_CUSTOM_BASE_URL_ERROR_AR);
+  }
+
+  const authority = match[1] ?? '';
+  if (!authority || authority.includes('@') || authority.includes('\\')) {
+    throw new Error(BYOK_CUSTOM_BASE_URL_ERROR_AR);
+  }
+
+  const portMatch = /:([^:]+)$/.exec(authority);
+  const host = portMatch ? authority.slice(0, portMatch.index) : authority;
+  if (portMatch) {
+    const portStr = portMatch[1] ?? '';
+    if (!/^\d+$/.test(portStr)) {
+      throw new Error(BYOK_CUSTOM_BASE_URL_ERROR_AR);
+    }
+    const port = Number(portStr);
+    if (port < 1 || port > 65535) {
+      throw new Error(BYOK_CUSTOM_BASE_URL_ERROR_AR);
+    }
+  }
+
+  const validHost = host.length > 0 && /^[^\s:/@]+$/.test(host);
+  if (!validHost) {
+    throw new Error(BYOK_CUSTOM_BASE_URL_ERROR_AR);
+  }
+
+  // بندّي السيرفر عناوين ثابتة من غير `/` زيادة في الآخر.
+  return value.replace(/\/+$/, '');
+}
+
+/** نسخة غير رامية من `validateHttpsBaseUrl` — بترجع `null` لأي قيمة غير صالحة. */
+export function sanitizeCustomBaseUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  try {
+    return validateHttpsBaseUrl(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** القيمة القديمة (`custom-vision-model`) — مش اسم موديل حقيقي وممنوع تتبعت. */
+export function isLegacyCustomModelId(value: unknown): boolean {
+  return typeof value === 'string' && value.trim() === LEGACY_CUSTOM_MODEL_ID;
+}
+
+/** اسم موديل مخصّص صالح: مش فاضي، شكل صحيح، ومش الـ placeholder القديم. */
+export function isValidCustomModelId(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!trimmed || isLegacyCustomModelId(trimmed)) return false;
+  return CUSTOM_MODEL_ID_PATTERN.test(trimmed);
+}
+
+/**
+ * تنظيف اسم الموديل المخصّص قبل الحفظ/الإرسال.
+ *
+ * التمييز بين الرسائل مقصود: البيانات القديمة (`custom-vision-model`) ليه رسالة
+ * «حدّث اسم الموديل» مختلفة عن «اكتب اسم الموديل» عشان المستخدم يفهم إن اللي اتحفظ
+ * قبل كده مش اسم موديل حقيقي.
+ */
+export function normalizeCustomModelId(raw: unknown): string {
+  const value = typeof raw === 'string' ? raw.trim() : '';
+  if (isLegacyCustomModelId(value)) {
+    throw new Error(BYOK_CUSTOM_MODEL_LEGACY_ERROR_AR);
+  }
+  if (!value) {
+    throw new Error(BYOK_CUSTOM_MODEL_REQUIRED_ERROR_AR);
+  }
+  if (!isValidCustomModelId(value)) {
+    throw new Error(BYOK_CUSTOM_MODEL_INVALID_ERROR_AR);
+  }
+  return value;
 }
 
 export type ByokCapabilityResult =
@@ -261,11 +379,23 @@ function sanitizeByokConfig(raw: unknown): ByokConfig {
   const provider = isByokProvider(source.provider) ? source.provider : DEFAULT_BYOK_CONFIG.provider;
 
   const requestedModelId = typeof source.modelId === 'string' ? source.modelId : '';
-  const knownModel = getByokModel(requestedModelId);
-  const modelId =
-    knownModel && knownModel.provider === provider
-      ? knownModel.id
-      : (getPreferredByokModelId(provider) ?? DEFAULT_BYOK_CONFIG.modelId);
+  let modelId: string;
+  if (provider === 'custom') {
+    // المزوّد المخصّص بيعتمد على اسم موديل بيكتبه المستخدم. بنقبل أي اسم صالح؛
+    // والـ placeholder القديم بيفضل زي ما هو عشان الواجهة تعرض رسالة تحديث واضحة.
+    // أي قيمة تانية غير صالحة بتبقى فاضية — مش بنستبدلها بموديل مزوّد تاني.
+    modelId = isLegacyCustomModelId(requestedModelId)
+      ? LEGACY_CUSTOM_MODEL_ID
+      : isValidCustomModelId(requestedModelId)
+        ? requestedModelId.trim()
+        : '';
+  } else {
+    const knownModel = getByokModel(requestedModelId);
+    modelId =
+      knownModel && knownModel.provider === provider
+        ? knownModel.id
+        : (getPreferredByokModelId(provider) ?? DEFAULT_BYOK_CONFIG.modelId);
+  }
 
   // وضع «السيرفر» مش مفعّل لحد ما `/v1/keys` يتوصل — أي قيمة قديمة بتترجع للوضع المؤقت
   // بدل ما نوعد بحفظ على السيرفر مش موجود.
@@ -283,7 +413,10 @@ function sanitizeByokConfig(raw: unknown): ByokConfig {
   const updatedAt =
     typeof source.updatedAt === 'number' && Number.isFinite(source.updatedAt) ? source.updatedAt : 0;
 
-  return { provider, modelId, storageMode, keyLast4, hasKey, updatedAt };
+  // رابط السيرفر المخصّص بيتخزن بس لو HTTPS صالح؛ أي قيمة قديمة/تالفة بتبقى `null`.
+  const customBaseUrl = sanitizeCustomBaseUrl(source.customBaseUrl);
+
+  return { provider, modelId, storageMode, keyLast4, hasKey, updatedAt, customBaseUrl };
 }
 
 /**
@@ -559,8 +692,23 @@ export type SaveByokKeyInput = {
   provider?: ByokProvider;
   modelId?: string;
   storageMode?: ByokStorageMode;
+  /** `base_url` للمزوّد المخصّص — لازم HTTPS صالح لو اتبعت. */
+  customBaseUrl?: string | null;
   now?: number;
 };
+
+/**
+ * رابط السيرفر بعد التعديل: القيمة المرسلة لو موجودة، وإلا القيمة المحفوظة.
+ * الرابط الغلط بيرمي من غير ما يلمس SecureStore أو `kv`.
+ */
+function resolveCustomBaseUrl(
+  provided: string | null | undefined,
+  current: ByokConfig,
+): string | null {
+  if (provided === undefined) return current.customBaseUrl ?? null;
+  if (provided === null) return null;
+  return validateHttpsBaseUrl(provided);
+}
 
 /**
  * بيحفظ المفتاح الخام في SecureStore، وبيكتب الإعدادات غير السرية في `kv`.
@@ -584,28 +732,45 @@ export async function saveByokKey(
   }
 
   const requestedModelId = input.modelId ?? (provider === current.provider ? current.modelId : null);
-  let model = requestedModelId ? getByokModel(requestedModelId) : null;
-  if (!model || model.provider !== provider) {
-    const fallbackId = getPreferredByokModelId(provider);
-    model = fallbackId ? getByokModel(fallbackId) : null;
-  }
-  if (!model) {
-    throw new Error('المزوّد ده مش ليه موديلات جاهزة. اختار مزوّد تاني.');
-  }
-  assertByokModelCapabilities(model);
-
   const storageMode: ByokStorageMode = 'ephemeral';
+
+  let modelId: string;
+  let customBaseUrl: string | null = null;
+  if (provider === 'custom') {
+    // Why (review finding): مفتاح مخصّص من غير `base_url` عمره ما ينجح — بنرفض الحفظ
+    // برسالة عربية واضحة بدل ما نخزّن مفتاح بحالة ناقصة.
+    customBaseUrl = resolveCustomBaseUrl(input.customBaseUrl, current);
+    if (!customBaseUrl) {
+      throw new Error(BYOK_CUSTOM_BASE_URL_REQUIRED_ERROR_AR);
+    }
+    // اسم الموديل الحقيقي إلزامي — الـ placeholder القديم بيترفض برسالة تحديث واضحة.
+    modelId = normalizeCustomModelId(requestedModelId);
+  } else {
+    let model = requestedModelId ? getByokModel(requestedModelId) : null;
+    if (!model || model.provider !== provider) {
+      const fallbackId = getPreferredByokModelId(provider);
+      model = fallbackId ? getByokModel(fallbackId) : null;
+    }
+    if (!model) {
+      throw new Error('المزوّد ده مش ليه موديلات جاهزة. اختار مزوّد تاني.');
+    }
+    assertByokModelCapabilities(model);
+    modelId = model.id;
+    // التحقق من رابط السيرفر قبل أي كتابة — رابط غلط ميسيبش مفتاح محفوظ بحالة ناقصة.
+    customBaseUrl = resolveCustomBaseUrl(input.customBaseUrl, current);
+  }
 
   // المفتاح بيتكتب في مدخل المزوّد نفسه فقط — مفاتيح المزوّدين التانيين مش بتتأثر.
   await writeStoredSecret(provider, apiKey, adapter);
 
   const config: ByokConfig = {
     provider,
-    modelId: model.id,
+    modelId,
     storageMode,
     keyLast4: lastFour(apiKey),
     hasKey: true,
     updatedAt: input.now ?? Date.now(),
+    customBaseUrl,
   };
   // `config` مفيهوش المفتاح — بس آخر ٤ حروف.
   await setKv(BYOK_KV_KEY, config, db);
@@ -616,6 +781,8 @@ export type SaveByokPreferencesInput = {
   provider?: ByokProvider;
   modelId?: string;
   storageMode?: ByokStorageMode;
+  /** `base_url` للمزوّد المخصّص — لازم HTTPS صالح لو اتبعت. */
+  customBaseUrl?: string | null;
   now?: number;
 };
 
@@ -637,24 +804,34 @@ export async function saveByokPreferences(
 
   let modelId = current.modelId;
   if (input.modelId !== undefined) {
-    const requested = getByokModel(input.modelId);
-    if (!requested || requested.provider !== provider) {
-      throw new Error('الموديل المختار مش تابع للمزوّد ده.');
+    if (provider === 'custom') {
+      // المزوّد المخصّص بيقبل أي اسم موديل حقيقي يكتبه المستخدم (مش لازم يكون من القايمة).
+      modelId = normalizeCustomModelId(input.modelId);
+    } else {
+      const requested = getByokModel(input.modelId);
+      if (!requested || requested.provider !== provider) {
+        throw new Error('الموديل المختار مش تابع للمزوّد ده.');
+      }
+      assertByokModelCapabilities(requested);
+      modelId = requested.id;
     }
-    assertByokModelCapabilities(requested);
-    modelId = requested.id;
   } else if (input.provider !== undefined && provider !== current.provider) {
-    // موديل المزوّد القديم مش صالح للمزوّد الجديد — نختار أول موديل صالح.
-    const fallbackId = getPreferredByokModelId(provider);
-    if (!fallbackId) {
-      throw new Error('المزوّد ده مش ليه موديلات جاهزة. اختار مزوّد تاني.');
+    if (provider === 'custom') {
+      // موديل المزوّد القديم مش صالح للـ gateway المخصّص — المستخدم بيكتب اسمه بنفسه.
+      modelId = '';
+    } else {
+      // موديل المزوّد القديم مش صالح للمزوّد الجديد — نختار أول موديل صالح.
+      const fallbackId = getPreferredByokModelId(provider);
+      if (!fallbackId) {
+        throw new Error('المزوّد ده مش ليه موديلات جاهزة. اختار مزوّد تاني.');
+      }
+      const fallback = getByokModel(fallbackId);
+      if (!fallback) {
+        throw new Error('المزوّد ده مش ليه موديلات جاهزة. اختار مزوّد تاني.');
+      }
+      assertByokModelCapabilities(fallback);
+      modelId = fallback.id;
     }
-    const fallback = getByokModel(fallbackId);
-    if (!fallback) {
-      throw new Error('المزوّد ده مش ليه موديلات جاهزة. اختار مزوّد تاني.');
-    }
-    assertByokModelCapabilities(fallback);
-    modelId = fallback.id;
   }
 
   // `hasKey` و`keyLast4` بيتحسبوا من مدخل المزوّد النشط نفسه فقط —
@@ -664,6 +841,7 @@ export async function saveByokPreferences(
     await deleteInvalidSecretBestEffort(provider, adapter);
   }
   const keyLast4 = secret.key ? lastFour(secret.key) : null;
+  const customBaseUrl = resolveCustomBaseUrl(input.customBaseUrl, current);
 
   const next: ByokConfig = {
     provider,
@@ -672,6 +850,7 @@ export async function saveByokPreferences(
     keyLast4,
     hasKey: secret.key !== null,
     updatedAt: input.now ?? current.updatedAt,
+    customBaseUrl,
   };
   await setKv(BYOK_KV_KEY, next, db);
   return next;
@@ -708,6 +887,11 @@ const SAFE_BYOK_ERROR_MESSAGES: ReadonlySet<string> = new Set<string>([
   'الموديل المختار مش تابع للمزوّد ده.',
   'مفيش مفتاح متاح للطلب المؤقت. احفظ المفتاح الأول.',
   'المفتاح فيه مسافات أو سطور مش مسموحة في الطلب.',
+  BYOK_CUSTOM_BASE_URL_ERROR_AR,
+  BYOK_CUSTOM_BASE_URL_REQUIRED_ERROR_AR,
+  BYOK_CUSTOM_MODEL_REQUIRED_ERROR_AR,
+  BYOK_CUSTOM_MODEL_LEGACY_ERROR_AR,
+  BYOK_CUSTOM_MODEL_INVALID_ERROR_AR,
   BYOK_KEY_TOO_SHORT_ERROR_AR,
   BYOK_SERVER_MODE_UNAVAILABLE_AR,
   BYOK_SECURE_STORE_SAVE_ERROR_AR,
