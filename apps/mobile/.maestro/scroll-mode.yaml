@@ -61,7 +61,12 @@ appId: com.rewiaty.app
     timeout: 5000
 - assertVisible:
     id: "reader-page-counter"
-    text: "الفصل 0%"
+    # Switching from paginated page 1 anchors at the first paragraph just below the chapter
+    # header (single-digit %, e.g. 0-9%). Capture the exact number so we prove scrolling grows it.
+    text: "الفصل [0-9]%"
+- copyTextFrom:
+    id: "reader-page-counter"
+- evalScript: ${output.beforeScrollPct = parseInt(maestro.copiedText.replace(/[^0-9]/g, ''), 10)}
 - takeScreenshot: "04-scroll-hud-footer"
 # Drag the text upwards: the stack scrolls and the chapter percentage grows.
 - tapOn:
@@ -91,9 +96,11 @@ appId: com.rewiaty.app
     timeout: 5000
 - assertVisible:
     id: "reader-page-counter"
-    # Two full-screen swipes must actually move the reader through the chapter, not just
-    # repaint it: 0% is the start state, anything from 1% up proves the stack scrolled.
     text: "الفصل [1-9][0-9]*%"
+- copyTextFrom:
+    id: "reader-page-counter"
+- evalScript: ${output.afterScrollPct = parseInt(maestro.copiedText.replace(/[^0-9]/g, ''), 10)}
+- assertTrue: ${output.afterScrollPct > output.beforeScrollPct}
 - takeScreenshot: "06-scrolled-hud-footer"
 # Back to pages: the counter is a page number again.
 - tapOn:
