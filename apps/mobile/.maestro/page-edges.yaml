@@ -69,12 +69,17 @@ appId: com.rewiaty.app
     id: "reader-page-edge-remaining"
     text: "سمك المتبقي [2-3]\\.[0-9] بيكسل"
 - takeScreenshot: "02-read-edge-grown"
-# رجوع لأول الكتاب: سحب لليمين، والحواف بترجع بالظبط لقيم البداية.
-- swipe:
-    from:
-      id: "reader-scrubber-track"
-    direction: RIGHT
-    duration: 800
+# رجوع لأول الكتاب: نقر أقصى يمين الشريط بيرجع لصفحة 1، والحواف بترجع بالظبط لقيم البداية.
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-scrubber-track"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- tapOn:
+    id: "reader-scrubber-track"
+    point: "99%,50%"
 - waitForAnimationToEnd
 - assertVisible:
     id: "reader-page-edge-read"
