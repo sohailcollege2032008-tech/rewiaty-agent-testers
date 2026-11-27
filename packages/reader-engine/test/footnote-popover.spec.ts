@@ -61,6 +61,35 @@ function buildFootnoteBook(wordsBeforeRef: number, trailingParagraphs = 0): Book
   return parseBook(md.join('\n'), 'footnote-mid-page.md');
 }
 
+/**
+ * A footnote long enough to need scrolling inside the sheet: the last line must still be
+ * reachable above the footer safe area (Issue #58).
+ */
+function buildLongFootnoteBook(wordsBeforeRef: number): Book {
+  const filler = Array.from({ length: wordsBeforeRef }, () => FILLER_WORD).join(' ');
+  const longFootnote = Array.from(
+    { length: 40 },
+    (_, i) =>
+      `الْجُمْلَةُ رَقْمُ ${i + 1} مِنْ نَصِّ الْحَاشِيَةِ الطَّوِيلَةِ تَشْرَحُ الْمَعْنَى وَتُكْمِلُهُ حَتَّى يَمْتَلِئَ الْبُطَاقُ وَيَصِيرَ لَازِمًا أَنْ يَنْزَلِقَ الْقَارِئُ فِيهِ.`,
+  ).join(' ');
+  const md = [
+    '---',
+    'title: "حَاشِيَةٌ طَوِيلَةٌ"',
+    'lang: ar',
+    'dir: rtl',
+    '---',
+    '',
+    '# الْفَصْلُ الْأَوَّلُ',
+    '',
+    `${filler} فِيهَا حَاشِيَةٌ طَوِيلَةٌ[^1] لِنَقِيسَ الْبُطَاقَةَ.`.trim(),
+    '',
+    '[^1]:',
+    `    ${longFootnote}`,
+    '',
+  ];
+  return parseBook(md.join('\n'), 'footnote-long.md');
+}
+
 async function mountEngine(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const win = window as unknown as {
@@ -161,7 +190,11 @@ async function measureRef(page: Page): Promise<RefGeometry | null> {
  * is an ordinary mid-page tap on the text. Sizes are searched instead of hard-coded because the
  * Arabic fallback font differs between the CI runner and a dev box.
  */
-async function placeRefMidPage(page: Page, trailingParagraphs = 0): Promise<RefGeometry> {
+async function placeRefMidPage(
+  page: Page,
+  trailingParagraphs = 0,
+  build: (wordsBeforeRef: number, trailingParagraphs: number) => Book = buildFootnoteBook,
+): Promise<RefGeometry> {
   const candidates = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
   const measured: Array<{ words: number; ratio: number }> = [];
   let best: RefGeometry | null = null;
@@ -169,7 +202,7 @@ async function placeRefMidPage(page: Page, trailingParagraphs = 0): Promise<RefG
 
   for (const words of candidates) {
     const before = await messageCount(page);
-    await loadBook(page, buildFootnoteBook(words, trailingParagraphs), before);
+    await loadBook(page, build(words, trailingParagraphs), before);
     const geometry = await measureRef(page);
     if (!geometry) continue;
     measured.push({ words, ratio: geometry.ratio });
@@ -301,5 +334,232 @@ test.describe('Footnote popover', () => {
     await expect
       .poll(async () => latestPage(page), { timeout: 5_000 })
       .toBe((pageBefore as number) + 1);
+  });
+
+  test('the dialog traps focus, has an Arabic label, a 48px close target and restores focus', async ({
+    page,
+  }) => {
+    await mountEngine(page);
+    await placeRefMidPage(page);
+
+    // Focus the reference first so "restore focus" has an observable destination.
+    const opened = await page.evaluate(() => {
+      const link = document.querySelector<HTMLElement>('sup.fn-ref a');
+      if (!link) return false;
+      link.setAttribute('tabindex', '0');
+      link.focus();
+      const rect = link.getBoundingClientRect();
+      const fire = (type: string, buttons: number) =>
+        link.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            pointerId: 31,
+            pointerType: 'touch',
+            isPrimary: true,
+            clientX: rect.x + rect.width / 2,
+            clientY: rect.y + rect.height / 2,
+            button: 0,
+            buttons,
+          }),
+        );
+      fire('pointerdown', 1);
+      fire('pointerup', 0);
+      return true;
+    });
+    expect(opened).toBe(true);
+
+    await expect(page.locator('#footnote-backdrop')).toBeVisible();
+    // The dialog owns focus while open, and the dismiss control speaks Arabic to TalkBack.
+    await expect(page.locator('#footnote-popover')).toHaveAttribute('tabindex', '-1');
+    await expect(page.locator('#footnote-close')).toHaveAttribute('aria-label', 'إغلاق الحاشية');
+    expect(
+      await page.evaluate(() => document.activeElement?.id ?? ''),
+    ).toBe('footnote-close');
+
+    const closeBox = await page.locator('#footnote-close').boundingBox();
+    expect(closeBox?.width ?? 0).toBeGreaterThanOrEqual(48);
+    expect(closeBox?.height ?? 0).toBeGreaterThanOrEqual(48);
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#footnote-backdrop')).toBeHidden();
+    // Focus went back to the element the reader was on, not to the document body.
+    expect(
+      await page.evaluate(() => {
+        const active = document.activeElement as HTMLElement | null;
+        return { tag: active?.tagName ?? '', isFnRef: Boolean(active?.closest('[data-fn]')) };
+      }),
+    ).toEqual({ tag: 'A', isFnRef: true });
+  });
+
+  test('Enter opens the sheet, Tab stays inside it, and the page behind is inert', async ({ page }) => {
+    await mountEngine(page);
+    await placeRefMidPage(page);
+
+    const refFocus = await page.evaluate(() => {
+      const link = document.querySelector<HTMLElement>('sup.fn-ref a');
+      if (!link) return null;
+      link.setAttribute('tabindex', '0');
+      link.focus();
+      return { focused: document.activeElement === link, fnId: link.getAttribute('data-fn') };
+    });
+    expect(refFocus).not.toBeNull();
+    expect(refFocus!.focused).toBe(true);
+
+    // Issue #50: a footnote reference answers the keyboard like the `role="button"` it is.
+    await page.keyboard.press('Enter');
+    const backdrop = page.locator('#footnote-backdrop');
+    await expect(backdrop).toBeVisible();
+    await expect(page.locator('#footnote-title')).toHaveText(`حاشية [${refFocus!.fnId}]`);
+    // The dialog describes itself with its body text.
+    await expect(page.locator('#footnote-popover')).toHaveAttribute(
+      'aria-describedby',
+      'footnote-body',
+    );
+    expect(await page.evaluate(() => document.activeElement?.id ?? '')).toBe('footnote-close');
+
+    // The whole page behind the sheet is inert, so nothing there can be tabbed into at all.
+    expect(
+      await page.evaluate(() => document.getElementById('reader-stage')?.hasAttribute('inert')),
+    ).toBe(true);
+
+    // Tab / Shift+Tab cycle inside the dialog (only the close button is focusable today).
+    await page.keyboard.press('Tab');
+    expect(await page.evaluate(() => document.activeElement?.id ?? '')).toBe('footnote-close');
+    await page.keyboard.press('Shift+Tab');
+    expect(await page.evaluate(() => document.activeElement?.id ?? '')).toBe('footnote-close');
+
+    await page.keyboard.press('Escape');
+    await expect(backdrop).toBeHidden();
+    expect(
+      await page.evaluate(() => document.getElementById('reader-stage')?.hasAttribute('inert')),
+    ).toBe(false);
+    expect(await page.evaluate(() => document.activeElement?.getAttribute('data-fn') ?? null)).toBe(
+      refFocus!.fnId,
+    );
+  });
+
+  test('a long footnote stops above the bottom safe area and scrolls inside itself', async ({
+    page,
+  }) => {
+    await mountEngine(page);
+    const ref = await placeRefMidPage(page, 0, (words) => buildLongFootnoteBook(words));
+    // Open it from the keyboard, from the reference the search placed on the page.
+    await page.evaluate(() => {
+      const link = document.querySelector<HTMLElement>('sup.fn-ref a');
+      if (!link) throw new Error('footnote reference missing');
+      link.setAttribute('tabindex', '0');
+      link.focus();
+    });
+    expect(ref.ratio).toBeGreaterThan(0);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#footnote-backdrop')).toBeVisible();
+
+    const metrics = await page.evaluate(() => {
+      const popover = document.getElementById('footnote-popover')!;
+      const rootStyle = getComputedStyle(document.documentElement);
+      const paddingBottom = parseFloat(rootStyle.getPropertyValue('--padding-bottom')) || 0;
+      const style = getComputedStyle(popover);
+      popover.scrollTop = Math.max(1, popover.scrollHeight - popover.clientHeight);
+      const rect = popover.getBoundingClientRect();
+      return {
+        viewportHeight: window.innerHeight,
+        paddingBottom,
+        bottom: rect.bottom,
+        overflowY: style.overflowY,
+        touchAction: style.touchAction,
+        scrollHeight: popover.scrollHeight,
+        clientHeight: popover.clientHeight,
+        scrollTop: popover.scrollTop,
+      };
+    });
+
+    // Issue #58: the last line of the sheet is reachable above the footer safe area…
+    expect(metrics.bottom).toBeLessThanOrEqual(
+      metrics.viewportHeight - metrics.paddingBottom + 1,
+    );
+    // …because the sheet itself scrolls (and its own vertical pan is not hijacked).
+    expect(metrics.overflowY).toBe('auto');
+    expect(metrics.touchAction).toContain('pan-y');
+    expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
+    expect(metrics.scrollTop).toBeGreaterThan(0);
+  });
+
+  test('the live region announces the settled page, once per page', async ({ page }) => {
+    await mountEngine(page);
+    const before = await messageCount(page);
+    await loadBook(page, buildFootnoteBook(40, 40), before);
+    await expect(page.locator('#reader-live-region')).toHaveAttribute('aria-live', 'polite');
+    await expect(page.locator('#reader-live-region')).toHaveAttribute('role', 'status');
+
+    const firstPage = await latestPage(page);
+    expect(firstPage).not.toBeNull();
+    await expect(page.locator('#reader-live-region')).toHaveText(
+      new RegExp(`^صفحة ${firstPage} من \\d+$`),
+    );
+
+    // Settle onto page 2 through the bridge (the same path a TOC tap uses).
+    await page.evaluate(() => {
+      window.postMessage(JSON.stringify({ type: 'goto', page: 2 }), '*');
+    });
+    await expect.poll(async () => latestPage(page), { timeout: 5_000 }).toBe(2);
+    await expect(page.locator('#reader-live-region')).toHaveText(/^صفحة 2 من \d+$/);
+  });
+
+  test('a page turn is not announced while the finger still owns the drag', async ({ page }) => {
+    await mountEngine(page);
+    const before = await messageCount(page);
+    await loadBook(page, buildFootnoteBook(40, 40), before);
+    const live = page.locator('#reader-live-region');
+    await expect(live).toHaveText(/^صفحة 1 من \d+$/);
+    const settled = await live.textContent();
+
+    // Hold the page: pointerdown + a move past DRAG_START_PX starts a drag and keeps it open.
+    await page.evaluate(() => {
+      const root = document.getElementById('reader-root')!;
+      const fire = (type: string, clientX: number) =>
+        root.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            pointerId: 77,
+            pointerType: 'touch',
+            isPrimary: true,
+            clientX,
+            clientY: 420,
+            button: 0,
+            buttons: type === 'pointerup' ? 0 : 1,
+          }),
+        );
+      fire('pointerdown', 180);
+      fire('pointermove', 215);
+    });
+
+    // A viewport change re-measures and re-emits a position while the finger is still down. The
+    // counter/announcement must not move until the gesture settles (Issue #50, QA r1).
+    const messagesAtResize = await messageCount(page);
+    await page.setViewportSize({ width: 360, height: 760 });
+    await expect
+      .poll(async () => messageCount(page), { timeout: 10_000 })
+      .toBeGreaterThan(messagesAtResize);
+    expect(await live.textContent()).toBe(settled);
+
+    // Release: the settled state is what gets announced.
+    await page.evaluate(() => {
+      document.getElementById('reader-root')!.dispatchEvent(
+        new PointerEvent('pointerup', {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 77,
+          pointerType: 'touch',
+          isPrimary: true,
+          clientX: 215,
+          clientY: 420,
+          button: 0,
+          buttons: 0,
+        }),
+      );
+    });
+    await expect(live).toHaveText(/^صفحة 1 من \d+$/);
   });
 });

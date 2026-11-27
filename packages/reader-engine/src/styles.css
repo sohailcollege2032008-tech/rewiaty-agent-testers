@@ -74,6 +74,19 @@ body {
   touch-action: pan-y;
 }
 
+/* Announced by TalkBack (Android) / VoiceOver (iOS) but never painted. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .reader-stage {
   position: relative;
   width: var(--stage-width, min(100%, var(--max-width)));
@@ -251,9 +264,22 @@ body {
   color: var(--accent-color);
   font-size: 0.95em;
   line-height: 1.6;
+  /* A scene break is a single decorative line. It must never be split, and it must never
+     pull a column break right after itself: that is what left `✦ ✦ ✦` alone on an otherwise
+     empty page when the break landed near the bottom of a column. */
   break-inside: avoid;
+  break-after: avoid;
+  -webkit-column-break-inside: avoid;
+  -webkit-column-break-after: avoid;
   text-indent: 0;
   opacity: 0.8;
+}
+
+/* When the scene break closes a chapter there is nothing after it to carry the page, so the
+   break itself has to stay with the paragraph before it instead of opening a new column. */
+.block-break:last-child {
+  break-before: avoid;
+  -webkit-column-break-before: avoid;
 }
 
 .block-quote {
@@ -379,7 +405,10 @@ body {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding: 16px;
+  /* Issue #58 (QA r1): the sheet must sit above the running footer / system insets, not under
+     them. The reader exposes those insets as --padding-top / --padding-bottom, so the sheet
+     inherits the same safe area instead of a fixed 16px that a tall footer covers. */
+  padding: calc(var(--padding-top) + 8px) 16px calc(var(--padding-bottom) + 16px) 16px;
 }
 
 .footnote-backdrop[hidden] {
@@ -388,8 +417,13 @@ body {
 
 .footnote-popover {
   width: min(100%, 540px);
-  max-height: 45vh;
+  /* Issue #58 (QA r1): a long footnote must stop above the bottom safe area and scroll inside
+     itself, so its last line is never hidden behind the footer. */
+  max-height: calc(100vh - var(--padding-top) - var(--padding-bottom) - 48px);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
   background: var(--popover-bg);
   color: var(--text-color);
   border: 1px solid var(--popover-border);
@@ -422,8 +456,21 @@ body {
   color: var(--muted-color);
   font-size: 22px;
   line-height: 1;
+  /* Accessibility: the dismiss control has to be reachable with a thumb, not just a cursor. */
+  min-width: 48px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 4px 8px;
+  border-radius: 12px;
   cursor: pointer;
+}
+
+.footnote-close:focus-visible,
+.footnote-popover:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
 }
 
 .footnote-body p {
