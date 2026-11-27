@@ -36,6 +36,10 @@ appId: com.rewiaty.app
       id: "reader-scrubber-track"
     direction: LEFT
     duration: 800
+    # The tooltip lingers 1800ms after the drag (TOOLTIP_LINGER_MS in page-scrubber.tsx),
+    # but Maestro's default settle wait let the UI outlive it, so the asserts below
+    # ran after the tooltip was already gone. Cap the settle wait instead.
+    waitToSettleTimeoutMs: 500
 - assertVisible:
     id: "reader-scrubber-tooltip"
 - assertVisible:

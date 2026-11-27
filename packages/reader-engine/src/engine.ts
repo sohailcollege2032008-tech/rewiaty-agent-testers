@@ -114,6 +114,10 @@ export class ReaderEngine {
   private imageProofEmptyChecks = 0;
   /** Last box reported for the current book, so the pump cannot spam the host. */
   private imageProofSignature = '';
+  /**
+   * F27 — last applied theme and computed grain state reported to the host.
+   */
+  private paperGrainSignature = '';
   /** One-line account of the last measurement, quoted in the page when there is nothing painted. */
   private imageProofDetail = '';
   /** Debounce for the post-scroll position report (scroll mode only). */
@@ -596,6 +600,8 @@ export class ReaderEngine {
     this.imageProofTries = 0;
     this.imageProofEmptyChecks = 0;
     this.imageProofSignature = '';
+    // A new book starts with no grain reported either, so its status is emitted again.
+    this.paperGrainSignature = '';
     for (const id of ['reader-image-proof', 'reader-image-error', 'reader-image-probe']) {
       document.getElementById(id)?.remove();
     }
@@ -838,6 +844,9 @@ export class ReaderEngine {
           msg.chapterId,
         );
         postToHost({ type: 'ready' });
+        // F27: the theme (and therefore the grain) is applied by `setBook` above, so this is the
+        // first moment the status is meaningful — and it must not wait for exact pagination.
+        this.emitPaperGrainStatus();
         this.paginator.scheduleBackgroundWork();
         this.emitAfterSettle();
         break;
@@ -860,6 +869,9 @@ export class ReaderEngine {
         }
         const partial = msg.partial ?? {};
         this.paginator.updateSettings(partial, msg.insets);
+        // F27: a theme change repaints the grain (on → off → on). Report it before the position
+        // pipeline, which can withhold its first message until the page map is exact.
+        this.emitPaperGrainStatus();
         this.emitPositionAndToc();
         // Re-count the book for the new typography so the page numbers converge on the
         // real ones (the first report above is allowed to be an estimate).
@@ -1066,6 +1078,27 @@ export class ReaderEngine {
     const dt = last.t - first.t;
     if (dt <= 0) return 0;
     return (last.x - first.x) / dt;
+  }
+
+  /** F27: report computed paint so the device journey can tell a hidden layer from a broken one. */
+  private emitPaperGrainStatus(): void {
+    const el = document.getElementById('paper-grain');
+    if (!el) return;
+    const theme = document.documentElement.getAttribute('data-theme') ?? '';
+    const style = getComputedStyle(el);
+    const backdrop = style.backdropFilter || style.getPropertyValue('-webkit-backdrop-filter');
+    const matches =
+      style.backgroundImage.includes('data:image/png;base64,') &&
+      style.backgroundSize === '128px 128px' &&
+      style.backgroundRepeat === 'repeat' &&
+      style.opacity === '0.03' &&
+      style.filter === 'none' &&
+      (!backdrop || backdrop === 'none');
+    const state = style.display === 'none' ? 'hidden' : matches ? 'painted' : 'invalid';
+    const signature = `${theme}:${state}`;
+    if (signature === this.paperGrainSignature) return;
+    this.paperGrainSignature = signature;
+    postToHost({ type: 'paper-grain-status', theme, state });
   }
 
   private emitPosition(userNavigated = false): void {

@@ -479,6 +479,9 @@ export function ReaderScreen() {
   // F33: the engine's live answer — which paragraph sits on the reading line right now. Kept in
   // React state so the settings sheet can show it; never persisted (it is derived, not a setting).
   const [readingFocusStatus, setReadingFocusStatus] = useState<ReadingFocusStatus | null>(null);
+  // F27 — ملمس الورق: what the engine reports it is actually painting, so an on-device journey can
+  // prove 3% grain on the paper themes and silence on the rest.
+  const [paperGrainProof, setPaperGrainProof] = useState<string | null>(null);
   // F28: at most one recap per book open; dismissal clears it until the book is opened again.
   const [welcomeBackRecap, setWelcomeBackRecap] = useState<WelcomeBackRecap | null>(null);
 
@@ -698,6 +701,8 @@ export function ReaderScreen() {
     setBookBaseUrl(null);
     setReadAccessUrl(null);
     setImageProof(null);
+    // F27: a new book re-applies its theme, so the previous book's grain verdict must not linger.
+    setPaperGrainProof(null);
     setWelcomeBackRecap(null);
 
     if (!bookId) {
@@ -1349,6 +1354,15 @@ export function ReaderScreen() {
             blockCount: parsed.blockCount,
           });
           break;
+        case 'paper-grain-status': {
+          const labels = {
+            painted: 'مفعّل ٣٪',
+            hidden: 'متوقّف',
+            invalid: 'إعداد غير صالح',
+          };
+          setPaperGrainProof(`ملمس الورق (${parsed.theme}): ${labels[parsed.state]}`);
+          break;
+        }
         case 'scene-prompt-edit': {
           const result = applyScenePatch(scenesRef.current, parsed.sceneId, {
             prompt: parsed.prompt,
@@ -2152,6 +2166,18 @@ export function ReaderScreen() {
           </View>
         ) : null}
 
+        {/* F27 — ملمس الورق proof. Same idea as the figure proof: a transparent Text node the
+            accessibility tree exposes, so a Maestro journey can tell "3% grain painted" apart from
+            "the theme silently dropped it". Sits above `reader-image-proof` so the two never
+            overlap. Only a live, filter-free 3% tile counts as «مفعّل». */}
+        {paperGrainProof ? (
+          <View pointerEvents="none" style={styles.paperGrainProof}>
+            <Text accessible testID="reader-paper-grain-proof" style={styles.imageProofLabel}>
+              {paperGrainProof}
+            </Text>
+          </View>
+        ) : null}
+
         {/* F31 — 22px left-edge brightness strip + live readout pill. */}
         {edgeBrightnessSwipe && book ? (
           <GestureDetector gesture={brightnessStripPan}>
@@ -2483,6 +2509,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     start: 0,
     bottom: 0,
+  },
+  paperGrainProof: {
+    position: 'absolute',
+    start: 24,
+    top: '40%',
+    zIndex: 5,
   },
   imageProofLabel: {
     color: 'transparent',

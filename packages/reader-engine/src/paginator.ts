@@ -35,6 +35,10 @@ import {
   type ReadingFocusReport,
 } from './reading-focus.js';
 import {
+  PAPER_GRAIN_DATA_URI,
+  isPaperGrainTheme,
+} from './paper-grain.js';
+import {
   normalizeScenePlaceholder,
   normalizeScenePrompt,
   syncScenePlaceholdersInRoot,
@@ -2322,6 +2326,16 @@ export class Paginator {
       customTokens ? 'custom' : this.settings.theme,
     );
     document.documentElement.setAttribute('data-custom-colors', customTokens ? 'true' : 'false');
+    // F27 — ملمس الورق. The tile is a static PNG handed to CSS as a variable (never a live filter).
+    // It is (re)applied on every layout so a theme change cannot leave a stale grain behind, and it
+    // is only set for the themes the product allows — a dark page or a custom pair carries none.
+    // `customTokens` (not merely `enabled`) is what counts: a pair the engine rejected falls back
+    // to its preset paper, so the grain must follow the preset that is actually painted.
+    if (isPaperGrainTheme(this.settings.theme, customTokens !== null)) {
+      rootStyle.setProperty('--paper-grain-image', `url("${PAPER_GRAIN_DATA_URI}")`);
+    } else {
+      rootStyle.removeProperty('--paper-grain-image');
+    }
     this.rootEl.setAttribute('dir', this.dir);
     this.rootEl.classList.toggle('spread-mode', spread);
     // F22: the root class drives the whole scroll layout in CSS, so it has to follow the
