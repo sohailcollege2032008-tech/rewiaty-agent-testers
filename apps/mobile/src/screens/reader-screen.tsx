@@ -2032,7 +2032,7 @@ export function ReaderScreen() {
             Both sit under every gesture surface (pointerEvents none) so a page swipe never hits them,
             and both carry the measured width in their label for the device journey. */}
         {pageEdges ? (
-          <>
+          <View pointerEvents="none" style={styles.edgeOverlay}>
             <View
               pointerEvents="none"
               accessible
@@ -2069,7 +2069,7 @@ export function ReaderScreen() {
                   : { borderRightColor: themeTokens.pageEdge },
               ]}
             />
-          </>
+          </View>
         ) : null}
 
         {/* Center book spine crease in tablet landscape open-book spread */}
@@ -2546,11 +2546,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontVariant: ['tabular-nums'],
   },
+  edgeOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    // Keep edge positions physical even when the app shell forces RTL.
+    direction: 'ltr',
+    zIndex: 4,
+  },
   edgeStack: {
     position: 'absolute',
     top: 16,
     bottom: 16,
-    zIndex: 4,
   },
   edgeRight: {
     right: 0,
