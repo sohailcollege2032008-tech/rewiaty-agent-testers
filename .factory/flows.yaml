@@ -138,3 +138,9 @@ flows:
     target: release-apk
     run: "bash scripts/ci-flows.sh dictionary-lookup"
     artifact: ".factory/evidence/latest/apk/app.apk"
+  - id: reading-focus
+    who: "قارئ عايز الصفحة توجّه عينه على السطر اللي بيقراه"
+    steps: "يفتح الرواية ← الإعدادات ← تبويب الصفحة ← «تركيز الفقرة» ← سطر حالة المحرّك بيقول «الفقرة المضيئة N من M» والفقرة اللي على خط القراية هي الوحيدة بحبرها الكامل ← يقلّب صفحة ويفتح الإعدادات تاني فالحالة لسه جاية من المحرّك ← «مسطرة التتبع» ← الحالة بقت «خط التتبع · الفقرة N من M» والخط بيوصل ← «إيقاف» ← سطر الحالة اختفى والصفحة رجعت زي ما كانت ← يفتح الإعدادات تاني فالإيقاف لسه محفوظ"
+    target: release-apk
+    run: "bash scripts/ci-flows.sh reading-focus"
+    artifact: ".factory/evidence/latest/apk/app.apk"

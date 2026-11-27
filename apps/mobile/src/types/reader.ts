@@ -7,6 +7,8 @@ export type {
   HighlightColor,
   HighlightColorMeta,
   IndentMode,
+  ReadingFocusMode,
+  ReadingFocusReport,
   ReadingMode,
   RNToWebMessage,
   ReaderInsets,

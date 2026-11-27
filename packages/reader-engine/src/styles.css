@@ -1025,3 +1025,62 @@ body {
 .reader-root[dir="rtl"] .scroll-progress-fill {
   transform-origin: 100% 50%;
 }
+
+/* ---------------------------------------------------------------------------
+   F33 — مسطرة القراية ووضع التركيز.
+   One geometric rule drives both: a horizontal reading line 40% down the text
+   area (set by the paginator as `--reading-focus-anchor-y`).
+   - paragraph mode: the paragraph on the line keeps the body ink, every other
+     paragraph on the page takes the theme's readable `muted` token.
+   - ruler mode: a thin pass-through line at the same height, text untouched.
+   The line never takes a pointer event, so tapping, page dragging and
+   long-press selection keep working exactly as before.
+   --------------------------------------------------------------------------- */
+.reading-focus-ruler {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--reading-focus-anchor-y, 40%);
+  height: 2px;
+  margin-top: -1px;
+  z-index: 6;
+  display: none;
+  pointer-events: none;
+  color: var(--accent-color);
+  background-color: currentColor;
+  opacity: 0.42;
+  box-shadow: 0 0 10px 1px currentColor;
+}
+
+.reader-root[data-reading-focus='ruler'] .reading-focus-ruler {
+  display: block;
+}
+
+/* The line fades at both edges so it reads as a guide, not a border. */
+.reading-focus-ruler::before,
+.reading-focus-ruler::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 18%;
+  pointer-events: none;
+}
+
+.reading-focus-ruler::before {
+  left: 0;
+  background: linear-gradient(to left, transparent, var(--bg-color));
+}
+
+.reading-focus-ruler::after {
+  right: 0;
+  background: linear-gradient(to right, transparent, var(--bg-color));
+}
+
+.reader-root[data-reading-focus='paragraph'] .block-p.reading-focus-dim {
+  color: var(--muted-color) !important;
+}
+
+.reader-root[data-reading-focus='paragraph'] .block-p.reading-focus-current {
+  color: var(--text-color) !important;
+}

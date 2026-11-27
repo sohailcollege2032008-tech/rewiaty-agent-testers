@@ -169,6 +169,9 @@ export class ReaderEngine {
         this.scheduleImageProof();
       },
       onExactPagination: () => this.emitPositionAndToc(),
+      // F33 — the reading focus is derived from geometry, never from a stored toggle, so every
+      // page turn / scroll settle / settings change re-reports it to the host.
+      onReadingFocus: (report) => postToHost({ type: 'reading-focus', ...report }),
     });
 
     this.sceneEditor = new ScenePromptEditor(this.rootEl);

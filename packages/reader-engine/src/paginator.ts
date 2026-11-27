@@ -29,6 +29,12 @@ import {
 } from './types.js';
 import { applyTashkeelToElement, toDisplayOffset, toOriginalOffset } from './tashkeel.js';
 import {
+  READING_FOCUS_ANCHOR_RATIO,
+  normalizeReadingFocusMode,
+  pickFocusBlockIndex,
+  type ReadingFocusReport,
+} from './reading-focus.js';
+import {
   normalizeScenePlaceholder,
   normalizeScenePrompt,
   syncScenePlaceholdersInRoot,
@@ -182,6 +188,11 @@ export type PaginatorCallbacks = {
    * host can publish the corrected position/TOC.
    */
   onExactPagination?: (allExact: boolean) => void;
+  /**
+   * F33 — fired whenever the reading focus actually changes (mode, focused paragraph, or count).
+   * The engine bridges it to the host so the settings sheet can show what the engine sees.
+   */
+  onReadingFocus?: (report: ReadingFocusReport) => void;
 };
 
 const FONT_FALLBACKS: Record<string, string> = {
@@ -508,6 +519,11 @@ export class Paginator {
    * scroll away from it hands the position back to geometry (see `handleScrollSettled`).
    */
   private scrollRestoredTop: number | null = null;
+
+  /** F33 — last focus answer handed to the host, so an unchanged one is never re-sent. */
+  private lastReadingFocusSignature = '';
+  /** F33 — throttle for the geometry pass while a scroll is in flight (ms). */
+  private lastReadingFocusAt = 0;
 
   constructor(
     rootEl: HTMLElement,
@@ -1559,11 +1575,13 @@ export class Paginator {
       }
       this.renderHighlights();
       this.scheduleBackgroundWork();
+      this.refreshReadingFocus();
       return;
     }
 
     if (wasScroll) {
       this.leaveScrollLayout(anchorBefore);
+      this.refreshReadingFocus();
       return;
     }
 
@@ -2375,6 +2393,142 @@ export class Paginator {
       '--page-transition',
       this.settings.disableAnimation ? 'none' : 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
     );
+
+    // F33 — the mode is a styling contract on the root, so it must be present even before the
+    // first refresh (and while the book is still empty). The classes/line are applied by
+    // `refreshReadingFocus`, which needs a measured layout.
+    this.rootEl.setAttribute('data-reading-focus', normalizeReadingFocusMode(this.settings.readingFocus));
+    this.refreshReadingFocus();
+  }
+
+  /**
+   * F33 — the reading line, in viewport pixels.
+   *
+   * Paginated: 40% down the *text area* of the page (inside the top/bottom padding, which also
+   * carries the host insets), so the HUD never sits on the line. Scroll: 40% down the stage
+   * viewport, which is where the reader's eye rests while the column moves under it.
+   */
+  private readingFocusAnchorY(): number {
+    const stageRect = this.stageEl.getBoundingClientRect();
+    if (this.isScrollMode()) {
+      return stageRect.top + stageRect.height * READING_FOCUS_ANCHOR_RATIO;
+    }
+    const top = stageRect.top + this.metrics.paddingTop;
+    const bottom = stageRect.bottom - this.metrics.paddingBottom;
+    return top + Math.max(1, bottom - top) * READING_FOCUS_ANCHOR_RATIO;
+  }
+
+  /**
+   * Every paragraph the reading line could be on, in reading order, with its viewport box.
+   *
+   * Paginated: only the paragraph fragments painted in the page(s) currently clipped by the
+   * stage. A paragraph can be split across columns, so a fragment's column is resolved with
+   * `getColumnForRect` and only the fragment that belongs to the visible page counts.
+   * Scroll: every mounted paragraph whose box meets the viewport. Measuring from fragment rects
+   * (not the transform) keeps the result correct even while a page turn is mid-animation.
+   */
+  private collectFocusCandidates(): Array<{ el: HTMLElement; id: string; top: number; bottom: number }> {
+    if (!this.book) return [];
+    const merged = new Map<HTMLElement, { id: string; top: number; bottom: number }>();
+
+    if (this.isScrollMode()) {
+      const stageRect = this.stageEl.getBoundingClientRect();
+      for (const el of Array.from(
+        this.trackEl.querySelectorAll<HTMLElement>('.block-p[data-block-id]'),
+      )) {
+        for (const rect of paintedRects(el)) {
+          if (rect.bottom < stageRect.top || rect.top > stageRect.bottom) continue;
+          const prev = merged.get(el);
+          merged.set(el, {
+            id: el.getAttribute('data-block-id') ?? '',
+            top: prev ? Math.min(prev.top, rect.top) : rect.top,
+            bottom: prev ? Math.max(prev.bottom, rect.bottom) : rect.bottom,
+          });
+        }
+      }
+    } else {
+      const entry = this.rendered.get(this.currentChapterIdx);
+      if (!entry) return [];
+      const chapterRect = entry.el.getBoundingClientRect();
+      const firstPage = this.currentChapterPage;
+      const lastPage = firstPage + this.pageStep() - 1;
+      for (const el of Array.from(
+        entry.el.querySelectorAll<HTMLElement>('.block-p[data-block-id]'),
+      )) {
+        for (const rect of paintedRects(el)) {
+          const column = getColumnForRect(
+            rect,
+            chapterRect,
+            this.dir,
+            this.metrics.pageWidth,
+            'start',
+          );
+          if (column < firstPage || column > lastPage) continue;
+          const prev = merged.get(el);
+          merged.set(el, {
+            id: el.getAttribute('data-block-id') ?? '',
+            top: prev ? Math.min(prev.top, rect.top) : rect.top,
+            bottom: prev ? Math.max(prev.bottom, rect.bottom) : rect.bottom,
+          });
+        }
+      }
+    }
+
+    return Array.from(merged.entries())
+      .map(([el, box]) => ({ el, ...box }))
+      .sort((a, b) => a.top - b.top || a.bottom - b.bottom);
+  }
+
+  /**
+   * Recompute and paint the reading focus, returning what was painted.
+   *
+   * The host bridge is fed through `onReadingFocus`, but only when the answer actually changes,
+   * so a scroll frame that stays on the same paragraph cannot spam the WebView message queue.
+   */
+  refreshReadingFocus(): ReadingFocusReport {
+    const mode = normalizeReadingFocusMode(this.settings.readingFocus);
+    const anchorY = this.readingFocusAnchorY();
+    this.rootEl.style.setProperty(
+      '--reading-focus-anchor-y',
+      `${Math.round(anchorY - this.rootEl.getBoundingClientRect().top)}px`,
+    );
+
+    for (const el of Array.from(
+      this.trackEl.querySelectorAll<HTMLElement>('.reading-focus-current, .reading-focus-dim'),
+    )) {
+      el.classList.remove('reading-focus-current', 'reading-focus-dim');
+    }
+
+    let candidates: ReturnType<Paginator['collectFocusCandidates']> = [];
+    let index = -1;
+    if (this.book && mode !== 'off') {
+      candidates = this.collectFocusCandidates();
+      index = pickFocusBlockIndex(candidates, anchorY);
+    }
+
+    if (mode === 'paragraph' && index >= 0) {
+      const current = candidates[index]!.el;
+      for (const candidate of candidates) {
+        candidate.el.classList.add(
+          candidate.el === current ? 'reading-focus-current' : 'reading-focus-dim',
+        );
+      }
+    }
+
+    const report: ReadingFocusReport = {
+      mode,
+      currentBlockId: index >= 0 ? candidates[index]!.id : null,
+      currentIndex: index >= 0 ? index + 1 : null,
+      blockCount: candidates.length,
+      anchorY: Math.round(anchorY * 100) / 100,
+      anchorRatio: READING_FOCUS_ANCHOR_RATIO,
+    };
+    const signature = `${report.mode}|${report.currentBlockId ?? ''}|${report.currentIndex ?? ''}|${report.blockCount}`;
+    if (signature !== this.lastReadingFocusSignature) {
+      this.lastReadingFocusSignature = signature;
+      this.callbacks.onReadingFocus?.(report);
+    }
+    return report;
   }
 
   private hasUnmountedAdjacentChapters(): boolean {
@@ -2681,6 +2835,7 @@ export class Paginator {
     if (this.isScrollMode()) {
       this.clearTrackTransition();
       this.trackEl.style.transform = 'none';
+      this.refreshReadingFocus();
       return;
     }
     const shouldAnimate = animate && !this.settings.disableAnimation;
@@ -2708,6 +2863,9 @@ export class Paginator {
       // reflow snaps commit immediately and can never animate from an earlier offset.
       void this.trackEl.offsetWidth;
     }
+
+    // F33: the page under the reading line just changed (turn, goto, reflow or restore).
+    this.refreshReadingFocus();
   }
 
   /**
@@ -2955,6 +3113,9 @@ export class Paginator {
       this.clearRestoredAnchor();
     }
     this.updateScrollProgressFill();
+    // F33: the window is mounted, so the line has paragraphs to choose from immediately —
+    // without this the first frame of a scroll session would paint nothing.
+    this.refreshReadingFocus();
   }
 
   /** Put the paginated track back together around `anchor` (the current reading line). */
@@ -3518,6 +3679,7 @@ export class Paginator {
       this.updateScrollProgressFill();
       this.renderHighlights();
       this.scheduleBackgroundWork();
+      this.refreshReadingFocus();
       return true;
     }
 
@@ -3580,6 +3742,8 @@ export class Paginator {
     this.syncScrollChapter();
     this.updateScrollProgressFill();
     this.scheduleBackgroundWork();
+    // F33: a screenful moved — the paragraph under the line changed.
+    this.refreshReadingFocus();
     return true;
   }
 
@@ -3597,6 +3761,16 @@ export class Paginator {
       const idx = this.scrollVisibleIndex();
       if (idx !== this.currentChapterIdx || !this.isScrollWindowMounted(idx)) {
         this.syncScrollChapter();
+      }
+      // F33: while the column moves, the paragraph under the line changes with the text — the
+      // ruler stays put but the highlighted paragraph has to follow. Measuring the whole window
+      // on every frame is too expensive, so it is throttled; the settle still does a final pick.
+      if (
+        this.settings.readingFocus !== 'off' &&
+        performance.now() - this.lastReadingFocusAt > 90
+      ) {
+        this.lastReadingFocusAt = performance.now();
+        this.refreshReadingFocus();
       }
     });
   }
@@ -3632,6 +3806,8 @@ export class Paginator {
     }
     this.updateScrollProgressFill();
     this.scheduleBackgroundWork();
+    // F33: the column moved under the reading line; re-pick the paragraph at the line.
+    this.refreshReadingFocus();
   }
 
   /**
