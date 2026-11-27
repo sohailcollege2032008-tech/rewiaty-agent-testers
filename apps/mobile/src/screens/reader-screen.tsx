@@ -22,10 +22,10 @@ import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
-import Svg, { Path } from 'react-native-svg';
 import WebView, { type WebViewMessageEvent, type WebViewNavigation } from 'react-native-webview';
 
 import { EyeRestBanner } from '@/components/eye-rest-banner';
+import { BookmarkRibbon } from '@/components/bookmark-ribbon';
 import { CustomColorsModal } from '@/components/custom-colors-modal';
 import { HighlightNoteModal } from '@/components/highlight-note-modal';
 import { HighlightToolbar } from '@/components/highlight-toolbar';
@@ -2254,11 +2254,12 @@ export function ReaderScreen() {
           </View>
         ) : null}
 
-        {/* Signature Crimson Silk Bookmark Ribbon */}
+        {/* Signature Crimson Silk Bookmark Ribbon — F24 adds the fabric drag on top of the tap. */}
         {book ? (
-          <Pressable
-            testID="reader-bookmark-ribbon"
-            onPress={handleToggleBookmark}
+          <BookmarkRibbon
+            isBookmarked={isBookmarked}
+            color={themeTokens.ribbon}
+            onToggle={handleToggleBookmark}
             hitSlop={hudVisible ? { top: 0, bottom: 10, left: 10, right: 10 } : 10}
             style={[
               styles.ribbonZone,
@@ -2276,26 +2277,7 @@ export function ReaderScreen() {
                 zIndex: hudVisible ? 25 : 15,
               },
             ]}
-            accessibilityRole="button"
-            accessibilityLabel={isBookmarked ? 'إزالة العلامة المرجعية' : 'حفظ علامة مرجعية'}
-            accessibilityState={{ selected: isBookmarked }}
-          >
-            <Svg
-              width={18}
-              height={isBookmarked ? 42 : 16}
-              viewBox={isBookmarked ? '0 0 18 42' : '0 0 18 16'}
-              style={{ opacity: isBookmarked ? 1 : 0.46 }}
-            >
-              <Path
-                d={
-                  isBookmarked
-                    ? 'M0 0 H18 V42 L9 34 L0 42 Z'
-                    : 'M0 0 H18 V16 L9 12 L0 16 Z'
-                }
-                fill={themeTokens.ribbon}
-              />
-            </Svg>
-          </Pressable>
+          />
         ) : null}
 
         {/* F26 «صباعك بين الصفحات»: the way back to the page the reader jumped away from. It is

@@ -18,6 +18,14 @@ jest.mock('expo-brightness', () => ({
   requestPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
 }));
 
+jest.mock('expo-haptics', () => ({
+  impactAsync: jest.fn(async () => undefined),
+  notificationAsync: jest.fn(async () => undefined),
+  selectionAsync: jest.fn(async () => undefined),
+  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
+  NotificationFeedbackType: { Success: 'success', Warning: 'warning', Error: 'error' },
+}));
+
 jest.mock('react-native-worklets', () => ({
   scheduleOnRN: (fn: (...args: unknown[]) => unknown, ...args: unknown[]) => fn(...args),
 }));
@@ -53,6 +61,7 @@ jest.mock('react-native-reanimated', () => {
     useAnimatedStyle: (fn: () => Record<string, unknown>) => fn(),
     useReducedMotion: () => false,
     withTiming: (toValue: unknown) => toValue,
+    withSpring: (toValue: unknown) => toValue,
   };
 });
 
