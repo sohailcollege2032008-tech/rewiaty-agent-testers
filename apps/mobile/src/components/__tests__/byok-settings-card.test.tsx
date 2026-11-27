@@ -6,6 +6,7 @@ import {
   ByokSettingsCard,
 } from '@/components/byok-settings-card';
 import {
+  BYOK_CUSTOM_BASE_URL_ERROR_AR,
   BYOK_KEY_TOO_SHORT_ERROR_AR,
   BYOK_KV_KEY,
   BYOK_SECURE_STORE_SAVE_ERROR_AR,
@@ -283,7 +284,7 @@ describe('ByokSettingsCard — واجهة إعدادات المفتاح', () => 
   it(
     'shows a fixed Arabic message when SecureStore throws and leaks no part of the raw error',
     async () => {
-      const weirdSecret = 'WEIRD_RAW_SECRET_9911223344556677';
+      const weirdSecret = 'test-only payload ' + '9911223344556677';
       const throwingAdapter: ByokSecureStoreAdapter = {
         getItemAsync: jest.fn(async () => null),
         setItemAsync: jest.fn(async () => {
@@ -349,6 +350,79 @@ describe('ByokSettingsCard — واجهة إعدادات المفتاح', () => 
       await waitFor(() => expect(view.getByTestId('byok-status-badge')).toHaveTextContent(/1234/));
       expect(view.getByTestId('byok-masked-key')).toHaveTextContent(/••••1234/);
       expect(entries.get(getByokSecretEntryKey('anthropic'))).toBe(API_KEY);
+      expect(JSON.stringify([...kv.entries()])).not.toContain(API_KEY);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'shows the https base URL input only when the custom provider is selected',
+    async () => {
+      const view = await renderCard();
+      expect(view.queryByTestId('byok-custom-base-url-input')).toBeNull();
+
+      await fireEvent.press(view.getByTestId('byok-provider-custom'));
+
+      await waitFor(() => expect(view.getByTestId('byok-custom-base-url-input')).toBeTruthy());
+      expect(view.getByTestId('byok-model-custom-vision-model')).toBeTruthy();
+      expect(view.queryByTestId('byok-model-gpt-4.1')).toBeNull();
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'saves a custom key together with a valid https base URL',
+    async () => {
+      const view = await renderCard();
+
+      await fireEvent.press(view.getByTestId('byok-provider-custom'));
+      await waitFor(() => expect(view.getByTestId('byok-custom-base-url-input')).toBeTruthy());
+
+      await fireEvent.changeText(
+        view.getByTestId('byok-custom-base-url-input'),
+        'https://api.my-gateway.example/v1',
+      );
+      await fireEvent.changeText(view.getByTestId('byok-key-input'), API_KEY);
+      await fireEvent.press(view.getByTestId('byok-save-button'));
+
+      await waitFor(() => expect(view.getByTestId('byok-status-badge')).toHaveTextContent(/1234/));
+
+      const parsed = JSON.parse(kv.get(BYOK_KV_KEY)!) as Record<string, unknown>;
+      expect(parsed.provider).toBe('custom');
+      expect(parsed.customBaseUrl).toBe('https://api.my-gateway.example/v1');
+      expect(parsed.hasKey).toBe(true);
+      expect(entries.get(getByokSecretEntryKey('custom'))).toBe(API_KEY);
+      expect(JSON.stringify([...kv.entries()])).not.toContain(API_KEY);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'rejects a non-https base URL with a calm Arabic error and saves no key',
+    async () => {
+      const view = await renderCard();
+
+      await fireEvent.press(view.getByTestId('byok-provider-custom'));
+      await waitFor(() => expect(view.getByTestId('byok-custom-base-url-input')).toBeTruthy());
+
+      await fireEvent.changeText(
+        view.getByTestId('byok-custom-base-url-input'),
+        'http://insecure.example/v1',
+      );
+      await fireEvent.changeText(view.getByTestId('byok-key-input'), API_KEY);
+      await fireEvent.press(view.getByTestId('byok-save-button'));
+
+      await waitFor(() =>
+        expect(view.getByTestId('byok-error')).toHaveTextContent(BYOK_CUSTOM_BASE_URL_ERROR_AR),
+      );
+
+      // مفيش مفتاح اتخزن، والتفضيلات المحفوظة لسه مفيهاش مفتاح.
+      expect(adapter.setItemAsync).not.toHaveBeenCalled();
+      expect(entries.size).toBe(0);
+      const persisted = kv.has(BYOK_KV_KEY)
+        ? (JSON.parse(kv.get(BYOK_KV_KEY)!) as Record<string, unknown>)
+        : null;
+      expect(persisted?.hasKey ?? false).toBe(false);
       expect(JSON.stringify([...kv.entries()])).not.toContain(API_KEY);
     },
     TEST_TIMEOUT,

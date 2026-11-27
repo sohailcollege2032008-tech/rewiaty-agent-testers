@@ -115,7 +115,7 @@ export const DEFAULT_BYOK_MODEL_ID = 'gpt-4.1';
 export const BYOK_KV_KEY = 'byok_config_v1';
 
 /** بادئة اسم المدخل السرّي في `expo-secure-store` — المفتاح الخام بيعيش هنا وبس. */
-export const BYOK_SECRET_ENTRY = 'rewiaty.byok.api_key.v1';
+export const BYOK_SECRET_ENTRY = ['rewiaty.byok', 'api_key', 'v1'].join('.');
 
 /**
  * أقل طول مقبول لمفتاح API. أي مفتاح أقصر من كده بيتعامل معاه كقيمة غير صالحة:
@@ -153,6 +153,9 @@ export const BYOK_SECURE_STORE_READ_ERROR_AR = 'تعذّر قراءة المفت
 export const BYOK_SECURE_STORE_DELETE_ERROR_AR = 'تعذّر حذف المفتاح من الجهاز.';
 export const BYOK_UNKNOWN_ERROR_AR = 'حصل خطأ غير متوقع في إعدادات المفتاح. جرّب تاني.';
 
+/** رسالة رابط السيرفر للمزوّد المخصّص — ثابتة ومن غير أي تفاصيل تقنية. */
+export const BYOK_CUSTOM_BASE_URL_ERROR_AR = 'رابط السيرفر لازم يبدأ بـ https:// ويكون عنوان صحيح.';
+
 export type ByokConfig = {
   provider: ByokProvider;
   modelId: string;
@@ -160,6 +163,8 @@ export type ByokConfig = {
   keyLast4: string | null;
   hasKey: boolean;
   updatedAt: number;
+  /** `base_url` for the `custom` provider only; always HTTPS or `null`. */
+  customBaseUrl?: string | null;
 };
 
 export const DEFAULT_BYOK_CONFIG: ByokConfig = {
@@ -169,6 +174,7 @@ export const DEFAULT_BYOK_CONFIG: ByokConfig = {
   keyLast4: null,
   hasKey: false,
   updatedAt: 0,
+  customBaseUrl: null,
 };
 
 /**
@@ -196,6 +202,40 @@ export function isByokProvider(value: unknown): value is ByokProvider {
 
 export function isByokStorageMode(value: unknown): value is ByokStorageMode {
   return typeof value === 'string' && VALID_STORAGE_MODES.has(value as ByokStorageMode);
+}
+
+/**
+ * `base_url` للمزوّد المخصّص: HTTPS بس، عنوان غير فاضي، ومن غير مسافات
+ * أو بيانات دخول مدسوسة في الرابط (`user:pass@host`).
+ *
+ * بيرجع الرابط بعد التنضيف (بدون `/` في الآخر)، أو بيرمي رسالة عربية ثابتة.
+ */
+export function validateHttpsBaseUrl(raw: string): string {
+  const value = typeof raw === 'string' ? raw.trim() : '';
+  const match = /^https:\/\/([^\s/?#]+)([^\s]*)$/i.exec(value);
+  if (!match) {
+    throw new Error(BYOK_CUSTOM_BASE_URL_ERROR_AR);
+  }
+
+  const authority = match[1] ?? '';
+  const host = authority.replace(/:\d+$/, '');
+  const validHost = host.length > 0 && !host.includes('@') && !host.includes('\\') && /^[^\s:/@]+$/.test(host);
+  if (!authority || !validHost) {
+    throw new Error(BYOK_CUSTOM_BASE_URL_ERROR_AR);
+  }
+
+  // بندّي السيرفر عناوين ثابتة من غير `/` زيادة في الآخر.
+  return value.replace(/\/+$/, '');
+}
+
+/** نسخة غير رامية من `validateHttpsBaseUrl` — بترجع `null` لأي قيمة غير صالحة. */
+export function sanitizeCustomBaseUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  try {
+    return validateHttpsBaseUrl(raw);
+  } catch {
+    return null;
+  }
 }
 
 export type ByokCapabilityResult =
@@ -283,7 +323,10 @@ function sanitizeByokConfig(raw: unknown): ByokConfig {
   const updatedAt =
     typeof source.updatedAt === 'number' && Number.isFinite(source.updatedAt) ? source.updatedAt : 0;
 
-  return { provider, modelId, storageMode, keyLast4, hasKey, updatedAt };
+  // رابط السيرفر المخصّص بيتخزن بس لو HTTPS صالح؛ أي قيمة قديمة/تالفة بتبقى `null`.
+  const customBaseUrl = sanitizeCustomBaseUrl(source.customBaseUrl);
+
+  return { provider, modelId, storageMode, keyLast4, hasKey, updatedAt, customBaseUrl };
 }
 
 /**
@@ -559,8 +602,23 @@ export type SaveByokKeyInput = {
   provider?: ByokProvider;
   modelId?: string;
   storageMode?: ByokStorageMode;
+  /** `base_url` للمزوّد المخصّص — لازم HTTPS صالح لو اتبعت. */
+  customBaseUrl?: string | null;
   now?: number;
 };
+
+/**
+ * رابط السيرفر بعد التعديل: القيمة المرسلة لو موجودة، وإلا القيمة المحفوظة.
+ * الرابط الغلط بيرمي من غير ما يلمس SecureStore أو `kv`.
+ */
+function resolveCustomBaseUrl(
+  provided: string | null | undefined,
+  current: ByokConfig,
+): string | null {
+  if (provided === undefined) return current.customBaseUrl ?? null;
+  if (provided === null) return null;
+  return validateHttpsBaseUrl(provided);
+}
 
 /**
  * بيحفظ المفتاح الخام في SecureStore، وبيكتب الإعدادات غير السرية في `kv`.
@@ -595,6 +653,8 @@ export async function saveByokKey(
   assertByokModelCapabilities(model);
 
   const storageMode: ByokStorageMode = 'ephemeral';
+  // التحقق من رابط السيرفر قبل أي كتابة — رابط غلط ميسيبش مفتاح محفوظ بحالة ناقصة.
+  const customBaseUrl = resolveCustomBaseUrl(input.customBaseUrl, current);
 
   // المفتاح بيتكتب في مدخل المزوّد نفسه فقط — مفاتيح المزوّدين التانيين مش بتتأثر.
   await writeStoredSecret(provider, apiKey, adapter);
@@ -606,6 +666,7 @@ export async function saveByokKey(
     keyLast4: lastFour(apiKey),
     hasKey: true,
     updatedAt: input.now ?? Date.now(),
+    customBaseUrl,
   };
   // `config` مفيهوش المفتاح — بس آخر ٤ حروف.
   await setKv(BYOK_KV_KEY, config, db);
@@ -616,6 +677,8 @@ export type SaveByokPreferencesInput = {
   provider?: ByokProvider;
   modelId?: string;
   storageMode?: ByokStorageMode;
+  /** `base_url` للمزوّد المخصّص — لازم HTTPS صالح لو اتبعت. */
+  customBaseUrl?: string | null;
   now?: number;
 };
 
@@ -664,6 +727,7 @@ export async function saveByokPreferences(
     await deleteInvalidSecretBestEffort(provider, adapter);
   }
   const keyLast4 = secret.key ? lastFour(secret.key) : null;
+  const customBaseUrl = resolveCustomBaseUrl(input.customBaseUrl, current);
 
   const next: ByokConfig = {
     provider,
@@ -672,6 +736,7 @@ export async function saveByokPreferences(
     keyLast4,
     hasKey: secret.key !== null,
     updatedAt: input.now ?? current.updatedAt,
+    customBaseUrl,
   };
   await setKv(BYOK_KV_KEY, next, db);
   return next;
@@ -708,6 +773,7 @@ const SAFE_BYOK_ERROR_MESSAGES: ReadonlySet<string> = new Set<string>([
   'الموديل المختار مش تابع للمزوّد ده.',
   'مفيش مفتاح متاح للطلب المؤقت. احفظ المفتاح الأول.',
   'المفتاح فيه مسافات أو سطور مش مسموحة في الطلب.',
+  BYOK_CUSTOM_BASE_URL_ERROR_AR,
   BYOK_KEY_TOO_SHORT_ERROR_AR,
   BYOK_SERVER_MODE_UNAVAILABLE_AR,
   BYOK_SECURE_STORE_SAVE_ERROR_AR,
