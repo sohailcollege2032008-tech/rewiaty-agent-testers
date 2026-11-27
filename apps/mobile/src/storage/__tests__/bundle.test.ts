@@ -25,6 +25,7 @@ import {
 import { pickAndImportBook } from '@/storage/importer';
 import { indexBookForSearch, searchLibrary } from '@/storage/search-index';
 import type { BookLibraryRecord } from '@/types/reader';
+import { buildWelcomeBackRecap } from '@/utils/welcome-back';
 
 jest.mock('expo-document-picker', () => ({
   getDocumentAsync: jest.fn(),
@@ -329,6 +330,55 @@ describe('bundle storage & importer', () => {
 
     const loaded = await readBookBundle(record.id);
     expect(loaded.state.progress).toBeCloseTo(0.9);
+  });
+
+  it('reads a legacy .reader-state.json with no updatedAt as unknown (0), not "now" (Codex P2)', async () => {
+    const record = await importBookContent(SAMPLE_MD, 'legacy-state.md', db);
+
+    // A state file written before F28: everything except `updatedAt`.
+    await new File(getBookDir(record.id), '.reader-state.json').write(
+      JSON.stringify(
+        {
+          anchor: { blockId: 'ch01_p0001', charOffset: 3 },
+          progress: 0.4,
+          chapterId: 'ch01',
+          page: 2,
+          pageCount: 5,
+        },
+        null,
+        2,
+      ),
+    );
+
+    const loaded = await readBookBundle(record.id);
+    // `0` means "this file never recorded a timestamp"; stamping `Date.now()` here used to make
+    // the reader look like they had just been in the book, hiding the welcome-back card forever.
+    expect(loaded.state.updatedAt).toBe(0);
+    expect(loaded.state.anchor).toEqual({ blockId: 'ch01_p0001', charOffset: 3 });
+
+    // With `lastOpenedAt` from the library record (read before `touchBookOpened`), the card
+    // correctly reports the real absence instead of "just now".
+    const now = Date.now();
+    const awayDays = 5;
+    const recap = buildWelcomeBackRecap({
+      book: loaded.book,
+      state: loaded.state,
+      now,
+      lastOpenedAt: now - awayDays * 24 * 60 * 60 * 1000,
+    });
+    expect(recap).not.toBeNull();
+    expect(recap?.awayMs).toBe(awayDays * 24 * 60 * 60 * 1000);
+    expect(recap?.paragraphs.length).toBeGreaterThan(0);
+  });
+
+  it('keeps a stored updatedAt instead of replacing it', async () => {
+    const record = await importBookContent(SAMPLE_MD, 'stamped-state.md', db);
+    await new File(getBookDir(record.id), '.reader-state.json').write(
+      JSON.stringify({ anchor: null, progress: 0.2, updatedAt: 1234 }),
+    );
+
+    const loaded = await readBookBundle(record.id);
+    expect(loaded.state.updatedAt).toBe(1234);
   });
 
   it('supports .txt imports and orders library by lastOpenedAt DESC', async () => {

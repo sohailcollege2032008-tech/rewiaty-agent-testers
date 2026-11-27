@@ -29,6 +29,7 @@ import { JumpBackPill } from '@/components/jump-back-pill';
 import { ReaderHud } from '@/components/reader-hud';
 import { ReaderSettingsSheet } from '@/components/reader-settings-sheet';
 import { TocModal } from '@/components/toc-modal';
+import { WelcomeBackCard } from '@/components/welcome-back-card';
 import {
   DICTIONARY_ATTRIBUTION,
   DICTIONARY_UNAVAILABLE_REASON,
@@ -59,7 +60,7 @@ import {
   getBookDir,
   getBooksRootDir,
 } from '@/storage/bundle';
-import { getKv, setKv, touchBookOpened } from '@/storage/database';
+import { getBookRecord, getKv, setKv, touchBookOpened } from '@/storage/database';
 import { ensureOfflineFontsDir } from '@/storage/font-assets';
 import {
   applyPendingDailyReading,
@@ -121,6 +122,7 @@ import {
 } from '@/utils/jump-back';
 import { progressToPercent } from '@/utils/progress';
 import { showToast } from '@/utils/toast';
+import { buildWelcomeBackRecap, type WelcomeBackRecap } from '@/utils/welcome-back';
 
 const POSITION_SAVE_DEBOUNCE_MS = 500;
 const SETTINGS_CLOSE_TAP_COOLDOWN_MS = 300;
@@ -395,6 +397,8 @@ export function ReaderScreen() {
   const [imageProof, setImageProof] = useState<{ count: number; width: number; height: number } | null>(
     null,
   );
+  // F28: at most one recap per book open; dismissal clears it until the book is opened again.
+  const [welcomeBackRecap, setWelcomeBackRecap] = useState<WelcomeBackRecap | null>(null);
 
   // F26 «صباعك بين الصفحات»: where the reader was before a jump, kept in a pure state machine so
   // the screen only has to feed it the moments that matter (a jump, a page turn).
@@ -564,6 +568,7 @@ export function ReaderScreen() {
     setBookBaseUrl(null);
     setReadAccessUrl(null);
     setImageProof(null);
+    setWelcomeBackRecap(null);
 
     if (!bookId) {
       setLoadError('معرّف الكتاب غير صالح.');
@@ -594,6 +599,15 @@ export function ReaderScreen() {
         const booksRootUri = getBooksRootDir().uri;
         setReadAccessUrl(booksRootUri.endsWith('/') ? booksRootUri : `${booksRootUri}/`);
 
+        // F28: read the library record BEFORE touchBookOpened stamps "now" over `lastOpenedAt`,
+        // so an older book state can still fall back to the real last-open time. A missing
+        // record only costs the fallback; the card still works from `state.updatedAt`.
+        let lastOpenedAt: number | undefined;
+        try {
+          lastOpenedAt = (await getBookRecord(bookId))?.lastOpenedAt;
+        } catch {
+          lastOpenedAt = undefined;
+        }
         await touchBookOpened(bookId, Math.max(Date.now(), bundle.state.updatedAt + 1));
         if (cancelled) return;
 
@@ -693,6 +707,21 @@ export function ReaderScreen() {
           // A saved position is reported before the engine has measured anything.
           estimated: true,
         });
+
+        // F28 — «فين كنا واقفين؟»: only after a real absence (> 3 days) and only for a book
+        // that was actually started. `buildWelcomeBackRecap` owns both rules.
+        // Opening a search result is not "resuming where I stopped", so the card stays away
+        // (Codex P2) and never covers the searched passage.
+        setWelcomeBackRecap(
+          activeSearchAnchor
+            ? null
+            : buildWelcomeBackRecap({
+                book: bundle.book,
+                state: bundle.state,
+                lastOpenedAt,
+                now: Date.now(),
+              }),
+        );
       } catch (err) {
         if (cancelled) return;
         setLoadError(readerErrorMessage(err));
@@ -917,6 +946,8 @@ export function ReaderScreen() {
             setShowHudHint(false);
             setActiveSelection(null);
             setEditingHighlightState(null);
+            // F28: turning a page means the reader is already back inside the story.
+            setWelcomeBackRecap(null);
           }
           lastPageKeyRef.current = pageKey;
           // F26: page turns in the new spot are what retire the jump-back pill on their own.
@@ -1052,6 +1083,10 @@ export function ReaderScreen() {
     debouncedSave.flush();
     router.back();
   }, [debouncedSave, router]);
+
+  const handleDismissWelcomeBack = useCallback(() => {
+    setWelcomeBackRecap(null);
+  }, []);
 
   const handleShouldStartLoadWithRequest = useCallback((request: WebViewNavigation) => {
     const targetUrl = request.url ?? '';
@@ -1936,6 +1971,16 @@ export function ReaderScreen() {
               onReset={handleResetSettings}
               onClose={handleCloseSettings}
             />
+
+            {welcomeBackRecap ? (
+              <WelcomeBackCard
+                recap={welcomeBackRecap}
+                theme={settings.theme}
+                dir={effectiveDir}
+                disableAnimation={settings.disableAnimation}
+                onDismiss={handleDismissWelcomeBack}
+              />
+            ) : null}
           </>
         ) : null}
       </View>

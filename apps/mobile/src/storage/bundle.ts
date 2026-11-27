@@ -159,7 +159,16 @@ export async function readReaderState(bookId: string): Promise<BookReaderState> 
         ? (parsedState.scenes as BookReaderState['scenes'])
         : undefined,
       settings: parsedState.settings,
-      updatedAt: typeof parsedState.updatedAt === 'number' ? parsedState.updatedAt : Date.now(),
+      // F28 (Codex P2): a state file written before `updatedAt` existed must NOT be stamped with
+      // `Date.now()` — that would claim the reader was here a second ago and hide the
+      // welcome-back card forever. `0` means "unknown", so `resolveLastReadAt` falls back to the
+      // library record's real `lastOpenedAt`.
+      updatedAt:
+        typeof parsedState.updatedAt === 'number' &&
+        Number.isFinite(parsedState.updatedAt) &&
+        parsedState.updatedAt > 0
+          ? parsedState.updatedAt
+          : 0,
     };
   } catch {
     // Fallback to default state if corrupted

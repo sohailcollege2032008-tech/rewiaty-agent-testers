@@ -77,6 +77,7 @@ jest.mock('@/storage/bundle', () => ({
 const mockKv = new Map<string, unknown>();
 jest.mock('@/storage/database', () => ({
   touchBookOpened: jest.fn(),
+  getBookRecord: jest.fn(async () => null),
   getKv: jest.fn(async (key: string, fallback: unknown) => (mockKv.has(key) ? mockKv.get(key) : fallback)),
   setKv: jest.fn(async (key: string, value: unknown) => {
     mockKv.set(key, value);
@@ -154,7 +155,8 @@ describe('ReaderScreen', () => {
         chapterId: 'ch01',
         page: 2,
         pageCount: 10,
-        updatedAt: 1000,
+        // Opened moments ago: a normal open must never show the F28 welcome-back card.
+        updatedAt: Date.now(),
       },
     });
   });
@@ -180,6 +182,138 @@ describe('ReaderScreen', () => {
       nativeEvent: { data: JSON.stringify(payload) },
     });
   }
+
+  function mockStaleBundle(updatedAt: number) {
+    (readBookBundle as jest.Mock).mockResolvedValue({
+      book: {
+        id: 'book_123',
+        meta: { title: 'أوراق البحر', author: 'مؤلف', lang: 'ar', dir: 'rtl' },
+        chapters: [
+          {
+            id: 'ch01',
+            title: 'الفصل الأول',
+            blocks: [
+              {
+                id: 'ch01_p0001',
+                kind: 'p',
+                html: 'كَانَ الْفَجْرُ يَتَسَلَّلُ بِهُدُوءٍ فَوْقَ أَرْصِفَةِ الْمِينَاءِ.',
+              },
+              {
+                id: 'ch01_p0002',
+                kind: 'p',
+                html: 'وَعَادَ الصَّيَّادُونَ يَجُرُّونَ شِبَاكَهُمْ إِلَى الشَّاطِئِ.',
+              },
+            ],
+            wordCount: 120,
+            hash: 'h1',
+          },
+          { id: 'ch02', title: 'الفصل الثاني', blocks: [], wordCount: 120, hash: 'h2' },
+        ],
+        footnotes: {},
+        wordCount: 240,
+      },
+      manifest: {
+        id: 'book_123',
+        meta: { title: 'أوراق البحر', author: 'مؤلف', lang: 'ar', dir: 'rtl' },
+        chapters: [],
+        wordCount: 240,
+        parserVersion: 1,
+      },
+      state: {
+        anchor: { blockId: 'ch01_p0002', charOffset: 0 },
+        progress: 0.35,
+        chapterId: 'ch01',
+        page: 3,
+        pageCount: 10,
+        bookmarkItems: [
+          {
+            id: 'bm_1',
+            anchor: { blockId: 'ch01_p0001', charOffset: 0 },
+            chapterId: 'ch01',
+            chapterTitle: 'الفصل الأول',
+            quote: 'كَانَ الْفَجْرُ يَتَسَلَّلُ',
+            contextBefore: '',
+            contextAfter: 'بِهُدُوءٍ',
+            page: 1,
+            createdAt: updatedAt - 1_000,
+          },
+        ],
+        updatedAt,
+      },
+    });
+  }
+
+  it('shows «فين كنا واقفين؟» when the book state is five days old and hides it on one tap (F28)', async () => {
+    mockStaleBundle(Date.now() - 5 * 24 * 60 * 60 * 1000);
+    const utils = await renderLoadedReader();
+
+    await waitFor(() => expect(utils.getByTestId('welcome-back-card')).toBeTruthy());
+    expect(utils.getByText('فين كنا واقفين؟')).toBeTruthy();
+    expect(utils.getByText('غبت ٥ أيام · الفصل الأول')).toBeTruthy();
+    expect(utils.getByText('آخر علامة')).toBeTruthy();
+    expect(utils.getByText('«كَانَ الْفَجْرُ يَتَسَلَّلُ»')).toBeTruthy();
+
+    await fireEvent.press(utils.getByTestId('welcome-back-card'));
+    expect(utils.queryByTestId('welcome-back-card')).toBeNull();
+  });
+
+  it('does not show the welcome-back card on a normal fresh open (F28)', async () => {
+    const utils = await renderLoadedReader();
+    expect(utils.queryByTestId('welcome-back-card')).toBeNull();
+  });
+
+  it('does not show the welcome-back card when the book is opened on a search result (Codex P2)', async () => {
+    // A reader who has been away for days taps a search hit: they asked for that passage, not
+    // for a recap, so the card must never cover the result they navigated to.
+    mockSearchParams = { id: 'book_123', blockId: 'ch01_p0002', charOffset: '0' };
+    mockStaleBundle(Date.now() - 5 * 24 * 60 * 60 * 1000);
+    const utils = await renderLoadedReader();
+
+    expect(utils.queryByTestId('welcome-back-card')).toBeNull();
+    // The search anchor is still honoured: it is the position the engine is asked to show.
+    await waitFor(() => expect(postedToWebView.length).toBeGreaterThan(0));
+    const load = postedToWebView
+      .map((raw) => JSON.parse(raw) as { type: string; anchor?: { blockId?: string } })
+      .find((msg) => msg.type === 'load');
+    expect(load?.anchor?.blockId).toBe('ch01_p0002');
+  });
+
+  it('dismisses the welcome-back card once the reader turns a page (F28)', async () => {
+    mockStaleBundle(Date.now() - 6 * 24 * 60 * 60 * 1000);
+    const utils = await renderLoadedReader();
+
+    await waitFor(() => expect(utils.getByTestId('welcome-back-card')).toBeTruthy());
+
+    // The first position is the engine reporting where the book already was; it must not
+    // dismiss the card. A real page turn (a changed page key) does.
+    await act(async () => {
+      emitWebMessage({
+        type: 'position',
+        anchor: { blockId: 'ch01_p0002', charOffset: 0 },
+        chapterId: 'ch01',
+        page: 3,
+        pageCount: 10,
+        chapterPage: 3,
+        chapterPageCount: 5,
+        bookProgress: 0.35,
+      });
+    });
+    expect(utils.getByTestId('welcome-back-card')).toBeTruthy();
+
+    await act(async () => {
+      emitWebMessage({
+        type: 'position',
+        anchor: { blockId: 'ch01_p0002', charOffset: 40 },
+        chapterId: 'ch01',
+        page: 4,
+        pageCount: 10,
+        chapterPage: 4,
+        chapterPageCount: 5,
+        bookProgress: 0.45,
+      });
+    });
+    expect(utils.queryByTestId('welcome-back-card')).toBeNull();
+  });
 
   it('hardens the reader WebView: local-only origins, no file-URL JS surface, outbound links leave the app', async () => {
     await renderLoadedReader();
