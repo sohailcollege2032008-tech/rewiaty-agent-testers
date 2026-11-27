@@ -9,6 +9,19 @@ export type {
   SubscribeJobEventsResult,
 } from './sse';
 export {
+  createRewiatyApiUploadService,
+  toProgressEvent,
+  SAMPLE_NEEDS_BYOK_AR,
+} from './upload-service';
+export type {
+  CreateRewiatyApiUploadServiceOptions,
+  OnboardingSampleServiceInput,
+  PickedPdfFile,
+  RewiatyApiUploadService,
+  StartConversionServiceInput,
+  StartConversionServiceResult,
+} from './upload-service';
+export {
   ProgressiveBookImporter,
   assembleBookMarkdown,
 } from './progressive-import';

@@ -197,6 +197,21 @@ export class RewiatyApiClient {
     if (token) this.rememberSecret(token);
   }
 
+  /**
+   * Base URL without a trailing slash.
+   *
+   * Why (SSE): `subscribeToJobEvents` builds its own `GET …/events` request rather than going
+   * through `request()`, so it needs the same origin the client posts to.
+   */
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
+  /** The token the next request would send, for callers that build a request themselves (SSE). */
+  getAuthToken(): Promise<string | null> {
+    return this.resolveAccessToken();
+  }
+
   /** The token the next request will use, honouring a custom `getAccessToken`. */
   private async resolveAccessToken(): Promise<string | null> {
     if (this.getAccessTokenOption) {
