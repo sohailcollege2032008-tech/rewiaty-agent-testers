@@ -3,6 +3,10 @@ appId: com.rewiaty.app
 # F49: long-press a word → «المعجم» → the offline dictionary sheet.
 # The dictionary sheet must open with the CC BY-SA credit either way; when the bundled
 # database is present (release build), a real entry and its Wiktionary links must show.
+#
+# Set DICT_REQUIRED=1 for a release build: the journey then FAILS if the bundled
+# dictionary was not shipped (no `dictionary-sheet-unavailable`) and requires a real
+# entry with its attribution links. Without it (dev builds) both states are allowed.
 - launchApp
 - extendedWaitUntil:
     visible: "حَجَرُ الْمَاءِ"
@@ -39,15 +43,94 @@ appId: com.rewiaty.app
       id: "dictionary-sheet"
     timeout: 8000
 # The sheet must have settled before the conditional checks below: a flow that runs while the
-# sheet is still «بيدوّر…» would skip every branch and pass without proving anything.
+# sheet is still «بندوّر…» would skip every branch and pass without proving anything.
+# First launch copies the bundled ~2.5 MB SQLite file out of APK assets before opening it.
 - extendedWaitUntil:
     notVisible:
       id: "dictionary-sheet-loading"
-    timeout: 8000
+    timeout: 20000
 - assertNotVisible:
     id: "dictionary-sheet-idle"
-- assertNotVisible:
-    id: "dictionary-sheet-empty"
+# The long-press coordinates are approximate, so the first selection can land on a proper
+# noun or a name that the dictionary does not define. That is not a product failure: retry
+# on two other positions inside the first page before judging the build.
+- runFlow:
+    when:
+      visible:
+        id: "dictionary-sheet-empty"
+    commands:
+      - tapOn:
+          id: "dictionary-sheet-close"
+      - extendedWaitUntil:
+          notVisible:
+            id: "dictionary-sheet"
+          timeout: 5000
+      - waitForAnimationToEnd
+      - longPressOn:
+          point: "55%,42%"
+      - extendedWaitUntil:
+          visible:
+            id: "highlight-toolbar"
+          timeout: 8000
+      - tapOn:
+          id: "highlight-dictionary-button"
+      - extendedWaitUntil:
+          visible:
+            id: "dictionary-sheet"
+          timeout: 8000
+      - extendedWaitUntil:
+          notVisible:
+            id: "dictionary-sheet-loading"
+          timeout: 8000
+- runFlow:
+    when:
+      visible:
+        id: "dictionary-sheet-empty"
+    commands:
+      - tapOn:
+          id: "dictionary-sheet-close"
+      - extendedWaitUntil:
+          notVisible:
+            id: "dictionary-sheet"
+          timeout: 5000
+      - waitForAnimationToEnd
+      - longPressOn:
+          point: "45%,46%"
+      - extendedWaitUntil:
+          visible:
+            id: "highlight-toolbar"
+          timeout: 8000
+      - tapOn:
+          id: "highlight-dictionary-button"
+      - extendedWaitUntil:
+          visible:
+            id: "dictionary-sheet"
+          timeout: 8000
+      - extendedWaitUntil:
+          notVisible:
+            id: "dictionary-sheet-loading"
+          timeout: 8000
+# Release builds MUST ship the database: no calm "unavailable" state, no empty result,
+# and a real entry with both CC BY-SA attribution links.
+- runFlow:
+    when:
+      true: ${DICT_REQUIRED == '1'}
+    commands:
+      - assertNotVisible:
+          id: "dictionary-sheet-unavailable"
+      - assertNotVisible:
+          id: "dictionary-sheet-empty"
+      - scrollUntilVisible:
+          element:
+            id: "dictionary-sheet-entry-source-0"
+          direction: DOWN
+          timeout: 8000
+      - assertVisible:
+          id: "dictionary-sheet-entry-source-0"
+      - assertVisible:
+          id: "dictionary-sheet-entry-page-link-0"
+      - assertVisible:
+          id: "dictionary-sheet-entry-history-link-0"
 - extendedWaitUntil:
     visible:
       id: "dictionary-sheet-unavailable|dictionary-sheet-entry-source-0"
@@ -58,7 +141,7 @@ appId: com.rewiaty.app
       id: "dictionary-sheet-attribution"
     timeout: 8000
 - takeScreenshot: "02-dictionary-sheet"
-# A missing bundled database is a supported state (calm Arabic message), and the
+# A missing bundled database is a supported state (calm Arabic message) in dev builds, and the
 # flow still has to prove which of the two states the build actually produced.
 - runFlow:
     when:
@@ -86,3 +169,49 @@ appId: com.rewiaty.app
 # The selection is cleared with the lookup: the toolbar must not come back on its own.
 - assertNotVisible:
     id: "highlight-toolbar"
+# Back to the library (hardware back pops the reader from the router stack).
+- back
+- extendedWaitUntil:
+    visible:
+      id: "library-screen"
+    timeout: 10000
+# «عن التطبيق» must carry the CC BY-SA 4.0 attribution for the bundled dictionary.
+- assertVisible:
+    id: "library-ai-settings-button"
+- tapOn:
+    id: "library-ai-settings-button"
+- extendedWaitUntil:
+    visible:
+      id: "ai-settings-screen"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "ai-settings-open-about"
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: "ai-settings-open-about"
+- extendedWaitUntil:
+    visible:
+      id: "about-screen"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "about-attribution-card"
+    direction: DOWN
+    timeout: 10000
+- assertVisible:
+    id: "about-attribution-card"
+- assertVisible: "CC BY-SA 4.0"
+- assertVisible:
+    id: "about-attribution-processing"
+- scrollUntilVisible:
+    element:
+      id: "about-wiktionary-link"
+    direction: DOWN
+    timeout: 10000
+- assertVisible:
+    id: "about-license-link"
+- assertVisible:
+    id: "about-wiktionary-link"
+- takeScreenshot: "05-about-attribution"

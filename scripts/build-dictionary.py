@@ -66,6 +66,11 @@ DEFAULT_DUMP_DATE = "2026-11-01"
 DUMP_URL_TEMPLATE = (
     "https://dumps.wikimedia.org/{source}/{date}/{source}-{date}-pages-articles.xml.bz2"
 )
+# Wikimedia dumps return HTTP 403 to Python-urllib's default User-Agent; send an
+# explicit project identifier per Wikimedia's User-Agent policy.
+DOWNLOAD_USER_AGENT = (
+    "RewiatyDictionaryBuilder/1.0 (+https://github.com/sohailcollege2032008-tech/rewiaty)"
+)
 DEFAULT_META_IN = Path("scripts/dictionary-meta.json")
 LICENSE = "CC BY-SA 4.0"
 LICENSE_URL = "https://creativecommons.org/licenses/by-sa/4.0/"
@@ -354,7 +359,11 @@ def download_dump(cache_dir: Path, source_url: str = SOURCE_URL) -> Path:
     if target.exists() and target.stat().st_size > 0:
         return target
     partial = target.with_suffix(target.suffix + ".part")
-    with urllib.request.urlopen(source_url) as response, partial.open("wb") as handle:
+    request = urllib.request.Request(
+        source_url,
+        headers={"User-Agent": DOWNLOAD_USER_AGENT},
+    )
+    with urllib.request.urlopen(request) as response, partial.open("wb") as handle:
         while True:
             chunk = response.read(1024 * 1024)
             if not chunk:

@@ -3,12 +3,20 @@ import * as SQLite from 'expo-sqlite';
 import {
   buildWiktionaryEntryUrl,
   DICTIONARY_ATTRIBUTION,
+  DICTIONARY_DB_FILE_NAME,
   lookupDictionaryWord,
   openBundledDictionaryDb,
   resetBundledDictionaryDbCache,
   type DictionaryDbAdapter,
 } from '@/storage/dictionary';
+import { getBundledDictionaryAssetId } from '@/storage/dictionary-asset';
 import { generateStemCandidates, normalizeArabicWord } from '@/storage/arabic-stemmer';
+
+// The bundled dictionary asset only exists in a release build; unit tests keep
+// the default resolver (`null`) unless a test opts into an asset id.
+jest.mock('@/storage/dictionary-asset', () => ({
+  getBundledDictionaryAssetId: jest.fn(() => null),
+}));
 
 type NodeSqliteRow = Record<string, unknown>;
 
@@ -490,5 +498,151 @@ describe('openBundledDictionaryDb', () => {
     // The cache was cleared, so the next call opens again (and fails calmly).
     await expect(openBundledDictionaryDb()).resolves.toBeNull();
     expect(openDatabaseAsync).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('openBundledDictionaryDb — bundled asset import', () => {
+  type FakeDb = {
+    getFirstAsync: jest.Mock;
+    getAllAsync: jest.Mock;
+    closeAsync: jest.Mock;
+  };
+
+  const openDatabaseAsync = SQLite.openDatabaseAsync as unknown as jest.Mock;
+  const getAssetId = getBundledDictionaryAssetId as unknown as jest.Mock;
+  const importDatabaseFromAssetAsync = (
+    jest.requireMock('expo-sqlite') as { importDatabaseFromAssetAsync: jest.Mock }
+  ).importDatabaseFromAssetAsync;
+
+  function makeFakeDb(options: { hasEntriesTable: boolean; rows?: FixtureEntry[] }): FakeDb {
+    return {
+      getFirstAsync: jest.fn(async () =>
+        options.hasEntriesTable ? { name: 'entries' } : undefined,
+      ),
+      getAllAsync: jest.fn(async () => options.rows ?? []),
+      closeAsync: jest.fn(async () => undefined),
+    };
+  }
+
+  beforeEach(() => {
+    resetBundledDictionaryDbCache();
+    openDatabaseAsync.mockReset();
+    getAssetId.mockReset();
+    getAssetId.mockReturnValue(null);
+    importDatabaseFromAssetAsync.mockReset();
+    importDatabaseFromAssetAsync.mockResolvedValue(undefined);
+  });
+
+  it('imports the packaged dictionary when the entries table is missing (first run)', async () => {
+    const empty = makeFakeDb({ hasEntriesTable: false });
+    const ready = makeFakeDb({
+      hasEntriesTable: true,
+      rows: [
+        { word: 'كتاب', norm: 'كتاب', pos: 'اسم', root: null, defs: 'تعريف كتاب تجريبي.' },
+      ],
+    });
+    getAssetId.mockReturnValue(42);
+    openDatabaseAsync.mockResolvedValueOnce(empty).mockResolvedValueOnce(ready);
+
+    const handle = await openBundledDictionaryDb();
+
+    expect(handle).not.toBeNull();
+    // The empty handle is closed before the import overwrites the file.
+    expect(empty.closeAsync).toHaveBeenCalledTimes(1);
+    expect(importDatabaseFromAssetAsync).toHaveBeenCalledTimes(1);
+    expect(importDatabaseFromAssetAsync).toHaveBeenCalledWith(DICTIONARY_DB_FILE_NAME, {
+      assetId: 42,
+      forceOverwrite: true,
+    });
+    // The database is reopened after the import and only then verified/cached.
+    expect(openDatabaseAsync).toHaveBeenCalledTimes(2);
+    expect(getAssetId).toHaveBeenCalledTimes(1);
+
+    const found = await lookupDictionaryWord('كتاب', handle);
+    expect(found.status).toBe('found');
+    if (found.status !== 'found') throw new Error('expected found');
+    expect(found.entries[0]?.definitions).toEqual(['تعريف كتاب تجريبي.']);
+
+    // A second call reuses the verified handle.
+    await expect(openBundledDictionaryDb()).resolves.toBe(handle);
+    expect(openDatabaseAsync).toHaveBeenCalledTimes(2);
+    expect(importDatabaseFromAssetAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns null without caching when the asset import fails', async () => {
+    const empty = makeFakeDb({ hasEntriesTable: false });
+    const ready = makeFakeDb({ hasEntriesTable: true });
+    getAssetId.mockReturnValue(7);
+    importDatabaseFromAssetAsync.mockRejectedValueOnce(new Error('asset not packaged'));
+    openDatabaseAsync.mockResolvedValueOnce(empty).mockResolvedValueOnce(ready);
+
+    await expect(openBundledDictionaryDb()).resolves.toBeNull();
+    expect(empty.closeAsync).toHaveBeenCalledTimes(1);
+    expect(importDatabaseFromAssetAsync).toHaveBeenCalledTimes(1);
+    // No second open happened: the import failed before reopening.
+    expect(openDatabaseAsync).toHaveBeenCalledTimes(1);
+
+    // `null` must not be remembered for the session: the next call retries.
+    await expect(openBundledDictionaryDb()).resolves.not.toBeNull();
+    expect(openDatabaseAsync).toHaveBeenCalledTimes(2);
+  });
+
+  it('never imports the asset when the entries table already exists', async () => {
+    const ready = makeFakeDb({ hasEntriesTable: true });
+    getAssetId.mockReturnValue(42);
+    openDatabaseAsync.mockResolvedValue(ready);
+
+    await expect(openBundledDictionaryDb()).resolves.not.toBeNull();
+
+    expect(importDatabaseFromAssetAsync).not.toHaveBeenCalled();
+    expect(getAssetId).not.toHaveBeenCalled();
+    expect(openDatabaseAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the calm null fallback when no asset is bundled', async () => {
+    const empty = makeFakeDb({ hasEntriesTable: false });
+    const ready = makeFakeDb({ hasEntriesTable: true });
+    getAssetId.mockReturnValue(null);
+    openDatabaseAsync.mockResolvedValueOnce(empty).mockResolvedValueOnce(ready);
+
+    await expect(openBundledDictionaryDb()).resolves.toBeNull();
+
+    expect(importDatabaseFromAssetAsync).not.toHaveBeenCalled();
+    expect(empty.closeAsync).toHaveBeenCalledTimes(1);
+
+    // No cached `null`: the next call tries again (and can succeed later).
+    await expect(openBundledDictionaryDb()).resolves.not.toBeNull();
+    expect(openDatabaseAsync).toHaveBeenCalledTimes(2);
+  });
+
+  it('recovers by re-importing the bundled asset when the existing DB file is corrupt', async () => {
+    const corrupt = {
+      getFirstAsync: jest.fn(async () => {
+        throw new Error('SQLITE_NOTADB: file is not a database');
+      }),
+      getAllAsync: jest.fn(async () => []),
+      closeAsync: jest.fn(async () => undefined),
+    };
+    const ready = makeFakeDb({
+      hasEntriesTable: true,
+      rows: [
+        { word: 'بحر', norm: 'بحر', pos: 'اسم', root: null, defs: 'مسطح مائي كبير.' },
+      ],
+    });
+    getAssetId.mockReturnValue(99);
+    openDatabaseAsync.mockResolvedValueOnce(corrupt).mockResolvedValueOnce(ready);
+
+    const handle = await openBundledDictionaryDb();
+
+    expect(handle).not.toBeNull();
+    expect(corrupt.closeAsync).toHaveBeenCalledTimes(1);
+    expect(importDatabaseFromAssetAsync).toHaveBeenCalledWith(DICTIONARY_DB_FILE_NAME, {
+      assetId: 99,
+      forceOverwrite: true,
+    });
+    expect(openDatabaseAsync).toHaveBeenCalledTimes(2);
+
+    const found = await lookupDictionaryWord('بحر', handle);
+    expect(found.status).toBe('found');
   });
 });

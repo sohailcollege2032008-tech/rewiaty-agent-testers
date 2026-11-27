@@ -20,6 +20,7 @@
 import * as SQLite from 'expo-sqlite';
 
 import { generateStemCandidates, normalizeArabicWord } from './arabic-stemmer';
+import { getBundledDictionaryAssetId } from './dictionary-asset';
 import type { DatabaseAdapter } from './database';
 
 const WIKTIONARY_ORIGIN = 'https://ar.wiktionary.org';
@@ -257,14 +258,15 @@ async function closeQuietly(db: { closeAsync?: () => Promise<void> } | null): Pr
 /**
  * Open the bundled dictionary database with a safe `null` fallback.
  *
- * PR 6 copies `assets/dictionary/arwiktionary.sqlite` into the app's SQLite
- * directory before navigation; until then (or on any open/schema error) this
- * returns `null` and the UI shows the calm "unavailable" state instead of
- * crashing.
- *
- * Only a *verified* handle is cached. A missing/unready database closes its
- * handle and clears the cache, so the very next call retries instead of a
- * `null` being remembered for the whole session.
+ * The SQLite file shipped inside the APK never becomes a usable database on its
+ * own: on the first launch `arwiktionary.sqlite` is created empty by
+ * `openDatabaseAsync`. When the `entries` table is missing and a bundled asset
+ * exists, the asset is imported over that empty file
+ * (`importDatabaseFromAssetAsync(..., { forceOverwrite: true })`), the database
+ * is reopened and only a *verified* handle is cached. Every failure path closes
+ * the handle, clears the cache and returns `null` so the UI shows the calm
+ * "unavailable" state and the next call retries instead of replaying a cached
+ * `null`.
  */
 export async function openBundledDictionaryDb(): Promise<DictionaryDbAdapter | null> {
   if (!bundledDbPromise) {
@@ -273,19 +275,120 @@ export async function openBundledDictionaryDb(): Promise<DictionaryDbAdapter | n
   return bundledDbPromise;
 }
 
+type SqliteAssetImporter = (
+  databaseName: string,
+  options: { assetId: number; forceOverwrite?: boolean },
+) => Promise<void>;
+
+async function hasEntriesTable(db: SQLite.SQLiteDatabase): Promise<boolean> {
+  const probe = await db.getFirstAsync<{ name: string }>(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'entries'",
+  );
+  return Boolean(probe);
+}
+
+/**
+ * Copy the packaged SQLite asset into the SQLite directory when the runtime has
+ * no `importDatabaseFromAssetAsync` (older Expo SQLite builds). Returns `false`
+ * instead of throwing.
+ */
+async function copyBundledDictionaryAsset(assetId: number): Promise<boolean> {
+  try {
+    // Loaded lazily: dev/tests without a bundled database must not need them.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { Asset } = require('expo-asset') as typeof import('expo-asset');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fileSystem = require('expo-file-system') as typeof import('expo-file-system');
+
+    const asset = Asset.fromModule(assetId);
+    await asset.downloadAsync();
+    const sourceUri = asset.localUri ?? asset.uri;
+    if (!sourceUri) return false;
+
+    const { Directory, File, Paths } = fileSystem;
+    const defaultDirectory = (
+      SQLite as unknown as { defaultDatabaseDirectory?: unknown }
+    ).defaultDatabaseDirectory;
+    const databaseDirectory =
+      typeof defaultDirectory === 'string' && defaultDirectory.length > 0
+        ? new Directory(defaultDirectory)
+        : new Directory(Paths.document, 'SQLite');
+    databaseDirectory.create({ intermediates: true, idempotent: true });
+
+    const target = new File(databaseDirectory, DICTIONARY_DB_FILE_NAME);
+    if (target.exists) {
+      target.delete();
+    }
+    const source = new File(sourceUri);
+    const bytes = await source.bytes();
+    await target.write(bytes);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Import the packaged dictionary over the (empty) database file. */
+async function importBundledDictionaryAsset(assetId: number): Promise<boolean> {
+  const importFromAsset = (
+    SQLite as unknown as { importDatabaseFromAssetAsync?: SqliteAssetImporter }
+  ).importDatabaseFromAssetAsync;
+
+  if (typeof importFromAsset !== 'function') {
+    return copyBundledDictionaryAsset(assetId);
+  }
+
+  try {
+    await importFromAsset.call(SQLite, DICTIONARY_DB_FILE_NAME, {
+      assetId,
+      forceOverwrite: true,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function openVerifiedBundledDictionaryDb(): Promise<DictionaryDbAdapter | null> {
   let raw: SQLite.SQLiteDatabase | null = null;
   try {
-    raw = await SQLite.openDatabaseAsync(DICTIONARY_DB_FILE_NAME);
-    const probe = await raw.getFirstAsync<{ name: string }>(
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'entries'",
-    );
-    if (!probe) {
-      await closeQuietly(raw);
-      bundledDbPromise = null;
-      return null;
+    let ready = false;
+    try {
+      raw = await SQLite.openDatabaseAsync(DICTIONARY_DB_FILE_NAME);
+      ready = await hasEntriesTable(raw);
+    } catch {
+      // A truncated/corrupt file from an interrupted first-launch import can make
+      // openDatabaseAsync or the sqlite_master probe throw; fall through so the
+      // bundled asset overwrites and repairs it.
+      ready = false;
     }
-    const handle = raw;
+
+    if (!ready) {
+      // First launch or interrupted copy: close any broken/empty handle and import.
+      await closeQuietly(raw);
+      raw = null;
+
+      const assetId = getBundledDictionaryAssetId();
+      if (assetId === null) {
+        bundledDbPromise = null;
+        return null;
+      }
+
+      if (!(await importBundledDictionaryAsset(assetId))) {
+        bundledDbPromise = null;
+        return null;
+      }
+
+      raw = await SQLite.openDatabaseAsync(DICTIONARY_DB_FILE_NAME);
+      if (!(await hasEntriesTable(raw))) {
+        await closeQuietly(raw);
+        raw = null;
+        bundledDbPromise = null;
+        return null;
+      }
+    }
+
+    const handle = raw!;
     return {
       getAllAsync: <T>(source: string, ...params: SQLite.SQLiteBindValue[]): Promise<T[]> =>
         handle.getAllAsync<T>(source, ...params),
