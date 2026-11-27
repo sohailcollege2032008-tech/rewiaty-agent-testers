@@ -466,8 +466,12 @@ while IFS= read -r flow_id; do
   if [ -f "$MAESTRO_DIR/${flow_id}.yaml" ]; then
     echo "==> (generic) $flow_id"
     # Every other journey starts from a clean app, so a generic one does too.
-    adb shell pm clear "$APP_ID" >/dev/null 2>&1 || true
-    run_flow "$flow_id" || true
+    # Why (tech): adb and maestro read stdin. Inside `while read` they swallowed the rest of the
+    # requested ids, so only the first generic flow ran and the next ones were never attempted
+    # (run 45949187687: mission-control-byok ran, dictionary-lookup did not). </dev/null keeps the
+    # id list for the loop.
+    adb shell pm clear "$APP_ID" </dev/null >/dev/null 2>&1 || true
+    run_flow "$flow_id" </dev/null || true
   else
     echo "ERROR: requested flow '$flow_id' has no $MAESTRO_DIR/${flow_id}.yaml" >&2
     printf '%s\tFAIL\tno flow file for requested id\n' "$flow_id" >> "$STATUS_FILE"
