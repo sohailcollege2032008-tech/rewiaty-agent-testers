@@ -585,11 +585,8 @@ export type WebToRNMessage =
        * spec's 3%, tiled, and without a live filter.
        */
       type: 'paper-grain-status';
-      active: boolean;
-      opacity: number;
-      size: number;
-      repeating: boolean;
-      hasLiveFilter: boolean;
+      theme: string;
+      state: 'painted' | 'hidden' | 'invalid';
     }
   | {
       type: 'selection';

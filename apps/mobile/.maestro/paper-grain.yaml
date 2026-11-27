@@ -44,7 +44,7 @@ appId: com.rewiaty.app
 - extendedWaitUntil:
     visible:
       id: "reader-paper-grain-proof"
-      text: "ملمس الورق: مفعّل ٣٪"
+      text: "^ملمس الورق [(]warraq[)]: مفعّل ٣٪$"
     timeout: 10000
 - takeScreenshot: "01-paper-grain-warraq"
 
@@ -76,7 +76,7 @@ appId: com.rewiaty.app
 - extendedWaitUntil:
     visible:
       id: "reader-paper-grain-proof"
-      text: "ملمس الورق: مفعّل ٣٪"
+      text: "^ملمس الورق [(]sepia[)]: مفعّل ٣٪$"
     timeout: 10000
 - takeScreenshot: "02-paper-grain-sepia"
 
@@ -108,7 +108,7 @@ appId: com.rewiaty.app
 - extendedWaitUntil:
     visible:
       id: "reader-paper-grain-proof"
-      text: "ملمس الورق: متوقّف"
+      text: "^ملمس الورق [(]burnt-paper[)]: متوقّف$"
     timeout: 10000
 - takeScreenshot: "03-paper-grain-burnt-paper-off"
 
@@ -140,5 +140,5 @@ appId: com.rewiaty.app
 - extendedWaitUntil:
     visible:
       id: "reader-paper-grain-proof"
-      text: "ملمس الورق: مفعّل ٣٪"
+      text: "^ملمس الورق [(]warraq[)]: مفعّل ٣٪$"
     timeout: 10000

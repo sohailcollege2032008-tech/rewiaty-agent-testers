@@ -115,8 +115,7 @@ export class ReaderEngine {
   /** Last box reported for the current book, so the pump cannot spam the host. */
   private imageProofSignature = '';
   /**
-   * F27 — last `paper-grain-status` reported. A theme change re-applies the page, but most reports
-   * (every position) leave the grain untouched, so unchanged statuses are deduped the same way.
+   * F27 — last applied theme and computed grain state reported to the host.
    */
   private paperGrainSignature = '';
   /** One-line account of the last measurement, quoted in the page when there is nothing painted. */
@@ -1078,38 +1077,25 @@ export class ReaderEngine {
     return (last.x - first.x) / dt;
   }
 
-  /**
-   * F27 — report what the page is *actually* painting for the paper grain.
-   *
-   * Reading `getComputedStyle` (rather than echoing settings) is the point: it catches a rule that
-   * was removed, a theme that still matches, or a stray live filter — the exact failures a
-   * stylesheet review cannot. `hasLiveFilter` is reported separately so the host can show the grain
-   * as off instead of treating a forbidden `filter` as fine.
-   */
+  /** F27: report computed paint so the device journey can tell a hidden layer from a broken one. */
   private emitPaperGrainStatus(): void {
     const el = document.getElementById('paper-grain');
     if (!el) return;
+    const theme = document.documentElement.getAttribute('data-theme') ?? '';
     const style = getComputedStyle(el);
-    const backdrop =
-      (style as CSSStyleDeclaration & { backdropFilter?: string }).backdropFilter ??
-      (style as CSSStyleDeclaration & { webkitBackdropFilter?: string }).webkitBackdropFilter ??
-      'none';
-    const filter = typeof style.filter === 'string' && style.filter !== '' ? style.filter : 'none';
-    const active = style.display !== 'none';
-    const parsedOpacity = Number.parseFloat(style.opacity);
-    const parsedSize = Number.parseFloat(style.backgroundSize);
-    const status = {
-      type: 'paper-grain-status' as const,
-      active,
-      opacity: Number.isFinite(parsedOpacity) ? parsedOpacity : 0,
-      size: Number.isFinite(parsedSize) ? parsedSize : 0,
-      repeating: style.backgroundRepeat === 'repeat',
-      hasLiveFilter: filter !== 'none' || backdrop !== 'none',
-    };
-    const signature = `${status.active}:${status.opacity}:${status.size}:${status.repeating}:${status.hasLiveFilter}`;
+    const backdrop = style.backdropFilter || style.getPropertyValue('-webkit-backdrop-filter');
+    const matches =
+      style.backgroundImage.includes('data:image/png;base64,') &&
+      style.backgroundSize === '128px 128px' &&
+      style.backgroundRepeat === 'repeat' &&
+      style.opacity === '0.03' &&
+      style.filter === 'none' &&
+      (!backdrop || backdrop === 'none');
+    const state = style.display === 'none' ? 'hidden' : matches ? 'painted' : 'invalid';
+    const signature = `${theme}:${state}`;
     if (signature === this.paperGrainSignature) return;
     this.paperGrainSignature = signature;
-    postToHost(status);
+    postToHost({ type: 'paper-grain-status', theme, state });
   }
 
   private emitPosition(userNavigated = false): void {
@@ -1123,9 +1109,6 @@ export class ReaderEngine {
       ...pos,
       ...(userNavigated ? { userNavigated: true } : {}),
     });
-    // A settled page is when the grain (if any) is guaranteed to be painted, and the position is
-    // the report the host already re-renders on — piggybacking keeps the two in sync.
-    this.emitPaperGrainStatus();
   }
 
   /**

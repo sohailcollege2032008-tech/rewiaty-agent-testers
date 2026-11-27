@@ -478,11 +478,7 @@ export function ReaderScreen() {
   );
   // F27 — ملمس الورق: what the engine reports it is actually painting, so an on-device journey can
   // prove 3% grain on the paper themes and silence on the rest.
-  const [paperGrainProof, setPaperGrainProof] = useState<{
-    active: boolean;
-    opacity: number;
-    hasLiveFilter: boolean;
-  } | null>(null);
+  const [paperGrainProof, setPaperGrainProof] = useState<string | null>(null);
   // F28: at most one recap per book open; dismissal clears it until the book is opened again.
   const [welcomeBackRecap, setWelcomeBackRecap] = useState<WelcomeBackRecap | null>(null);
 
@@ -1346,15 +1342,15 @@ export function ReaderScreen() {
         case 'image-rendered':
           setImageProof({ count: parsed.count, width: parsed.width, height: parsed.height });
           break;
-        case 'paper-grain-status':
-          // F27: the engine checked the painted element, not the settings; keep only what the proof
-          // line needs and let the render decide the wording.
-          setPaperGrainProof({
-            active: parsed.active,
-            opacity: parsed.opacity,
-            hasLiveFilter: parsed.hasLiveFilter,
-          });
+        case 'paper-grain-status': {
+          const labels = {
+            painted: 'مفعّل ٣٪',
+            hidden: 'متوقّف',
+            invalid: 'إعداد غير صالح',
+          };
+          setPaperGrainProof(`ملمس الورق (${parsed.theme}): ${labels[parsed.state]}`);
           break;
+        }
         case 'scene-prompt-edit': {
           const result = applyScenePatch(scenesRef.current, parsed.sceneId, {
             prompt: parsed.prompt,
@@ -2165,11 +2161,7 @@ export function ReaderScreen() {
         {paperGrainProof ? (
           <View pointerEvents="none" style={styles.paperGrainProof}>
             <Text testID="reader-paper-grain-proof" style={styles.imageProofLabel}>
-              {paperGrainProof.active &&
-              Math.abs(paperGrainProof.opacity - 0.03) < 0.001 &&
-              !paperGrainProof.hasLiveFilter
-                ? 'ملمس الورق: مفعّل ٣٪'
-                : 'ملمس الورق: متوقّف'}
+              {paperGrainProof}
             </Text>
           </View>
         ) : null}

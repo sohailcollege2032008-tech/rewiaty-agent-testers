@@ -162,11 +162,7 @@ for (const theme of ['warraq', 'sepia'] as const) {
     expect(decoded.naturalHeight).toBe(128);
 
     const status = await waitForGrainStatus(page);
-    expect(status.active).toBe(true);
-    expect(status.opacity).toBeCloseTo(0.03, 5);
-    expect(status.size).toBe(128);
-    expect(status.repeating).toBe(true);
-    expect(status.hasLiveFilter).toBe(false);
+    expect(status).toMatchObject({ theme, state: 'painted' });
   });
 }
 
@@ -183,7 +179,7 @@ for (const theme of HIDDEN_THEMES) {
     expect(paint.opacity).toBe('0');
 
     const status = await waitForGrainStatus(page);
-    expect(status.active).toBe(false);
+    expect(status).toMatchObject({ theme, state: 'hidden' });
   });
 }
 
@@ -201,23 +197,37 @@ test('keeps the grain hidden when custom colours are painting', async ({ page })
   expect(paint.opacity).toBe('0');
 
   const status = await waitForGrainStatus(page);
-  expect(status.active).toBe(false);
+  expect(status).toMatchObject({ theme: 'custom', state: 'hidden' });
 });
 
-test('reports the grain switching off within the same session', async ({ page }) => {
+test('reports distinct grain verdicts across theme changes', async ({ page }) => {
   await mountEngine(page);
   await loadBook(page, { theme: 'warraq' });
-  expect((await waitForGrainStatus(page)).active).toBe(true);
-
-  await sendBridge(page, { type: 'settings', partial: { theme: 'burnt-paper' } });
-
-  // A settings change re-applies the page theme, so a second status must arrive and say "off".
-  const after = await waitForGrainStatus(page, 2);
-  expect(after.active).toBe(false);
-  expect((await readPaint(page)).display).toBe('none');
+  expect(await waitForGrainStatus(page)).toMatchObject({ theme: 'warraq', state: 'painted' });
 
   await sendBridge(page, { type: 'settings', partial: { theme: 'sepia' } });
-  const back = await waitForGrainStatus(page, 3);
-  expect(back.active).toBe(true);
-  expect((await readPaint(page)).opacity).toBe('0.03');
+  expect(await waitForGrainStatus(page, 2)).toMatchObject({ theme: 'sepia', state: 'painted' });
+
+  await sendBridge(page, { type: 'settings', partial: { theme: 'burnt-paper' } });
+  expect(await waitForGrainStatus(page, 3)).toMatchObject({ theme: 'burnt-paper', state: 'hidden' });
+  expect((await readPaint(page)).display).toBe('none');
 });
+
+for (const override of [
+  'background-image: none',
+  'background-size: 128px 64px',
+  'background-repeat: no-repeat',
+  'opacity: 0.2',
+  'filter: blur(1px)',
+]) {
+  test(`reports invalid rather than hidden or painted for ${override}`, async ({ page }) => {
+    await mountEngine(page);
+    // Edit the inline stylesheet directly so the test obeys the embedded page's CSP.
+    await page.evaluate((rule) => {
+      const style = document.querySelector('style');
+      style?.sheet?.insertRule(`#paper-grain { ${rule} !important; }`);
+    }, override);
+    await loadBook(page, { theme: 'warraq' });
+    expect(await waitForGrainStatus(page)).toMatchObject({ theme: 'warraq', state: 'invalid' });
+  });
+}
