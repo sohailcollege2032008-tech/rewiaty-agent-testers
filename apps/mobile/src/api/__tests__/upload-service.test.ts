@@ -25,7 +25,12 @@ import type {
 import type { PickedPdf } from '@/types/upload-contract';
 import { subscribeToJobEvents, type SubscribeJobEventsOptions } from '@/api/sse';
 import { ProgressiveBookImporter } from '@/api/progressive-import';
-import { loadByokConfig, readByokSecret } from '@/storage/byok-store';
+import {
+  BYOK_CUSTOM_MODEL_LEGACY_ERROR_AR,
+  LEGACY_CUSTOM_MODEL_ID,
+  loadByokConfig,
+  readByokSecret,
+} from '@/storage/byok-store';
 
 jest.mock('expo-document-picker', () => ({
   getDocumentAsync: jest.fn(),
@@ -589,10 +594,10 @@ describe('createRewiatyApiUploadService', () => {
     expect(importerMock).toHaveBeenCalledWith(client, 'book_1', undefined, { downloadAsset });
   });
 
-  it('maps the custom provider to openai_compatible with its https base_url', async () => {
+  it('maps the custom provider to openai_compatible with its https base_url and real model', async () => {
     loadByokConfigMock.mockResolvedValue({
       provider: 'custom',
-      modelId: 'custom-vision-model',
+      modelId: 'deepseek-chat',
       storageMode: 'ephemeral',
       keyLast4: '3456',
       hasKey: true,
@@ -619,10 +624,33 @@ describe('createRewiatyApiUploadService', () => {
           provider: 'openai_compatible',
           api_key: 'test-custom-key',
           base_url: 'https://api.my-gateway.example/v1',
-          model: 'custom-vision-model',
+          model: 'deepseek-chat',
         },
       }),
     );
+  });
+
+  it('refuses to send the legacy custom placeholder as a model, with a clear message', async () => {
+    loadByokConfigMock.mockResolvedValue({
+      provider: 'custom',
+      modelId: LEGACY_CUSTOM_MODEL_ID,
+      storageMode: 'ephemeral',
+      keyLast4: '3456',
+      hasKey: true,
+      updatedAt: 1,
+      customBaseUrl: 'https://api.my-gateway.example/v1',
+    });
+    readByokSecretMock.mockResolvedValue('test-custom-key');
+
+    const service = createRewiatyApiUploadService({
+      client: client as never,
+      readPdfBytes,
+    });
+
+    await expect(
+      service.startConversion({ book_id: 'book_1', upload_id: 'up_1', ai_level: 'essential' }),
+    ).rejects.toThrow(BYOK_CUSTOM_MODEL_LEGACY_ERROR_AR);
+    expect(client.createJob).not.toHaveBeenCalled();
   });
 
   it('refuses a custom provider whose base_url is missing or not https', async () => {

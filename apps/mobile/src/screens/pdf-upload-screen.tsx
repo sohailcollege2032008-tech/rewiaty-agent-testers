@@ -556,7 +556,11 @@ export function PdfUploadScreen({
     const bookId = ids?.book_id;
     if (!bookId || !onOpenReader) return;
     if (openingReaderRef.current) return;
-    const chapter = readyChapters[0];
+    // Why (review finding): once the job is completed, the reader opens the *whole* book, so a
+    // `chapter.ready` that arrived earlier must not narrow the import to that single chapter —
+    // the other chapters would never be on the device. Early open (still processing) keeps
+    // importing just the one ready chapter so the reader can start immediately.
+    const chapter = phaseRef.current === 'completed' ? undefined : readyChapters[0];
     const ensureImported = effectiveService.ensureChapterImported;
     // No local-readiness check at all (offline/mock service): navigate as before.
     if (!ensureImported) {

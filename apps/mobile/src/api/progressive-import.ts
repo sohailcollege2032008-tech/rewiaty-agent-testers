@@ -113,6 +113,16 @@ export class ProgressiveBookImporter {
   /** Chapters downloaded but not yet persisted; merged only after a successful write. */
   private readonly staged = new Map<string, ImportedChapter>();
   private readonly downloadedAssets = new Set<string>();
+  /**
+   * Chapters whose manifest listed images that failed to download.
+   *
+   * Why (review finding): a chapter payload carries **presigned** asset URLs with an expiry.
+   * When a download fails we keep the chapter text cached (the hash is unchanged) but the
+   * old URLs may already be dead by the next attempt. The retry must ask the API for a fresh
+   * chapter payload — new signatures — instead of replaying a stale URL only because the hash
+   * matches.
+   */
+  private readonly staleAssetChapters = new Set<string>();
   /** Exact markdown of the last successful `importBookContent`, to avoid redundant writes. */
   private lastWrittenMarkdown: string | null = null;
 
@@ -185,7 +195,8 @@ export class ProgressiveBookImporter {
       if (!summary) continue;
 
       const cached = this.staged.get(chapterId) ?? this.chapters.get(chapterId);
-      if (cached && cached.hash === summary.hash) {
+      const needsFreshAssetUrls = this.staleAssetChapters.has(chapterId);
+      if (cached && cached.hash === summary.hash && !needsFreshAssetUrls) {
         // The text is already downloaded: only assets that failed earlier are retried.
         await this.downloadChapterAssets(cached);
         skippedCount += 1;
@@ -213,7 +224,12 @@ export class ProgressiveBookImporter {
         assets: chapter.assets ?? [],
       };
       this.staged.set(chapterId, imported);
-      importedCount += 1;
+      if (cached && cached.hash === summary.hash) {
+        // Same text, freshly signed asset URLs: this is an asset retry, not a new import.
+        skippedCount += 1;
+      } else {
+        importedCount += 1;
+      }
 
       await this.downloadChapterAssets(imported);
     }
@@ -284,7 +300,13 @@ export class ProgressiveBookImporter {
   }
 
   private async downloadChapterAssets(chapter: ImportedChapter): Promise<void> {
-    if (!this.downloadAsset) return;
+    if (!this.downloadAsset) {
+      // Nothing to download: a chapter can never be stuck waiting for a fresh payload.
+      this.staleAssetChapters.delete(chapter.chapterId);
+      return;
+    }
+
+    let failed = false;
     for (const asset of chapter.assets) {
       if (this.downloadedAssets.has(asset.name)) continue;
       this.downloadedAssets.add(asset.name);
@@ -292,8 +314,17 @@ export class ProgressiveBookImporter {
         await this.downloadAsset(asset, this.bookId);
       } catch {
         // The bundle text is the deliverable; a failed image is retried on the next import.
+        // Forget the name so the retry downloads it, and mark the chapter as needing a fresh
+        // payload: its presigned URLs may have expired since this attempt.
         this.downloadedAssets.delete(asset.name);
+        failed = true;
       }
+    }
+
+    if (failed) {
+      this.staleAssetChapters.add(chapter.chapterId);
+    } else {
+      this.staleAssetChapters.delete(chapter.chapterId);
     }
   }
 }

@@ -386,23 +386,32 @@ describe('ProgressiveBookImporter', () => {
     expect(retried.bookRecord).toEqual(bookRecord('bk_1'));
   });
 
-  it('retries an asset that failed on a previous run even when the chapter hash is unchanged', async () => {
-    const asset = {
+  it('re-fetches a fresh chapter payload for a failed asset even when the hash is unchanged', async () => {
+    const staleAsset = {
       name: 'fig-009.webp',
-      url: '/v1/books/bk_1/bundle/assets/fig-009.webp',
+      url: '/v1/books/bk_1/bundle/assets/fig-009.webp?X-Amz-Signature=stale',
       width: 1280,
       height: 842,
     };
-    const { client, getBundleChapter } = createClientMock({
-      chapters: { ch01: chapterResponse({ assets: [asset] }) },
-      manifest: manifest({
-        chapters: [{ id: 'ch01', title: 'الفصل الأول', wordCount: 10, hash: 'hash-1' }],
-        ready_chapter_ids: ['ch01'],
-      }),
-    });
+    const freshAsset = {
+      ...staleAsset,
+      url: '/v1/books/bk_1/bundle/assets/fig-009.webp?X-Amz-Signature=fresh',
+    };
+    const chapters: Record<string, ChapterBundleResponse> = {
+      ch01: chapterResponse({ assets: [staleAsset] }),
+    };
+    const client = {
+      getBundleManifest: jest.fn(async () =>
+        manifest({
+          chapters: [{ id: 'ch01', title: 'الفصل الأول', wordCount: 10, hash: 'hash-1' }],
+          ready_chapter_ids: ['ch01'],
+        }),
+      ),
+      getBundleChapter: jest.fn(async (_bookId: string, chapterId: string) => chapters[chapterId]),
+    } as unknown as RewiatyApiClient;
     const downloadAsset = jest
       .fn()
-      .mockRejectedValueOnce(new Error('offline'))
+      .mockRejectedValueOnce(new Error('presigned url expired'))
       .mockResolvedValue(undefined);
     const importBookContent = jest.fn(async () => bookRecord('bk_1'));
     const importer = new ProgressiveBookImporter(client, 'bk_1', undefined, {
@@ -412,13 +421,55 @@ describe('ProgressiveBookImporter', () => {
 
     await importer.importReadyChapters();
     expect(downloadAsset).toHaveBeenCalledTimes(1);
+    expect(downloadAsset.mock.calls[0]![0]).toEqual(staleAsset);
+
+    // The backend re-signs the asset URL; the chapter text (hash) is identical.
+    chapters.ch01 = chapterResponse({ assets: [freshAsset] });
 
     await importer.importReadyChapters();
 
-    // The text was unchanged, so only the missing image is retried: no second book.md write.
-    expect(getBundleChapter).toHaveBeenCalledTimes(1);
+    // A second payload fetch is what supplies the new presigned URL — not a replay of the old one.
+    expect(client.getBundleChapter).toHaveBeenCalledTimes(2);
     expect(downloadAsset).toHaveBeenCalledTimes(2);
+    expect(downloadAsset.mock.calls[1]![0]).toEqual(freshAsset);
+    expect(downloadAsset.mock.calls[1]![0]).not.toEqual(staleAsset);
+    // The text was unchanged, so book.md is not rewritten.
     expect(importBookContent).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops re-fetching assets once the retry succeeds', async () => {
+    const asset = {
+      name: 'fig-010.webp',
+      url: '/v1/books/bk_1/bundle/assets/fig-010.webp',
+      width: 640,
+      height: 480,
+    };
+    const client = {
+      getBundleManifest: jest.fn(async () =>
+        manifest({
+          chapters: [{ id: 'ch01', title: 'الفصل الأول', wordCount: 10, hash: 'hash-1' }],
+          ready_chapter_ids: ['ch01'],
+        }),
+      ),
+      getBundleChapter: jest.fn(async () => chapterResponse({ assets: [asset] })),
+    } as unknown as RewiatyApiClient;
+    const downloadAsset = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValue(undefined);
+    const importer = new ProgressiveBookImporter(client, 'bk_1', undefined, {
+      importBookContent: async () => bookRecord('bk_1'),
+      downloadAsset,
+    });
+
+    await importer.importReadyChapters();
+    await importer.importReadyChapters();
+    expect(client.getBundleChapter).toHaveBeenCalledTimes(2);
+
+    // Asset is now on disk: a third run skips the payload entirely.
+    await importer.importReadyChapters();
+    expect(client.getBundleChapter).toHaveBeenCalledTimes(2);
+    expect(downloadAsset).toHaveBeenCalledTimes(2);
   });
 
   it('supports an options-object constructor and reports completion', async () => {

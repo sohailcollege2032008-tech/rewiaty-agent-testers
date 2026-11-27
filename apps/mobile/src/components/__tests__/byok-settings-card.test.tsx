@@ -7,9 +7,11 @@ import {
 } from '@/components/byok-settings-card';
 import {
   BYOK_CUSTOM_BASE_URL_ERROR_AR,
+  BYOK_CUSTOM_BASE_URL_REQUIRED_ERROR_AR,
   BYOK_KEY_TOO_SHORT_ERROR_AR,
   BYOK_KV_KEY,
   BYOK_SECURE_STORE_SAVE_ERROR_AR,
+  LEGACY_CUSTOM_MODEL_ID,
   getByokSecretEntryKey,
   type ByokSecureStoreAdapter,
 } from '@/storage/byok-store';
@@ -356,16 +358,99 @@ describe('ByokSettingsCard — واجهة إعدادات المفتاح', () => 
   );
 
   it(
-    'shows the https base URL input only when the custom provider is selected',
+    'shows the https base URL and real model-name inputs only when the custom provider is selected',
     async () => {
       const view = await renderCard();
       expect(view.queryByTestId('byok-custom-base-url-input')).toBeNull();
+      expect(view.queryByTestId('byok-custom-model-input')).toBeNull();
 
       await fireEvent.press(view.getByTestId('byok-provider-custom'));
 
       await waitFor(() => expect(view.getByTestId('byok-custom-base-url-input')).toBeTruthy());
-      expect(view.getByTestId('byok-model-custom-vision-model')).toBeTruthy();
+      // No fixed placeholder model row: the user types the real gateway model name.
+      expect(view.getByTestId('byok-custom-model-input')).toBeTruthy();
+      expect(view.queryByTestId('byok-model-custom-vision-model')).toBeNull();
       expect(view.queryByTestId('byok-model-gpt-4.1')).toBeNull();
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'saves the real model name the user typed and reloads it from kv',
+    async () => {
+      const view = await renderCard();
+
+      await fireEvent.press(view.getByTestId('byok-provider-custom'));
+      await waitFor(() => expect(view.getByTestId('byok-custom-model-input')).toBeTruthy());
+
+      await fireEvent.changeText(
+        view.getByTestId('byok-custom-model-input'),
+        'deepseek-chat',
+      );
+      await fireEvent.changeText(
+        view.getByTestId('byok-custom-base-url-input'),
+        'https://api.my-gateway.example/v1',
+      );
+      await fireEvent.changeText(view.getByTestId('byok-key-input'), API_KEY);
+      await fireEvent.press(view.getByTestId('byok-save-button'));
+
+      await waitFor(() => expect(view.getByTestId('byok-feedback')).toHaveTextContent(/المفتاح محفوظ/));
+
+      const parsed = JSON.parse(kv.get(BYOK_KV_KEY)!) as Record<string, unknown>;
+      expect(parsed.provider).toBe('custom');
+      expect(parsed.modelId).toBe('deepseek-chat');
+      expect(parsed.customBaseUrl).toBe('https://api.my-gateway.example/v1');
+      expect(parsed.modelId).not.toBe(LEGACY_CUSTOM_MODEL_ID);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'rejects a custom key with an empty base URL and saves nothing',
+    async () => {
+      const view = await renderCard();
+
+      await fireEvent.press(view.getByTestId('byok-provider-custom'));
+      await waitFor(() => expect(view.getByTestId('byok-custom-base-url-input')).toBeTruthy());
+
+      await fireEvent.changeText(view.getByTestId('byok-custom-model-input'), 'deepseek-chat');
+      await fireEvent.changeText(view.getByTestId('byok-key-input'), API_KEY);
+      await fireEvent.press(view.getByTestId('byok-save-button'));
+
+      await waitFor(() =>
+        expect(view.getByTestId('byok-error')).toHaveTextContent(
+          BYOK_CUSTOM_BASE_URL_REQUIRED_ERROR_AR,
+        ),
+      );
+
+      expect(adapter.setItemAsync).not.toHaveBeenCalled();
+      expect(entries.size).toBe(0);
+      expect(JSON.stringify([...kv.entries()])).not.toContain(API_KEY);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'shows a clear update message for legacy custom model data and leaves the field empty',
+    async () => {
+      await db.runAsync(
+        'INSERT INTO kv (key, value) VALUES (?, ?)',
+        BYOK_KV_KEY,
+        JSON.stringify({
+          provider: 'custom',
+          modelId: LEGACY_CUSTOM_MODEL_ID,
+          storageMode: 'ephemeral',
+          keyLast4: null,
+          hasKey: false,
+          updatedAt: 1,
+          customBaseUrl: 'https://api.my-gateway.example/v1',
+        }),
+      );
+
+      const view = await renderCard();
+
+      await waitFor(() => expect(view.getByTestId('byok-custom-model-legacy-notice')).toBeTruthy());
+      expect(view.getByTestId('byok-custom-model-input').props.value).toBe('');
     },
     TEST_TIMEOUT,
   );
@@ -379,6 +464,10 @@ describe('ByokSettingsCard — واجهة إعدادات المفتاح', () => 
       await waitFor(() => expect(view.getByTestId('byok-custom-base-url-input')).toBeTruthy());
 
       await fireEvent.changeText(
+        view.getByTestId('byok-custom-model-input'),
+        'deepseek-chat',
+      );
+      await fireEvent.changeText(
         view.getByTestId('byok-custom-base-url-input'),
         'https://api.my-gateway.example/v1',
       );
@@ -389,6 +478,7 @@ describe('ByokSettingsCard — واجهة إعدادات المفتاح', () => 
 
       const parsed = JSON.parse(kv.get(BYOK_KV_KEY)!) as Record<string, unknown>;
       expect(parsed.provider).toBe('custom');
+      expect(parsed.modelId).toBe('deepseek-chat');
       expect(parsed.customBaseUrl).toBe('https://api.my-gateway.example/v1');
       expect(parsed.hasKey).toBe(true);
       expect(entries.get(getByokSecretEntryKey('custom'))).toBe(API_KEY);
