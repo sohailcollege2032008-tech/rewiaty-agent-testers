@@ -111,9 +111,10 @@ export function readerErrorMessage(err: unknown): string {
 }
 
 export const HUD_HINT_KV_KEY = 'reader_hud_hint_seen_v1';
-// Why (product, R5/A4): edges no longer turn pages — the hint used to teach a gesture the
-// engine now ignores. Swiping is the only way to turn, so say that instead.
-export const HUD_HINT_TEXT = 'اضغط في نص الصفحة عشان تظهر الإعدادات والفهرس، واسحب بإيدك عشان تقلّب.';
+// Why (product, R5/A4 + P2 #60): edges no longer turn pages — teach the exact swipe
+// direction in plain Arabic so first-time readers know which way advances vs goes back.
+export const HUD_HINT_TEXT =
+  'اضغط في نص الصفحة للإعدادات والفهرس، واسحب لليمين للصفحة الجاية ولليسار للي فاتت.';
 
 // `spread` comes from the engine's ReaderSettings ('auto' | 'single').
 type EngineSettingsPayload = Partial<ReaderSettings>;
@@ -1337,13 +1338,14 @@ export function ReaderScreen() {
               </Text>
             ) : null}
             <Text
+              testID="reader-running-numbers"
               numberOfLines={1}
               style={[
                 styles.runningFootNumbers,
                 { color: themeTokens.muted, fontFamily: TYPOGRAPHY.uiFont },
               ]}
             >
-              {`${pageInfo.page} / ${pageInfo.estimated ? '~' : ''}${pageInfo.pageCount} · ${pctRead}%`}
+              {`صفحة ${pageInfo.page} من ${pageInfo.estimated ? '~' : ''}${pageInfo.pageCount} · ${pctRead}%`}
             </Text>
           </View>
         ) : null}

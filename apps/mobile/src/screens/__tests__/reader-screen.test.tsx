@@ -715,8 +715,8 @@ describe('ReaderScreen', () => {
       });
     });
 
-    // P3-3: 7/12 = 58.33% -> 58%, matching LibraryScreen (not page/pageCount = 62%)
-    const runningNumbers = getByText('8 / 13 · 58%');
+    // P3-3 + P2 #60: 7/12 = 58.33% -> 58%, in explicit Arabic order so RTL never flips it
+    const runningNumbers = getByText('صفحة 8 من 13 · 58%');
     expect(runningNumbers.props.numberOfLines).toBe(1);
     const runningNumbersStyle = ReactNative.StyleSheet.flatten(runningNumbers.props.style) as Record<
       string,

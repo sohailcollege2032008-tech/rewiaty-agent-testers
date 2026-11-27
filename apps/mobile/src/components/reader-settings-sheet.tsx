@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   BackHandler,
+  I18nManager,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -51,9 +52,15 @@ const TASHKEEL_OPTIONS: ReadonlyArray<{ value: TashkeelMode; label: string }> = 
 
 const DIR_OPTIONS: ReadonlyArray<{ value: 'auto' | 'rtl' | 'ltr'; label: string }> = [
   { value: 'auto', label: 'تلقائي' },
-  { value: 'rtl', label: 'RTL' },
-  { value: 'ltr', label: 'LTR' },
+  { value: 'rtl', label: 'يمين لليسار' },
+  { value: 'ltr', label: 'يسار لليمين' },
 ];
+
+// Why (P2 #60): under React Native `I18nManager.forceRTL(true)`, `textAlign: 'right'` mirrors
+// to the physical LEFT edge while `'left'` maps to START (physical RIGHT). Computing the
+// start-aligned value from `I18nManager.isRTL` keeps Arabic headings flush-right in both RTL
+// and non-RTL runtimes.
+const RTL_START_ALIGN: 'left' | 'right' = I18nManager.isRTL ? 'left' : 'right';
 
 function StepperControl({
   label,
@@ -197,7 +204,7 @@ function SettingsContent({
       }}
       stickyHeaderIndices={[0]}
       contentContainerStyle={{
-        paddingBottom: (isSidePanel ? 18 : Math.max(insets.bottom, 16)) + 12,
+        paddingBottom: (isSidePanel ? 24 : Math.max(insets.bottom, 20)) + 28,
       }}
       showsVerticalScrollIndicator
       persistentScrollbar
@@ -414,7 +421,7 @@ function SettingsContent({
 
           <StepperControl
             label="تباعد الكلمات"
-            valueText={`${settings.wordSpacing}px`}
+            valueText={`${settings.wordSpacing} نقطة`}
             testIdPrefix="settings-word-spacing"
             canDecrement={settings.wordSpacing > -2}
             canIncrement={settings.wordSpacing < 16}
@@ -425,7 +432,7 @@ function SettingsContent({
 
           <StepperControl
             label="تباعد الفقرات"
-            valueText={`${settings.paragraphSpacing}px`}
+            valueText={`${settings.paragraphSpacing} نقطة`}
             testIdPrefix="settings-paragraph-spacing"
             canDecrement={settings.paragraphSpacing > 0}
             canIncrement={settings.paragraphSpacing < 28}
@@ -608,7 +615,7 @@ function SettingsContent({
 
           <StepperControl
             label="الهامش الأفقي"
-            valueText={`${settings.marginHorizontal}px`}
+            valueText={`${settings.marginHorizontal} نقطة`}
             testIdPrefix="settings-margin-h"
             canDecrement={settings.marginHorizontal > 8}
             canIncrement={settings.marginHorizontal < 48}
@@ -623,7 +630,7 @@ function SettingsContent({
 
           <StepperControl
             label="الهامش العمودي"
-            valueText={`${settings.marginVertical}px`}
+            valueText={`${settings.marginVertical} نقطة`}
             testIdPrefix="settings-margin-v"
             canDecrement={settings.marginVertical > 16}
             canIncrement={settings.marginVertical < 48}
@@ -638,7 +645,7 @@ function SettingsContent({
 
           <StepperControl
             label="عرض السطر"
-            valueText={`${settings.maxReadingWidth}ch`}
+            valueText={`${settings.maxReadingWidth} حرف`}
             testIdPrefix="settings-max-width"
             canDecrement={settings.maxReadingWidth > 45}
             canIncrement={settings.maxReadingWidth < 85}
@@ -1001,7 +1008,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 12,
     fontWeight: '600',
-    textAlign: 'right',
+    textAlign: RTL_START_ALIGN,
   },
   chipWrap: {
     flexDirection: 'row',
@@ -1034,7 +1041,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     minWidth: 74,
     flexShrink: 1,
-    textAlign: 'right',
+    textAlign: RTL_START_ALIGN,
   },
   stepper: {
     flexDirection: 'row',
@@ -1054,7 +1061,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   stepReadout: {
-    minWidth: 46,
+    minWidth: 58,
+    paddingHorizontal: 6,
     textAlign: 'center',
     fontSize: 12.5,
     fontWeight: '600',
@@ -1151,12 +1159,12 @@ const styles = StyleSheet.create({
   swatchName: {
     fontSize: 11.5,
     fontWeight: '600',
-    textAlign: 'right',
+    textAlign: RTL_START_ALIGN,
   },
   swatchContrast: {
     fontSize: 10,
     fontVariant: ['tabular-nums'],
-    textAlign: 'right',
+    textAlign: RTL_START_ALIGN,
   },
   pressed: {
     opacity: 0.72,
