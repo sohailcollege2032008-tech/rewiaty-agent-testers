@@ -1,25 +1,42 @@
+import { useMemo } from 'react';
 import { useRouter } from 'expo-router';
 
+import { createRewiatyApiUploadService, getAuthenticatedApiClient } from '@/api';
 import { OFFLINE_SERVICE_BANNER_AR, PdfUploadScreen } from '@/screens/pdf-upload-screen';
 
 /**
- * Why (L3 integration seam, review P1): PR #36 ships the PDF-upload + onboarding UI against
- * the injectable `PdfUploadService` seam, deliberately without a network client. The live
- * `RewiatyApiClient` (F42 endpoints) and `ProgressiveBookImporter` (local chapter import,
- * used by `ensureChapterImported` before the reader opens) are wired in the follow-up
- * integration PR — after #36 and #37 merge — by passing:
+ * The cloud API origin comes from the build environment. An empty value is the
+ * supported "offline build" case: the screen keeps the calm
+ * «الخدمة السحابية لسه مش مفعّلة» notice instead of failing on the first tap.
+ */
+export function getConfiguredApiBaseUrl(
+  raw: string | undefined = process.env.EXPO_PUBLIC_API_BASE_URL,
+): string {
+  return typeof raw === 'string' ? raw.trim() : '';
+}
+
+/**
+ * PDF upload + F42 onboarding route.
  *
- *   service={createRewiatyApiUploadService({ client, importer })}
- *
- * Until then the route passes the calm `unconfiguredNoticeAr` above so the user reads
- * «الخدمة السحابية لسه مش مفعّلة» instead of hitting a silently broken flow.
+ * Why (L3 integration): the screen owns only UI state and depends on the injectable
+ * `PdfUploadService` seam. This route is where that seam becomes real: the live
+ * `RewiatyApiClient` handles presign → PUT → complete → estimate → job, and
+ * `ensureChapterImported` runs the `ProgressiveBookImporter` before the reader opens.
  */
 export default function PdfUploadRoute() {
   const router = useRouter();
+  const baseUrl = getConfiguredApiBaseUrl();
+
+  const service = useMemo(() => {
+    if (!baseUrl) return undefined;
+    // Why (review P1): the live client must authenticate the device and send a Bearer JWT on
+    // presign/estimate/job calls; the shared factory keeps one device identity for the app.
+    return createRewiatyApiUploadService({ client: getAuthenticatedApiClient(baseUrl) });
+  }, [baseUrl]);
 
   return (
     <PdfUploadScreen
-      unconfiguredNoticeAr={OFFLINE_SERVICE_BANNER_AR}
+      {...(service ? { service } : { unconfiguredNoticeAr: OFFLINE_SERVICE_BANNER_AR })}
       onOpenReader={(bookId) => {
         router.push({ pathname: '/reader/[id]', params: { id: bookId } });
       }}

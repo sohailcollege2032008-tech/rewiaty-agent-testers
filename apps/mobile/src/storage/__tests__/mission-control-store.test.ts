@@ -16,6 +16,7 @@ import {
   type MissionJob,
   type UsageEntry,
 } from '@/storage/mission-control-store';
+import { resetAuthenticatedApiClientsForTests } from '@/api/device-session';
 
 // Local-time anchor so the month key never depends on the machine timezone.
 const NOW = new Date(2026, 10, 26, 10, 30).getTime();
@@ -439,8 +440,19 @@ describe('getDefaultMissionControlStore backend wiring (Codex #64 P2)', () => {
   it('uses the live HTTP adapter when EXPO_PUBLIC_API_BASE_URL is configured', async () => {
     process.env[ENV_KEY] = 'https://api.rewiaty.test';
     resetDefaultMissionControlStoreForTests();
+    // The authenticated client is cached per base URL; drop it so this store really re-auths.
+    resetAuthenticatedApiClientsForTests();
 
-    const fetchMock = jest.fn(async (url: string) => {
+    const fetchMock = jest.fn(async (url: string, _init?: RequestInit) => {
+      if (url.includes('/v1/auth/device')) {
+        return jsonResponse({
+          access_token: 'jwt_live',
+          token_type: 'bearer',
+          expires_in: 3600,
+          user_id: 'user_live',
+          auth_provider: 'device',
+        });
+      }
       if (url.includes('/v1/jobs')) {
         return jsonResponse({
           jobs: [
@@ -482,9 +494,14 @@ describe('getDefaultMissionControlStore backend wiring (Codex #64 P2)', () => {
 
     await store.refresh();
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(String(fetchMock.mock.calls[0]![0])).toBe('https://api.rewiaty.test/v1/jobs?limit=50');
-    expect(String(fetchMock.mock.calls[1]![0])).toContain('https://api.rewiaty.test/v1/usage?month=');
+    // Device auth first, then the two reads — every read carries the issued JWT.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('https://api.rewiaty.test/v1/auth/device');
+    expect(String(fetchMock.mock.calls[1]![0])).toBe('https://api.rewiaty.test/v1/jobs?limit=50');
+    expect(String(fetchMock.mock.calls[2]![0])).toContain('https://api.rewiaty.test/v1/usage?month=');
+    expect((fetchMock.mock.calls[1]![1] as RequestInit).headers).toEqual(
+      expect.objectContaining({ Authorization: 'Bearer jwt_live' }),
+    );
 
     expect(store.getJobs().map((job) => job.id)).toEqual(['job_live']);
     expect(store.getActiveJobCount()).toBe(1);
@@ -516,14 +533,20 @@ describe('getDefaultMissionControlStore backend wiring (Codex #64 P2)', () => {
   it('honours an explicit apiBaseUrl over the build environment', async () => {
     delete process.env[ENV_KEY];
     resetDefaultMissionControlStoreForTests();
+    resetAuthenticatedApiClientsForTests();
 
-    const fetchMock = jest.fn(async (_url: string) => jsonResponse({ jobs: [], books: [] }));
+    const fetchMock = jest.fn(async (_url: string, _init?: RequestInit) =>
+      jsonResponse({ jobs: [], books: [] }),
+    );
     global.fetch = fetchMock as unknown as typeof fetch;
 
     const store = getDefaultMissionControlStore({ apiBaseUrl: ' https://embedded.rewiaty.test/ ' });
     await store.refresh();
 
-    expect(String(fetchMock.mock.calls[0]![0])).toBe('https://embedded.rewiaty.test/v1/jobs?limit=50');
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls[0]).toBe('https://embedded.rewiaty.test/v1/auth/device');
+    expect(urls).toContain('https://embedded.rewiaty.test/v1/jobs?limit=50');
+    expect(urls.some((url) => url.includes('https://embedded.rewiaty.test/v1/usage?month='))).toBe(true);
   });
 });
 

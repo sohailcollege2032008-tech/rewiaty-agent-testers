@@ -1,0 +1,88 @@
+appId: com.rewiaty.app
+---
+# F49: long-press a word → «المعجم» → the offline dictionary sheet.
+# The dictionary sheet must open with the CC BY-SA credit either way; when the bundled
+# database is present (release build), a real entry and its Wiktionary links must show.
+- launchApp
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 20000
+- waitForAnimationToEnd
+# Hide the HUD bars if they are showing so body text is reachable.
+- runFlow:
+    when:
+      visible:
+        id: "reader-toc-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+      - waitForAnimationToEnd
+# Long-press inside the centre read zone to select a word.
+- longPressOn:
+    point: "65%,38%"
+- extendedWaitUntil:
+    visible:
+      id: "highlight-toolbar"
+    timeout: 8000
+- assertVisible:
+    id: "highlight-dictionary-button"
+- takeScreenshot: "01-dictionary-toolbar"
+- tapOn:
+    id: "highlight-dictionary-button"
+- extendedWaitUntil:
+    visible:
+      id: "dictionary-sheet"
+    timeout: 8000
+# The sheet must have settled before the conditional checks below: a flow that runs while the
+# sheet is still «بيدوّر…» would skip every branch and pass without proving anything.
+- extendedWaitUntil:
+    notVisible:
+      id: "dictionary-sheet-loading"
+    timeout: 8000
+- assertNotVisible:
+    id: "dictionary-sheet-idle"
+- assertNotVisible:
+    id: "dictionary-sheet-empty"
+- extendedWaitUntil:
+    visible:
+      id: "dictionary-sheet-unavailable|dictionary-sheet-entry-source-0"
+    timeout: 8000
+# The credit is not conditional: every lookup shows it (CC BY-SA 4.0).
+- extendedWaitUntil:
+    visible:
+      id: "dictionary-sheet-attribution"
+    timeout: 8000
+- takeScreenshot: "02-dictionary-sheet"
+# A missing bundled database is a supported state (calm Arabic message), and the
+# flow still has to prove which of the two states the build actually produced.
+- runFlow:
+    when:
+      visible:
+        id: "dictionary-sheet-unavailable"
+    commands:
+      - assertVisible: "القاموس غير متاح حالياً على الجهاز."
+      - takeScreenshot: "03-dictionary-unavailable"
+- runFlow:
+    when:
+      visible:
+        id: "dictionary-sheet-entry-source-0"
+    commands:
+      - assertVisible:
+          id: "dictionary-sheet-entry-page-link-0"
+      - assertVisible:
+          id: "dictionary-sheet-entry-history-link-0"
+      - takeScreenshot: "04-dictionary-entry"
+- tapOn:
+    id: "dictionary-sheet-close"
+- extendedWaitUntil:
+    notVisible:
+      id: "dictionary-sheet"
+    timeout: 5000
+# The selection is cleared with the lookup: the toolbar must not come back on its own.
+- assertNotVisible:
+    id: "highlight-toolbar"

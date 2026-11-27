@@ -56,6 +56,14 @@ export const QUEUE_WAITING_MESSAGE_AR = 'في قائمة الانتظار';
 
 export const CANCELLED_MESSAGE_AR = 'تم إلغاء التحويل';
 
+/**
+ * Why (review P1, Android): React Native cannot stream a `fetch` body, so the live progress
+ * stream may die while the job itself keeps running. Silence would look like a frozen upload;
+ * this states plainly that only the live view dropped and where to follow the job.
+ */
+export const LIVE_PROGRESS_DISCONNECTED_AR =
+  'انقطع الاتصال المباشر بالتقدّم — التحويل لسه شغّال وتقدر تتابعه من مركز المهام.';
+
 /** Fixed, code-based Arabic copy — raw server/error text never reaches the screen. */
 export const JOB_ERROR_MESSAGES_AR: Record<string, string> = {
   quota_exhausted: 'خلصت الحصة المتاحة للتحويل. جرّب تاني بعد شوية أو استخدم مفتاحك.',
@@ -171,6 +179,12 @@ export function PdfUploadScreen({
   );
 
   const [phase, setPhase] = useState<Phase>('idle');
+  /**
+   * Mirror of `phase` for async callbacks: an SSE failure arrives long after the closure that
+   * subscribed was created, so reading the state variable there would always be stale.
+   */
+  const phaseRef = useRef<Phase>('idle');
+  phaseRef.current = phase;
   const [pending, setPending] = useState<Pending>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [picked, setPicked] = useState<PickedPdf | null>(null);
@@ -440,9 +454,21 @@ export function PdfUploadScreen({
         setBudgetNotice(null);
         setStage('queued');
         setProgress({ current_page: 0, total_pages: estimate?.page_count ?? 0, percent: 0 });
+        phaseRef.current = 'processing';
         setPhase('processing');
         unsubscribe();
-        const stop = effectiveService.subscribeProgress(started.job_id, handleProgressEvent);
+        const stop = effectiveService.subscribeProgress(
+          started.job_id,
+          handleProgressEvent,
+          () => {
+            // Why (review P1): a transport failure must not be silent — but only while this
+            // attempt is still the live one and the job is still processing. A cancelled or
+            // finished job has its own card and needs no «connection lost» banner.
+            if (attemptId !== attemptIdRef.current || !mountedRef.current) return;
+            if (phaseRef.current !== 'processing') return;
+            setNotice(LIVE_PROGRESS_DISCONNECTED_AR);
+          },
+        );
         if (attemptId !== attemptIdRef.current) {
           // A subscription created by an attempt that went stale in the same tick must be
           // closed right away instead of leaking.
@@ -492,6 +518,9 @@ export function PdfUploadScreen({
   const handleOnboardingConfirm = useCallback(
     async (payload: BookArtDirectionInput) => {
       if (pending || !ids) return;
+      // Why (review P2): the art-direction PUT can outlive the screen. Capture the attempt
+      // before awaiting so a back-navigation/unmount cannot still create a job afterwards.
+      const attemptId = attemptIdRef.current;
       setPending('start');
       setNotice(null);
       try {
@@ -499,10 +528,13 @@ export function PdfUploadScreen({
         // the job is created; `POST /v1/jobs` must not carry it.
         await effectiveService.saveArtDirection(ids.book_id, payload);
       } catch {
-        setNotice(CALM_ERRORS_AR.save);
-        setPending(null);
+        if (attemptId === attemptIdRef.current && mountedRef.current) {
+          setNotice(CALM_ERRORS_AR.save);
+          setPending(null);
+        }
         return;
       }
+      if (attemptId !== attemptIdRef.current || !mountedRef.current) return;
       await startConversion(ids.book_id, ids.upload_id);
     },
     [effectiveService, ids, pending, startConversion],
@@ -526,8 +558,8 @@ export function PdfUploadScreen({
     if (openingReaderRef.current) return;
     const chapter = readyChapters[0];
     const ensureImported = effectiveService.ensureChapterImported;
-    // Nothing to import (job finished or the service has no local check): navigate as before.
-    if (!chapter || !ensureImported) {
+    // No local-readiness check at all (offline/mock service): navigate as before.
+    if (!ensureImported) {
       onOpenReader(bookId);
       return;
     }
@@ -536,8 +568,10 @@ export function PdfUploadScreen({
     setNotice(null);
     try {
       // Why (review P1): never open a reader whose bundle is not on the device yet — the user
-      // would land in an empty chapter with no way to tell whether it is broken.
-      await ensureImported(bookId, chapter.chapter_id);
+      // would land in an empty chapter with no way to tell whether it is broken. A completed
+      // job without a `chapter.ready` event still passes `undefined` so the service imports
+      // whatever the manifest marks ready, instead of opening an empty reader.
+      await ensureImported(bookId, chapter?.chapter_id);
       if (!mountedRef.current) return;
       onOpenReader(bookId);
     } catch {

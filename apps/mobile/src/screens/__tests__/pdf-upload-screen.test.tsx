@@ -5,6 +5,7 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import {
   CALM_ERRORS_AR,
   FALLBACK_JOB_ERROR_AR,
+  LIVE_PROGRESS_DISCONNECTED_AR,
   OFFLINE_SERVICE_BANNER_AR,
   OFFLINE_SERVICE_MESSAGE_AR,
   PdfUploadScreen,
@@ -118,12 +119,14 @@ const READY_CHAPTER_EVENT: ConversionProgressEvent = {
 type Harness = {
   service: PdfUploadService;
   push: (event: ConversionProgressEvent) => void;
+  pushError: (error: Error) => void;
   unsubscribe: jest.Mock;
   savedDirections: BookArtDirectionInput[];
 };
 
 function buildService(overrides: Partial<PdfUploadService> = {}): Harness {
   const listeners: Array<(event: ConversionProgressEvent) => void> = [];
+  const errorListeners: Array<(error: Error) => void> = [];
   const unsubscribe = jest.fn();
   const savedDirections: BookArtDirectionInput[] = [];
 
@@ -143,10 +146,17 @@ function buildService(overrides: Partial<PdfUploadService> = {}): Harness {
       return direction;
     }),
     startConversion: jest.fn(async () => ({ job_id: 'job_1', book_id: 'book_9' })),
-    subscribeProgress: jest.fn((_jobId: string, onEvent: (event: ConversionProgressEvent) => void) => {
-      listeners.push(onEvent);
-      return unsubscribe;
-    }),
+    subscribeProgress: jest.fn(
+      (
+        _jobId: string,
+        onEvent: (event: ConversionProgressEvent) => void,
+        onError?: (error: Error) => void,
+      ) => {
+        listeners.push(onEvent);
+        if (onError) errorListeners.push(onError);
+        return unsubscribe;
+      },
+    ),
     ...overrides,
   };
 
@@ -157,6 +167,10 @@ function buildService(overrides: Partial<PdfUploadService> = {}): Harness {
     push: (event) => {
       const handler = listeners[listeners.length - 1];
       if (handler) handler(event);
+    },
+    pushError: (error) => {
+      const handler = errorListeners[errorListeners.length - 1];
+      if (handler) handler(error);
     },
   };
 }
@@ -315,7 +329,12 @@ describe('PdfUploadScreen (PR 4B)', () => {
         ai_level: 'essential',
       }),
     );
-    expect(harness.service.subscribeProgress).toHaveBeenCalledWith('job_1', expect.any(Function));
+    expect(harness.service.subscribeProgress).toHaveBeenCalledWith(
+      'job_1',
+      expect.any(Function),
+      // The transport-failure hook is wired from the first subscription (review P1).
+      expect.any(Function),
+    );
     expect(harness.savedDirections).toHaveLength(1);
 
     await waitFor(() => expect(screen.getByTestId('conversion-tracking-card')).toBeTruthy());
@@ -594,6 +613,105 @@ describe('PdfUploadScreen (PR 4B)', () => {
     });
 
     await waitFor(() => expect(onOpenReader).toHaveBeenCalledTimes(1));
+  });
+
+  it('shows a calm notice when the live stream drops while the job keeps running (review P1)', async () => {
+    const harness = buildService();
+    const screen = await renderAtPreflight(harness);
+    await startAndTrackJob(harness, screen);
+
+    await act(async () => {
+      harness.pushError(new Error('socket hang up at stream.ts:12 sk-live-DEADBEEF'));
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('pdf-upload-notice')).toHaveTextContent(
+        LIVE_PROGRESS_DISCONNECTED_AR,
+      ),
+    );
+    // Still tracking, and the raw transport text never reaches the user.
+    expect(screen.getByTestId('conversion-tracking-card')).toBeTruthy();
+    expect(screen.queryByText(/socket hang up/)).toBeNull();
+    expect(screen.queryByText(/sk-live/)).toBeNull();
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  it('ignores a late stream error once the job was cancelled', async () => {
+    const harness = buildService();
+    const screen = await renderAtPreflight(harness);
+    await startAndTrackJob(harness, screen);
+
+    await act(async () => {
+      harness.push({ type: 'job.status', job_id: 'job_1', status: 'cancelled' });
+    });
+    await waitFor(() => expect(screen.getByTestId('conversion-cancelled-card')).toBeTruthy());
+
+    await act(async () => {
+      harness.pushError(new Error('stream closed after cancel'));
+    });
+
+    expect(screen.queryByText(LIVE_PROGRESS_DISCONNECTED_AR)).toBeNull();
+  });
+
+  it('imports the manifest chapters when a completed job never sent chapter.ready (review P1)', async () => {
+    const harness = buildService();
+    const onOpenReader = jest.fn();
+    const ensureChapterImported = jest.fn(async () => {});
+    harness.service.ensureChapterImported = ensureChapterImported;
+    const screen = await renderAtPreflight(harness, onOpenReader);
+    await startAndTrackJob(harness, screen);
+
+    await act(async () => {
+      harness.push({
+        type: 'job.completed',
+        job_id: 'job_1',
+        book_id: 'book_9',
+        manifest_url: '/v1/books/book_9/bundle/manifest',
+        book_md_url: '/v1/books/book_9/bundle/book.md',
+        chapters_count: 18,
+        pages_processed: 320,
+      });
+    });
+    await waitFor(() => expect(screen.getByText('الكتاب خلص')).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId('conversion-done-btn'));
+
+    await waitFor(() => expect(onOpenReader).toHaveBeenCalledWith('book_9'));
+    // No ready chapter in state: the service is asked to import whatever the manifest marks
+    // ready, so the reader still opens on real content.
+    expect(ensureChapterImported).toHaveBeenCalledWith('book_9', undefined);
+    expect(ensureChapterImported.mock.invocationCallOrder[0]).toBeLessThan(
+      onOpenReader.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('does not start a conversion when the screen unmounts during saveArtDirection (review P2)', async () => {
+    const pendingSave = deferred<BookArtDirection>();
+    const harness = buildService({
+      saveArtDirection: jest.fn(() => pendingSave.promise),
+    });
+    const screen = await renderAtPreflight(harness);
+
+    await fireEvent.press(screen.getByTestId('preflight-preview-onboarding-btn'));
+    await waitFor(() => expect(screen.getByTestId('onboarding-sample-card')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('onboarding-confirm-btn'));
+    expect(harness.service.saveArtDirection).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      screen.unmount();
+    });
+
+    await act(async () => {
+      pendingSave.resolve({
+        book_id: 'book_9',
+        selected_theme_id: 'th_night',
+        selected_style_id: 'st_woodcut',
+        updated_at: '2026-11-27T00:00:00Z',
+      });
+      await pendingSave.promise;
+    });
+
+    expect(harness.service.startConversion).not.toHaveBeenCalled();
   });
 
   it('shows the on-demand budget notice calmly when image generation pauses', async () => {

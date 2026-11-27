@@ -29,6 +29,8 @@ export default function RootLayout() {
         <Stack.Screen name="search" />
         <Stack.Screen name="mission-control" />
         <Stack.Screen name="ai-settings" />
+        <Stack.Screen name="pdf-upload" />
+        <Stack.Screen name="about" />
       </Stack>
       <ToastOverlay />
     </GestureHandlerRootView>

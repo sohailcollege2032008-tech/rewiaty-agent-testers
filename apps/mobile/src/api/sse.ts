@@ -91,6 +91,12 @@ export interface SubscribeJobEventsOptions {
   signal?: AbortSignal;
   maxReconnects?: number;
   retryDelayMs?: number;
+  /**
+   * Transport selection. `auto` (default) streams over `XMLHttpRequest` on React Native, where
+   * `fetch` cannot stream a body, and over `fetch` everywhere else. Passing `fetchImpl` always
+   * pins the `fetch` path, which is what the unit tests drive.
+   */
+  transport?: 'auto' | 'fetch' | 'xhr';
   onEvent: (event: JobSseEvent) => void;
   onError?: (error: Error) => void;
 }
@@ -188,6 +194,258 @@ function safeTransportError(status?: number): Error {
 }
 
 /**
+ * Frames decoded from a growing text buffer, plus the resume point they imply.
+ *
+ * Shared by both transports: `fetch` feeds it decoded text chunks, `XMLHttpRequest` feeds it
+ * `responseText.slice(seenLength)`. Behaviour (skip unknown events, skip unparsable frames
+ * without advancing `Last-Event-ID`, stop on a terminal event or an abort) is identical.
+ */
+function createSseDispatcher(options: {
+  onEvent: (event: JobSseEvent) => void;
+  signal?: AbortSignal;
+  lastEventId?: string;
+}): { push: (text: string) => boolean; lastEventId: () => string | undefined } {
+  const { onEvent, signal } = options;
+  let buffer = '';
+  let lastEventId = options.lastEventId;
+
+  const push = (text: string): boolean => {
+    buffer += text;
+    const { events, remainder } = parseSseChunk(buffer);
+    buffer = remainder;
+
+    for (const raw of events) {
+      // An `onEvent` handler may abort mid-chunk: stop before the next frame is delivered
+      // and before `Last-Event-ID` moves past an event the caller never saw.
+      if (signal?.aborted) return false;
+      if (!raw.data) continue;
+      if (!KNOWN_EVENTS.has(raw.event)) continue;
+
+      let payload: unknown;
+      try {
+        payload = JSON.parse(raw.data);
+      } catch {
+        // A malformed frame is skipped rather than killing a long-lived stream, and its id
+        // is not consumed: a reconnect replays it instead of silently skipping it.
+        continue;
+      }
+
+      onEvent({ event: raw.event, ...(raw.id === undefined ? {} : { id: raw.id }), data: payload } as JobSseEvent);
+      // Only a dispatched frame advances the resume point.
+      if (raw.id !== undefined) lastEventId = raw.id;
+      if (isTerminalEvent(raw.event, payload)) return true;
+    }
+    return false;
+  };
+
+  return { push, lastEventId: () => lastEventId };
+}
+
+/**
+ * React Native's `fetch` cannot stream a body (`response.body` is undefined), so the SSE
+ * endpoint would arrive as one buffered response and `chapter.ready` would never reach the UI
+ * before the job finished. `XMLHttpRequest` does stream on Android/RN — its `responseText`
+ * grows during `onprogress` — so that is the transport there.
+ */
+function useXhrTransport(options: SubscribeJobEventsOptions): boolean {
+  if (options.transport === 'fetch' || options.fetchImpl) return false;
+  if (typeof XMLHttpRequest === 'undefined') return false;
+  if (options.transport === 'xhr') return true;
+  const nav = (globalThis as { navigator?: { product?: string } }).navigator;
+  return nav?.product === 'ReactNative';
+}
+
+type XhrAttemptOutcome = {
+  kind: 'terminal' | 'ended' | 'failed' | 'aborted';
+  status?: number;
+};
+
+interface XhrAttemptParams {
+  url: string;
+  headers: Record<string, string>;
+  signal?: AbortSignal;
+  lastEventId?: string;
+  onEvent: (event: JobSseEvent) => void;
+  onLastEventId: (id: string) => void;
+}
+
+/**
+ * One `XMLHttpRequest` connection. Resolves when the stream ends, fails, a terminal event
+ * arrives, or the caller aborts — the retry loop owns everything else.
+ */
+function runXhrAttempt(params: XhrAttemptParams): Promise<XhrAttemptOutcome> {
+  const { url, headers, signal } = params;
+
+  return new Promise<XhrAttemptOutcome>((resolve) => {
+    let settled = false;
+    let seenLength = 0;
+    const dispatcher = createSseDispatcher({
+      onEvent: params.onEvent,
+      ...(signal ? { signal } : {}),
+      ...(params.lastEventId === undefined ? {} : { lastEventId: params.lastEventId }),
+    });
+
+    let xhr: XMLHttpRequest;
+    try {
+      xhr = new XMLHttpRequest();
+      xhr.open('GET', url, true);
+      for (const [key, value] of Object.entries(headers)) xhr.setRequestHeader(key, value);
+    } catch {
+      resolve({ kind: 'failed' });
+      return;
+    }
+
+    const finish = (outcome: XhrAttemptOutcome): void => {
+      if (settled) return;
+      settled = true;
+      const resumePoint = dispatcher.lastEventId();
+      if (resumePoint !== undefined) params.onLastEventId(resumePoint);
+      signal?.removeEventListener?.('abort', handleAbort);
+      resolve(outcome);
+    };
+
+    const handleAbort = (): void => {
+      finish({ kind: 'aborted' });
+      try {
+        xhr.abort();
+      } catch {
+        // Already closed; nothing to cancel.
+      }
+    };
+
+    /** Deliver everything appended since the last progress tick. */
+    const drain = (): boolean => {
+      const text = typeof xhr.responseText === 'string' ? xhr.responseText : '';
+      if (text.length <= seenLength) return false;
+      const chunk = text.slice(seenLength);
+      seenLength = text.length;
+      return dispatcher.push(chunk);
+    };
+
+    xhr.onprogress = () => {
+      if (settled) return;
+      // Dispatch immediately: `chapter.ready` must reach the screen while the socket is open.
+      if (drain()) {
+        finish({ kind: 'terminal' });
+        try {
+          xhr.abort();
+        } catch {
+          // The stream may already be closed after the terminal frame.
+        }
+      }
+    };
+
+    xhr.onload = () => {
+      if (settled) return;
+      const status = typeof xhr.status === 'number' ? xhr.status : 0;
+      if (status >= 200 && status < 300) {
+        const terminal = drain();
+        finish({ kind: terminal ? 'terminal' : 'ended', status });
+        return;
+      }
+      finish({ kind: 'failed', status });
+    };
+
+    xhr.onerror = () => finish({ kind: 'failed' });
+    xhr.ontimeout = () => finish({ kind: 'failed' });
+    xhr.onabort = () => finish({ kind: 'aborted' });
+
+    if (signal?.aborted) {
+      finish({ kind: 'aborted' });
+      return;
+    }
+    signal?.addEventListener?.('abort', handleAbort);
+
+    try {
+      xhr.send();
+    } catch {
+      finish({ kind: 'failed' });
+    }
+  });
+}
+
+/**
+ * React Native transport. Same contract as the `fetch` loop: reconnect with `Last-Event-ID`,
+ * honour the reconnect budget, surface one calm error, resolve without reconnecting on abort
+ * or a terminal event.
+ */
+async function subscribeToJobEventsXhr(
+  options: SubscribeJobEventsOptions,
+): Promise<SubscribeJobEventsResult> {
+  const {
+    baseUrl,
+    jobId,
+    getAccessToken,
+    signal,
+    onEvent,
+    onError,
+    maxReconnects = 3,
+    retryDelayMs = 1000,
+  } = options;
+
+  const url = `${baseUrl.replace(/\/+$/, '')}/v1/jobs/${encodeURIComponent(jobId)}/events`;
+
+  let lastEventId = options.lastEventId;
+  let reconnects = 0;
+  let terminal = false;
+
+  while (!signal?.aborted) {
+    const headers: Record<string, string> = {
+      Accept: 'text/event-stream',
+      'Cache-Control': 'no-cache',
+    };
+    if (getAccessToken) {
+      const token = await getAccessToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+    }
+    if (lastEventId) headers['Last-Event-ID'] = lastEventId;
+
+    const outcome = await runXhrAttempt({
+      url,
+      headers,
+      ...(signal ? { signal } : {}),
+      ...(lastEventId === undefined ? {} : { lastEventId }),
+      onEvent,
+      onLastEventId: (id) => {
+        lastEventId = id;
+      },
+    });
+
+    if (outcome.kind === 'aborted' || signal?.aborted) break;
+
+    if (outcome.kind === 'terminal') {
+      terminal = true;
+      break;
+    }
+
+    if (outcome.kind === 'failed') {
+      const status = outcome.status;
+      // `status === undefined` is a network-level failure (no response): retryable like a
+      // rejected fetch. A non-2xx status is only retried for 429/5xx.
+      const retryable = status === undefined || status === 429 || status >= 500;
+      if (!retryable || reconnects >= maxReconnects) {
+        onError?.(safeTransportError(status));
+        break;
+      }
+      reconnects += 1;
+      await wait(retryDelayMs, signal);
+      continue;
+    }
+
+    // `ended`: the connection closed without a terminal event. Spend one reconnect exactly like
+    // the fetch path does, so a proxy answering an empty 200 cannot spin forever.
+    if (reconnects >= maxReconnects) {
+      onError?.(new Error('انتهى بث التقدّم قبل اكتمال المهمة'));
+      break;
+    }
+    reconnects += 1;
+    await wait(retryDelayMs, signal);
+  }
+
+  return { ...(lastEventId === undefined ? {} : { lastEventId }), closedByTerminalEvent: terminal };
+}
+
+/**
  * Follow `GET /v1/jobs/{jobId}/events`.
  *
  * Streams through `response.body.getReader()` when the runtime provides it (web, Node 18+), and
@@ -213,6 +471,9 @@ export async function subscribeToJobEvents(
     maxReconnects = 3,
     retryDelayMs = 1000,
   } = options;
+
+  // React Native cannot stream a `fetch` body; XHR can. Everything else keeps the fetch path.
+  if (useXhrTransport(options)) return subscribeToJobEventsXhr(options);
 
   const doFetch = fetchImpl ?? fetch;
   const url = `${baseUrl.replace(/\/+$/, '')}/v1/jobs/${encodeURIComponent(jobId)}/events`;
@@ -260,36 +521,11 @@ export async function subscribeToJobEvents(
       continue;
     }
 
-    let buffer = '';
-
-    const dispatch = (text: string): boolean => {
-      buffer += text;
-      const { events, remainder } = parseSseChunk(buffer);
-      buffer = remainder;
-
-      for (const raw of events) {
-        // An `onEvent` handler may abort mid-chunk: stop before the next frame is delivered
-        // and before `Last-Event-ID` moves past an event the caller never saw.
-        if (signal?.aborted) return false;
-        if (!raw.data) continue;
-        if (!KNOWN_EVENTS.has(raw.event)) continue;
-
-        let payload: unknown;
-        try {
-          payload = JSON.parse(raw.data);
-        } catch {
-          // A malformed frame is skipped rather than killing a long-lived stream, and its id
-          // is not consumed: a reconnect replays it instead of silently skipping it.
-          continue;
-        }
-
-        onEvent({ event: raw.event, ...(raw.id === undefined ? {} : { id: raw.id }), data: payload } as JobSseEvent);
-        // Only a dispatched frame advances the resume point.
-        if (raw.id !== undefined) lastEventId = raw.id;
-        if (isTerminalEvent(raw.event, payload)) return true;
-      }
-      return false;
-    };
+    const dispatcher = createSseDispatcher({
+      onEvent,
+      ...(signal ? { signal } : {}),
+      ...(lastEventId === undefined ? {} : { lastEventId }),
+    });
 
     try {
       const body = (response as unknown as { body?: ReadableStream<Uint8Array> | null }).body;
@@ -305,14 +541,14 @@ export async function subscribeToJobEvents(
           if (!value) continue;
           const text = decoder ? decoder.decode(value, { stream: true }) : '';
           if (!decoder) pendingParts.push(value);
-          if (decoder && dispatch(text)) {
+          if (decoder && dispatcher.push(text)) {
             terminal = true;
             break;
           }
         }
         if (!terminal) {
           const tail = decoder ? decoder.decode() : decodeUtf8(concatBytes(pendingParts));
-          if (tail && dispatch(tail)) terminal = true;
+          if (tail && dispatcher.push(tail)) terminal = true;
         }
         if (terminal) {
           try {
@@ -323,7 +559,7 @@ export async function subscribeToJobEvents(
         }
       } else {
         const text = await response.text();
-        if (dispatch(text)) terminal = true;
+        if (dispatcher.push(text)) terminal = true;
       }
     } catch {
       if (signal?.aborted) break;
@@ -336,6 +572,9 @@ export async function subscribeToJobEvents(
       await wait(retryDelayMs, signal);
       continue;
     }
+
+    // Only dispatched frames move the resume point, so this is read after the attempt.
+    lastEventId = dispatcher.lastEventId();
 
     if (terminal) break;
     if (signal?.aborted) break;

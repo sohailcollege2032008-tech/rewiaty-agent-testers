@@ -94,3 +94,9 @@ flows:
     target: release-apk
     run: "bash scripts/ci-flows.sh mission-control-byok"
     artifact: ".factory/evidence/latest/apk/app.apk"
+  - id: dictionary-lookup
+    who: "قارئ واقف على كلمة مش فاهمها"
+    steps: "يفتح الرواية التجريبية ← ضغط مطوّل على كلمة ← «المعجم» في شريط التظليل ← البطاقة تفتح بمعاني الكلمة وشروط رخصة CC BY-SA 4.0 ولينك ويكاموس (أو رسالة «القاموس غير متاح» الهادية لو الملف مش مضمّن) ← يقفلها فترجع الصفحة زي ما هي"
+    target: release-apk
+    run: "bash scripts/ci-flows.sh dictionary-lookup"
+    artifact: ".factory/evidence/latest/apk/app.apk"

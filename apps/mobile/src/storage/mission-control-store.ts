@@ -590,11 +590,13 @@ function createLiveMissionControlStore(apiBaseUrl: string): MissionControlStore 
   const { createApiMissionControlAdapter } =
     require('../api/mission-control-adapter') as typeof import('../api/mission-control-adapter');
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { RewiatyApiClient } =
-    require('../api/client') as typeof import('../api/client');
+  const { getAuthenticatedApiClient } =
+    require('../api/device-session') as typeof import('../api/device-session');
 
   return createMissionControlStore(
-    createApiMissionControlAdapter(new RewiatyApiClient({ baseUrl: apiBaseUrl })),
+    // Why (review P1): Mission Control reads the same authenticated client as the upload flow,
+    // so its `/v1/jobs` and `/v1/usage` calls carry the device JWT instead of 401-ing.
+    createApiMissionControlAdapter(getAuthenticatedApiClient(apiBaseUrl)),
   );
 }
 
