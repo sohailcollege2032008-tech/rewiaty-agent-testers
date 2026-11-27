@@ -332,12 +332,25 @@ export function parseBook(text: string, fileName: string, options?: ParseOptions
   const lines = normalized.split('\n');
 
   const { fields, bodyStartLine } = extractFrontmatter(lines);
-  // Why (tech): cleaning runs on the body only, so frontmatter metadata is never rewritten and the
-  // caller's string is left untouched (the cleaner is pure).
+  // Why (tech, Codex P2): footnotes are pulled out of the *raw* body before cleaning. Cleaning the
+  // whole body first unwrapped a footnote's indented continuation line together with the body line
+  // that followed it, so `extractFootnotes` then read that body line as a continuation and the body
+  // paragraph vanished from the chapter. Body and each footnote paragraph are cleaned separately,
+  // and the whole operation stays non-destructive (the caller's string is never touched).
   const bodyText = lines.slice(bodyStartLine).join('\n');
-  const cleanedBodyText = options?.cleanArabic ? cleanArabicText(bodyText) : bodyText;
-  const bodySlice = cleanedBodyText.split('\n');
-  const { bodyLines, rawFootnotes } = extractFootnotes(bodySlice);
+  const { bodyLines: rawBodyLines, rawFootnotes: uncleanedFootnotes } = extractFootnotes(
+    bodyText.split('\n'),
+  );
+  const bodyLines = options?.cleanArabic
+    ? cleanArabicText(rawBodyLines.join('\n')).split('\n')
+    : rawBodyLines;
+  const rawFootnotes = new Map<string, string[]>();
+  for (const [fnId, paragraphs] of uncleanedFootnotes) {
+    rawFootnotes.set(
+      fnId,
+      options?.cleanArabic ? paragraphs.map((p) => cleanArabicText(p)) : paragraphs,
+    );
+  }
 
   const knownFootnotes = new Set(rawFootnotes.keys());
   const footnotes = buildFootnotes(rawFootnotes, knownFootnotes);

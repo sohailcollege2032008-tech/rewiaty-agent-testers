@@ -33,12 +33,41 @@ async function readFileText(file: File): Promise<string> {
 }
 
 
-export const PARSER_VERSION = 1;
+/**
+ * Why (versioning, Codex P2): `2` means the bundle's `manifest.json` carries an explicit
+ * `cleanArabic` flag. Books imported before cleaning existed are still `1` with no flag, and they
+ * keep being read *without* cleaning so their FTS5 rows, anchors, bookmarks and highlights (all
+ * saved against the old parse) stay valid.
+ */
+export const PARSER_VERSION = 2;
+
+/**
+ * Why (F19): Arabic cleaning is applied to the parsed `Book` only — the bundle's `book.md` always
+ * keeps the author's original bytes. Write and read must agree per book: a freshly imported book is
+ * cleaned, a pre-existing one keeps whatever its `manifest.json` recorded, so ids and offsets never
+ * drift underneath saved state.
+ */
+function parseOptionsFor(cleanArabic: boolean): { cleanArabic: boolean } {
+  return { cleanArabic };
+}
+
 const SAMPLE_SEEDED_KV_KEY = 'sample_seeded_v1';
 
 export type StoredManifest = BookManifest & {
   sourceFormat?: 'md' | 'txt';
+  /** `true` when the stored book was parsed with the Arabic cleaner (parserVersion >= 2). */
+  cleanArabic?: boolean;
 };
+
+async function readStoredManifest(bookDir: Directory): Promise<StoredManifest | null> {
+  const manifestFile = new File(bookDir, 'manifest.json');
+  if (!manifestFile.exists) return null;
+  try {
+    return JSON.parse(await readFileText(manifestFile)) as StoredManifest;
+  } catch {
+    return null;
+  }
+}
 
 export function getBooksRootDir(): Directory {
   return new Directory(Paths.document, 'books');
@@ -70,14 +99,31 @@ export async function importBookContent(
   }
 
   const sourceFormat: 'md' | 'txt' = isTxtFile(fileName) ? 'txt' : 'md';
-  const parsed: Book =
-    sourceFormat === 'txt' ? parseTxt(rawText, fileName) : parseBook(rawText, fileName);
-
   const id = options.bookId ?? computeBookId(rawText);
-  const book: Book = { ...parsed, id };
 
   const bookDir = options.bookDir ?? getBookDir(id);
   bookDir.create({ intermediates: true, idempotent: true });
+
+  // Why (compat, Codex P2): a book that is already on disk with an old manifest and saved reader
+  // state was parsed without cleaning, and its FTS5 rows, anchors, bookmarks and highlights all use
+  // that parse. Re-importing the same bytes must keep reading it the same way, otherwise every saved
+  // position and the whole search index would silently shift (`"مرحبا"` → `«مرحبا»`). Only a genuinely
+  // new book (no manifest, or no saved state) gets the cleaner.
+  const existingManifest = await readStoredManifest(bookDir);
+  const hasSavedState = new File(bookDir, '.reader-state.json').exists;
+  const cleanArabic =
+    existingManifest !== null && existingManifest.cleanArabic !== true && hasSavedState
+      ? false
+      : true;
+
+  // Why (F19): the cleaner runs only in the parsed book. `rawText` is what lands in `book.md`,
+  // so the source file on disk stays byte-identical and nothing is lost on re-read.
+  const parsed: Book =
+    sourceFormat === 'txt'
+      ? parseTxt(rawText, fileName, parseOptionsFor(cleanArabic))
+      : parseBook(rawText, fileName, parseOptionsFor(cleanArabic));
+
+  const book: Book = { ...parsed, id };
 
   const assetsDir = new Directory(bookDir, 'assets');
   assetsDir.create({ intermediates: true, idempotent: true });
@@ -97,6 +143,7 @@ export async function importBookContent(
     wordCount: book.wordCount,
     parserVersion: PARSER_VERSION,
     sourceFormat,
+    cleanArabic,
   };
   const manifestFile = new File(bookDir, 'manifest.json');
   await manifestFile.write(JSON.stringify(manifest, null, 2));
@@ -151,19 +198,19 @@ export async function readBookBundle(bookId: string): Promise<{
   }
 
   const rawText = await readFileText(bookFile);
-  const manifestFile = new File(bookDir, 'manifest.json');
-  let manifest: StoredManifest | null = null;
-  if (manifestFile.exists) {
-    try {
-      manifest = JSON.parse(await readFileText(manifestFile)) as StoredManifest;
-    } catch {
-      manifest = null;
-    }
-  }
+  const manifest = await readStoredManifest(bookDir);
 
   const sourceFormat = manifest?.sourceFormat ?? 'md';
   const fileName = `${manifest?.meta?.title ?? bookId}.${sourceFormat}`;
-  const parsed = sourceFormat === 'txt' ? parseTxt(rawText, fileName) : parseBook(rawText, fileName);
+  // Why (compat, Codex P2): read a book exactly the way it was stored. Legacy books (parserVersion
+  // 1, no `cleanArabic`) were parsed without cleaning, so their block ids, FTS5 rows, anchors,
+  // bookmarks and highlights all line up with the raw text. Cleaning them here on the fly would move
+  // every offset (`"مرحبا"` → `«مرحبا»`) and break all of them.
+  const cleanArabic = manifest?.cleanArabic === true;
+  const parsed =
+    sourceFormat === 'txt'
+      ? parseTxt(rawText, fileName, parseOptionsFor(cleanArabic))
+      : parseBook(rawText, fileName, parseOptionsFor(cleanArabic));
   const book: Book = { ...parsed, id: bookId };
 
   const fallbackManifest: StoredManifest = manifest ?? {
@@ -178,6 +225,7 @@ export async function readBookBundle(bookId: string): Promise<{
     wordCount: book.wordCount,
     parserVersion: PARSER_VERSION,
     sourceFormat,
+    cleanArabic,
   };
 
   const stateFile = new File(bookDir, '.reader-state.json');

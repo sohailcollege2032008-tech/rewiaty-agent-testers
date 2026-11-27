@@ -31,6 +31,14 @@ const DIALOGUE_START_RE = /^[-–—]\s+|^«/;
 
 const LIST_OR_DIALOGUE_RE = /^[-–—*+]\s+/;
 
+const FOOTNOTE_DEF_RE = /^\[\^[^\]\s]+\]:/;
+
+/** A footnote continuation line is indented by two spaces (or a tab). */
+const FOOTNOTE_CONTINUATION_RE = /^(?: {2,}|\t)/;
+
+/** Closing punctuation glues to the previous word when hard-wrapped lines are joined. */
+const GLUED_LEADING_PUNCT_RE = /^[،؛؟!.:…»)\]}]/;
+
 /**
  * Clean Arabic prose while preserving the author's meaning and marks.
  * The operation is idempotent: `cleanArabicText(cleanArabicText(s)) === cleanArabicText(s)`.
@@ -205,15 +213,15 @@ function isStructuralLine(
   return false;
 }
 
-function joinLines(head: string, tail: string): string {
-  const left = head.replace(/[ \t\r]+$/, '');
-  const right = tail.replace(/^[ \t\r]+/, '');
-  if (!right) return left;
-  // Punctuation belongs to the previous word, not the next one.
-  if (/^[،؛؟!.:…»)\]}]/.test(right)) return left + right;
-  return `${left} ${right}`;
-}
-
+/**
+ * Join hard-wrapped lines back into paragraphs.
+ *
+ * Why (perf, Codex P1): the paragraph being built is kept as a list of parts and joined once at the
+ * end of the paragraph. Re-testing `SENTENCE_END_RE` and re-copying the whole accumulated paragraph
+ * on every single line made this O(n²) — a 400KB hand-wrapped book took ~31s, and every extra KB
+ * made it worse. This version is linear: each line is inspected once and the paragraph is
+ * concatenated once.
+ */
 function unwrapLines(text: string): string {
   const lines = text.split('\n');
   const result: string[] = [];
@@ -224,36 +232,65 @@ function unwrapLines(text: string): string {
     for (; index <= frontmatterEnd; index++) result.push(lines[index] ?? '');
   }
 
+  // Why (tech, Codex P2): a footnote's indented continuation lines belong to the footnote above
+  // them. Unwrapping them into the next body line used to swallow that body line into the
+  // footnote (the parser reads an indented line as a continuation), so they keep their own line
+  // and indentation here. Blank lines keep the footnote block open, mirroring `extractFootnotes`.
+  let inFootnote = false;
+
   while (index < lines.length) {
     const line = lines[index] ?? '';
+
+    if (inFootnote) {
+      if (!line.trim() || FOOTNOTE_CONTINUATION_RE.test(line)) {
+        result.push(line);
+        index++;
+        continue;
+      }
+      inFootnote = false;
+    }
+
     const prevBlank = index === 0 || (lines[index - 1] ?? '').trim() === '';
     const nextLine = lines[index + 1];
     const nextBlank = nextLine === undefined || nextLine.trim() === '';
 
     if (!line.trim() || isStructuralLine(line, { prevBlank, nextBlank })) {
+      if (FOOTNOTE_DEF_RE.test(line.trim())) inFootnote = true;
       result.push(line);
       index++;
       continue;
     }
 
-    let accumulated = line;
-    while (index + 1 < lines.length) {
-      const following = lines[index + 1] ?? '';
+    const parts: string[] = [line];
+    let lastPart = line;
+    let cursor = index;
+
+    while (cursor + 1 < lines.length) {
+      const following = lines[cursor + 1] ?? '';
       if (!following.trim()) break;
 
-      const afterFollowing = lines[index + 2];
+      const afterFollowing = lines[cursor + 2];
       const followingNextBlank = afterFollowing === undefined || afterFollowing.trim() === '';
       if (isStructuralLine(following, { prevBlank: false, nextBlank: followingNextBlank })) {
         break;
       }
-      if (SENTENCE_END_RE.test(accumulated)) break;
+      // Checking only the last appended line is equivalent: the pattern is anchored at the end.
+      if (SENTENCE_END_RE.test(lastPart)) break;
 
-      accumulated = joinLines(accumulated, following);
-      index++;
+      const right = following.replace(/^[ \t\r]+/, '');
+      parts.push(GLUED_LEADING_PUNCT_RE.test(right) ? right : ` ${right}`);
+      lastPart = following;
+      cursor++;
     }
 
-    result.push(accumulated);
-    index++;
+    // Every part keeps its own trailing whitespace until now; only the paragraph's final part may
+    // still carry it, exactly like the previous one-join-at-a-time behaviour.
+    const last = parts.length - 1;
+    const paragraph = parts
+      .map((part, i) => (i === last ? part : part.replace(/[ \t\r]+$/, '')))
+      .join('');
+    result.push(paragraph);
+    index = cursor + 1;
   }
 
   return result.join('\n');

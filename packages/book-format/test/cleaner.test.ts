@@ -144,6 +144,19 @@ describe('cleanArabicText — unwrapHardLines', () => {
     expect(cleanArabicText(input)).toBe(input);
   });
 
+  it('keeps indented footnote continuation lines on their own line (Codex P2)', () => {
+    const input = ['[^1]: بداية الحاشية', '  تكملة الحاشية', 'سطر متن بعدها بلا سطر فاضي'].join(
+      '\n',
+    );
+    // A continuation belongs to the footnote; the unindented line that follows it is body text and
+    // must never be glued into the footnote (that used to swallow the body line on cleaning).
+    expect(cleanArabicText(input)).toBe(
+      ['[^1]: بداية الحاشية', '  تكملة الحاشية', 'سطر متن بعدها بلا سطر فاضي'].join('\n'),
+    );
+    // Idempotent as well, so a second cleaning pass cannot drift.
+    expect(cleanArabicText(cleanArabicText(input))).toBe(cleanArabicText(input));
+  });
+
   it('keeps detected .txt chapter headings on their own line', () => {
     const input = ['الفصل الأول', 'نص السطر', 'مكسور', 'Chapter 2', 'بداية', 'ثانية'].join('\n');
     expect(cleanArabicText(input)).toBe(
@@ -212,6 +225,29 @@ describe('parseBook — cleanArabic option', () => {
     expect(book.chapters[0]!.blocks[0]!.html).toBe('نص، عربي.');
   });
 
+  it('keeps a footnote continuation out of the body line that follows it (Codex P2)', () => {
+    const md = [
+      '# الفصل الأول',
+      '',
+      'نص المتن قبل الحاشية[^a].',
+      '',
+      '[^a]: بداية الحاشية',
+      '  تكملة الحاشية',
+      'سطر متن بلا سطر فاضي قبله',
+    ].join('\n');
+
+    const book = parseBook(md, 'x.md', { cleanArabic: true });
+    const paragraphs = book.chapters[0]!.blocks.filter((b) => b.kind === 'p');
+
+    // The unindented line after the footnote must stay in the chapter instead of being merged
+    // into the footnote by the cleaner's line unwrapping.
+    expect(paragraphs).toHaveLength(2);
+    expect(paragraphs[0]!.html).toContain('نص المتن قبل الحاشية');
+    expect(paragraphs[1]!.html).toBe('سطر متن بلا سطر فاضي قبله');
+    expect(book.footnotes['a']).toHaveLength(1);
+    expect(book.footnotes['a']![0]!.html).toBe('بداية الحاشية تكملة الحاشية');
+  });
+
   it('still parses structure (headings, images, footnotes) after cleaning', () => {
     const md = [
       '# Chapter 1',
@@ -260,4 +296,27 @@ describe('cleanArabicText performance (Codex #20)', () => {
     expect(out).toContain('قال الرجل، ثم سكت؛');
     expect(ms).toBeLessThan(2000);
   });
+
+  it('unwraps ~400KB of hand-wrapped Arabic without sentence marks in linear time (Codex P1)', () => {
+    // Every line here is a continuation of the same paragraph (no sentence terminator, no blank
+    // line), which is the worst case for line unwrapping: the old implementation re-tested and
+    // re-copied the whole accumulated paragraph on every line, so a 400KB book took seconds.
+    const line = 'هذا سطر عربي ملفوف يدويا داخل فقرة طويلة بدون علامة نهاية';
+    const lines: string[] = [];
+    let size = 0;
+    while (size < 400 * 1024) {
+      lines.push(line);
+      size += line.length + 1;
+    }
+    const text = lines.join('\n');
+
+    const t0 = Date.now();
+    const out = cleanArabicText(text);
+    const ms = Date.now() - t0;
+
+    const resultLines = out.split('\n');
+    expect(resultLines).toHaveLength(1);
+    expect(resultLines[0]).toBe(lines.join(' '));
+    expect(ms).toBeLessThan(500);
+  }, 120_000);
 });

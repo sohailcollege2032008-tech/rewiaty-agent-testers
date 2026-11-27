@@ -3,6 +3,7 @@ import path from 'node:path';
 import * as DocumentPicker from 'expo-document-picker';
 import { Asset } from 'expo-asset';
 import { Directory, File, Paths } from 'expo-file-system';
+import { parseBook } from '@rewiaty/book-format';
 
 import {
   deleteBookBundle,
@@ -22,6 +23,7 @@ import {
   type DatabaseAdapter,
 } from '@/storage/database';
 import { pickAndImportBook } from '@/storage/importer';
+import { indexBookForSearch, searchLibrary } from '@/storage/search-index';
 import type { BookLibraryRecord } from '@/types/reader';
 
 jest.mock('expo-document-picker', () => ({
@@ -139,6 +141,46 @@ function createInMemoryDb(): DatabaseAdapter {
   };
 }
 
+/**
+ * Why (tech): the FTS5 assertion has to run against a real SQLite engine, not the declarative
+ * in-memory stub above — `CREATE VIRTUAL TABLE ... USING fts5` and `MATCH` do not exist in a map.
+ */
+function createRealSqliteMemoryAdapter(): { adapter: DatabaseAdapter; close: () => void } {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { DatabaseSync } = require('node:sqlite') as {
+    DatabaseSync: new (path: string) => {
+      exec: (sql: string) => void;
+      prepare: (sql: string) => {
+        run: (...params: unknown[]) => { changes: number | bigint };
+        get: (...params: unknown[]) => unknown;
+        all: (...params: unknown[]) => unknown[];
+      };
+      close: () => void;
+    };
+  };
+
+  const sqliteDb = new DatabaseSync(':memory:');
+
+  const adapter: DatabaseAdapter = {
+    async execAsync(source: string) {
+      sqliteDb.exec(source);
+    },
+    async runAsync(source: string, ...params: unknown[]) {
+      const res = sqliteDb.prepare(source).run(...params);
+      return { changes: Number(res.changes ?? 0) };
+    },
+    async getFirstAsync<T>(source: string, ...params: unknown[]): Promise<T | null> {
+      const row = sqliteDb.prepare(source).get(...params);
+      return (row as T | undefined) ?? null;
+    },
+    async getAllAsync<T>(source: string, ...params: unknown[]): Promise<T[]> {
+      return sqliteDb.prepare(source).all(...params) as T[];
+    },
+  };
+
+  return { adapter, close: () => sqliteDb.close() };
+}
+
 const SAMPLE_MD = `---
 title: "أَوْرَاقُ الْبَحْرِ"
 author: "كاتب تجريبي"
@@ -151,6 +193,30 @@ coverColor: "#4E342E"
 
 كَانَ الْفَجْرُ يَتَسَلَّلُ بِهُدُوءٍ فَوْقَ أَرْصِفَةِ الْمِينَاءِ.
 `;
+
+/** Dirty Arabic source: space before the comma, straight quotes, a hand-wrapped line. */
+const DIRTY_MD = `---
+title: "كتاب التنظيف"
+author: "مؤلف تجريبي"
+lang: ar
+dir: rtl
+---
+
+# الْفَصْلُ الْأَوَّلُ
+
+قبل الفاصلة ، وقال "مرحبا" للجميع
+وهذا سطر مكسور يدويا في نفس الفقرة.
+`;
+
+const DIRTY_TXT = [
+  'الفصل الأول',
+  '',
+  'قبل الفاصلة ، وقال "مرحبا" هنا',
+  'والسطر الثاني مكسور يدويا.',
+].join('\n');
+
+const CLEANED_PARAGRAPH =
+  'قبل الفاصلة، وقال «مرحبا» للجميع وهذا سطر مكسور يدويا في نفس الفقرة.';
 
 function clearBooksDir() {
   const root = new Directory(Paths.document, 'books');
@@ -329,5 +395,223 @@ describe('bundle storage & importer', () => {
     const imported = await pickAndImportBook(db);
     expect(imported?.title).toBe('أَوْرَاقُ الْبَحْرِ');
     expect(await listBooks(db)).toHaveLength(1);
+  });
+
+  it('cleans Arabic in the parsed markdown book while keeping book.md byte-identical (F19)', async () => {
+    const { adapter: realDb, close } = createRealSqliteMemoryAdapter();
+    try {
+      await initDatabase(realDb);
+
+      const record = await importBookContent(DIRTY_MD, 'dirty.md', realDb);
+
+      // Identity is derived from the raw source, never from the cleaned text.
+      expect(record.id).toBe(computeBookId(DIRTY_MD));
+
+      const bookFile = new File(getBookDir(record.id), 'book.md');
+      const stored = await bookFile.text();
+      expect(stored).toBe(DIRTY_MD);
+      expect(stored).toContain('قبل الفاصلة ،');
+      expect(stored).toContain('"مرحبا"');
+      expect(stored).toContain('للجميع\nوهذا');
+
+      const loaded = await readBookBundle(record.id);
+      expect(loaded.book.chapters).toHaveLength(1);
+      expect(loaded.book.chapters[0]?.title).toBe('الْفَصْلُ الْأَوَّلُ');
+      const paragraphs = loaded.book.chapters[0]!.blocks.filter((b) => b.kind === 'p');
+      expect(paragraphs.map((b) => b.html)).toEqual([CLEANED_PARAGRAPH]);
+
+      const hits = await searchLibrary('مرحبا', { bookId: record.id }, realDb);
+      expect(hits).toHaveLength(1);
+      const hit = hits[0]!;
+      // The index holds the cleaned prose, so the snippet shows the converted guillemets.
+      expect(`${hit.snippetBefore}${hit.snippetMatch}${hit.snippetAfter}`).toContain('«مرحبا»');
+      // The hand-wrapped second line is indexed as part of the same joined paragraph.
+      expect(await searchLibrary('يدويا', { bookId: record.id }, realDb)).toHaveLength(1);
+      expect(await searchLibrary('الفاصلة', { bookId: record.id }, realDb)).toHaveLength(1);
+    } finally {
+      close();
+    }
+  });
+
+  it('keeps a legacy (parserVersion 1) book on its old parse so FTS, anchors, bookmarks and highlights never break (Codex P2)', async () => {
+    const { adapter: realDb, close } = createRealSqliteMemoryAdapter();
+    try {
+      await initDatabase(realDb);
+
+      // A book imported before cleaning existed: `manifest.json` says parserVersion 1 and has no
+      // `cleanArabic` flag, while FTS5 rows, the anchor, the bookmark and the highlight were all
+      // saved against the raw (uncleaned) parse.
+      const LEGACY_MD = [
+        '# الفصل الأول',
+        '',
+        'قال "مرحبا" للجميع ، وذهب',
+        '',
+        'وهذا سطر مكسور يدويا.',
+      ].join('\n');
+      const legacyId = computeBookId(LEGACY_MD);
+      const legacyBook = parseBook(LEGACY_MD, 'legacy.md');
+      const legacyIds = legacyBook.chapters[0]!.blocks.map((b) => b.id);
+      const legacyHtml = legacyBook.chapters[0]!.blocks.map((b) => b.html);
+      expect(legacyIds).toEqual(['ch01_p0001', 'ch01_p0002']);
+      expect(legacyHtml[0]).toBe('قال &quot;مرحبا&quot; للجميع ، وذهب');
+
+      const bookDir = getBookDir(legacyId);
+      bookDir.create({ intermediates: true, idempotent: true });
+      await new File(bookDir, 'book.md').write(LEGACY_MD);
+      await new File(bookDir, 'manifest.json').write(
+        JSON.stringify(
+          {
+            id: legacyId,
+            meta: legacyBook.meta,
+            chapters: legacyBook.chapters.map((ch) => ({
+              id: ch.id,
+              title: ch.title,
+              wordCount: ch.wordCount,
+              hash: ch.hash,
+            })),
+            wordCount: legacyBook.wordCount,
+            parserVersion: 1,
+            sourceFormat: 'md',
+          },
+          null,
+          2,
+        ),
+      );
+      await new File(bookDir, '.reader-state.json').write(
+        JSON.stringify(
+          {
+            anchor: { blockId: 'ch01_p0002', charOffset: 5 },
+            progress: 0.42,
+            chapterId: 'ch01',
+            bookmarkItems: [
+              {
+                id: 'bm-1',
+                anchor: { blockId: 'ch01_p0001', charOffset: 5 },
+                chapterId: 'ch01',
+                chapterTitle: 'الفصل الأول',
+                quote: 'مرحبا',
+                contextBefore: 'قال "',
+                contextAfter: '" للجميع',
+                createdAt: 1,
+              },
+            ],
+            highlights: [
+              {
+                id: 'hl-1',
+                anchor: { blockId: 'ch01_p0002', charOffset: 5 },
+                length: 4,
+                color: 'gold',
+                quote: 'سطر',
+                contextBefore: 'وهذا ',
+                contextAfter: ' مكسور',
+                chapterId: 'ch01',
+                chapterTitle: 'الفصل الأول',
+                createdAt: 1,
+                updatedAt: 1,
+              },
+            ],
+            updatedAt: 1,
+          },
+          null,
+          2,
+        ),
+      );
+      // The search index was built from the same uncleaned parse, under the bundle's own id.
+      await indexBookForSearch({ ...legacyBook, id: legacyId }, realDb);
+
+      const loaded = await readBookBundle(legacyId);
+      // Same block ids, same html, same offsets: nothing about the legacy book moved.
+      expect(loaded.book.chapters[0]!.blocks.map((b) => b.id)).toEqual(legacyIds);
+      expect(loaded.book.chapters[0]!.blocks.map((b) => b.html)).toEqual(legacyHtml);
+      expect(loaded.book.chapters[0]!.blocks[0]!.html).toContain('&quot;مرحبا&quot;');
+      expect(loaded.manifest.parserVersion).toBe(1);
+      expect(loaded.manifest.cleanArabic).toBeUndefined();
+      expect(loaded.state.anchor).toEqual({ blockId: 'ch01_p0002', charOffset: 5 });
+      expect(loaded.state.bookmarkItems?.[0]?.anchor).toEqual({
+        blockId: 'ch01_p0001',
+        charOffset: 5,
+      });
+      expect(loaded.state.highlights?.[0]?.anchor).toEqual({
+        blockId: 'ch01_p0002',
+        charOffset: 5,
+      });
+
+      // The stored FTS5 rows still match the raw text at the raw offsets.
+      const hits = await searchLibrary('مرحبا', { bookId: legacyId }, realDb);
+      expect(hits).toHaveLength(1);
+      expect(hits[0]!.blockId).toBe('ch01_p0001');
+      expect(hits[0]!.charOffset).toBe(5);
+
+      // Re-importing the very same bytes must not silently upgrade the book's parse and break the
+      // saved state; it keeps the legacy (uncleaned) reading.
+      await importBookContent(LEGACY_MD, 'legacy.md', realDb);
+      const manifestFile = new File(getBookDir(legacyId), 'manifest.json');
+      const reimportedManifest = JSON.parse(await manifestFile.text()) as {
+        cleanArabic?: boolean;
+      };
+      expect(reimportedManifest.cleanArabic).toBe(false);
+      const reimported = await readBookBundle(legacyId);
+      expect(reimported.book.chapters[0]!.blocks.map((b) => b.id)).toEqual(legacyIds);
+      expect(reimported.book.chapters[0]!.blocks[0]!.html).toContain('&quot;مرحبا&quot;');
+      expect(reimported.state.anchor).toEqual({ blockId: 'ch01_p0002', charOffset: 5 });
+      expect(reimported.state.bookmarkItems?.[0]?.anchor).toEqual({
+        blockId: 'ch01_p0001',
+        charOffset: 5,
+      });
+      expect(reimported.state.highlights?.[0]?.anchor).toEqual({
+        blockId: 'ch01_p0002',
+        charOffset: 5,
+      });
+
+      // The re-index used the same uncleaned parse, so old hits still point at the same spot.
+      const reimportedHits = await searchLibrary('مرحبا', { bookId: legacyId }, realDb);
+      expect(reimportedHits).toHaveLength(1);
+      expect(reimportedHits[0]!.blockId).toBe('ch01_p0001');
+      expect(reimportedHits[0]!.charOffset).toBe(5);
+
+      // A brand-new book is recorded as cleaned (parserVersion 2 + cleanArabic: true).
+      const fresh = await importBookContent(DIRTY_MD, 'fresh.md', realDb);
+      const freshManifest = JSON.parse(
+        await new File(getBookDir(fresh.id), 'manifest.json').text(),
+      ) as { parserVersion: number; cleanArabic?: boolean };
+      expect(freshManifest.parserVersion).toBe(2);
+      expect(freshManifest.cleanArabic).toBe(true);
+
+      const freshBook = await readBookBundle(fresh.id);
+      const freshParagraphs = freshBook.book.chapters[0]!.blocks.filter((b) => b.kind === 'p');
+      expect(freshParagraphs.map((b) => b.html)).toEqual([CLEANED_PARAGRAPH]);
+      expect(await searchLibrary('مرحبا', { bookId: fresh.id }, realDb)).toHaveLength(1);
+    } finally {
+      close();
+    }
+  });
+
+  it('cleans Arabic in the parsed .txt book while keeping book.md byte-identical (F19)', async () => {
+    const { adapter: realDb, close } = createRealSqliteMemoryAdapter();
+    try {
+      await initDatabase(realDb);
+
+      const record = await importBookContent(DIRTY_TXT, 'dirty.txt', realDb);
+      expect(record.id).toBe(computeBookId(DIRTY_TXT));
+
+      const bookFile = new File(getBookDir(record.id), 'book.md');
+      const stored = await bookFile.text();
+      expect(stored).toBe(DIRTY_TXT);
+      expect(stored).toContain('قبل الفاصلة ،');
+      expect(stored).toContain('"مرحبا"');
+      expect(stored).toContain('هنا\nوالسطر');
+
+      const loaded = await readBookBundle(record.id);
+      expect(loaded.book.chapters).toHaveLength(1);
+      expect(loaded.book.chapters[0]?.title).toBe('الفصل الأول');
+      expect(loaded.book.chapters[0]!.blocks.map((b) => b.html)).toEqual([
+        'قبل الفاصلة، وقال «مرحبا» هنا والسطر الثاني مكسور يدويا.',
+      ]);
+
+      expect(await searchLibrary('مرحبا', { bookId: record.id }, realDb)).toHaveLength(1);
+      expect(await searchLibrary('يدويا', { bookId: record.id }, realDb)).toHaveLength(1);
+    } finally {
+      close();
+    }
   });
 });
