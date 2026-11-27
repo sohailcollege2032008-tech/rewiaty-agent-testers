@@ -1295,6 +1295,104 @@ describe('ReaderScreen', () => {
     expect(readerErrorMessage(undefined)).toBe(READER_OPEN_FAILED_MESSAGE);
   });
 
+  it('feeds the HUD scrubber a word-weighted chapter timeline with the reader bookmarks and highlights (F29)', async () => {
+    // ch01 has 100 words, ch02 has 120: ch02 owns 120/220 of the rail, not half of it.
+    const chapterBlocks = {
+      ch01: [
+        { id: 'ch01_p0001', kind: 'p', html: '<p>أول سطر في الفصل الأول</p>' },
+        { id: 'ch01_p0002', kind: 'p', html: '<p>وسطر تاني</p>' },
+      ],
+      ch02: [
+        { id: 'ch02_p0001', kind: 'p', html: '<p>ثم جاءت الريح</p>' },
+        { id: 'ch02_p0002', kind: 'p', html: '<p>وسطر تاني في الفصل</p>' },
+        { id: 'ch02_p0003', kind: 'p', html: '<p>وسطر تالت في الفصل</p>' },
+        { id: 'ch02_p0004', kind: 'p', html: '<p>وسطر رابع في الفصل</p>' },
+      ],
+    } as const;
+    (readBookBundle as jest.Mock).mockResolvedValue({
+      book: {
+        id: 'book_123',
+        meta: { title: 'أوراق البحر', author: 'مؤلف', lang: 'ar', dir: 'rtl' },
+        chapters: [
+          { id: 'ch01', title: 'الفصل الأول', blocks: chapterBlocks.ch01, wordCount: 100, hash: 'h1' },
+          { id: 'ch02', title: 'الفصل الثاني', blocks: chapterBlocks.ch02, wordCount: 120, hash: 'h2' },
+        ],
+        footnotes: {},
+        wordCount: 220,
+      },
+      manifest: { id: 'book_123', meta: {}, chapters: [], wordCount: 220, parserVersion: 1 },
+      state: {
+        anchor: { blockId: 'ch02_p0001', charOffset: 0 },
+        progress: 0.5,
+        chapterId: 'ch02',
+        page: 6,
+        pageCount: 10,
+        updatedAt: 1000,
+        bookmarkItems: [
+          {
+            id: 'bm-ch02',
+            anchor: { blockId: 'ch02_p0003', charOffset: 0 },
+            chapterId: 'ch02',
+            chapterTitle: 'الفصل الثاني',
+            quote: 'وسطر تالت',
+            contextBefore: '',
+            contextAfter: '',
+            createdAt: 1,
+          },
+        ],
+        highlights: [
+          {
+            id: 'hl-ch01',
+            anchor: { blockId: 'ch01_p0001', charOffset: 0 },
+            length: 5,
+            color: 'gold',
+            quote: 'أول سطر',
+            contextBefore: '',
+            contextAfter: '',
+            chapterId: 'ch01',
+            chapterTitle: 'الفصل الأول',
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        ],
+      },
+    });
+
+    const { getByTestId } = await renderLoadedReader();
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+
+    const flat = (id: string) =>
+      (ReactNative.StyleSheet.flatten(getByTestId(id).props.style as never) ?? {}) as {
+        left?: string | number;
+      };
+    const leftPct = (id: string) => parseFloat(String(flat(id).left));
+
+    // One divider between two chapters, at the cumulative word weight of chapter 1 (100/220).
+    const tick = getByTestId('timeline-tick-0');
+    expect(tick.props.pointerEvents).toBe('none');
+    expect(leftPct('timeline-tick-0')).toBeCloseTo((1 - 100 / 220) * 100, 1);
+
+    // RTL: the bookmark in ch02's third block sits at the cumulative TEXT length of the two blocks
+    // before it (not at "block 2 of 4"), i.e. 31/67 into the chapter.
+    const ch02Lengths = chapterBlocks.ch02.map((block) => block.html.replace(/<[^>]*>/g, '').length);
+    const ch02Total = ch02Lengths.reduce((sum, length) => sum + length, 0);
+    const ch02Local = (ch02Lengths[0]! + ch02Lengths[1]!) / ch02Total;
+    const bookmarkMarker = getByTestId('timeline-marker-bookmark-bm-ch02');
+    expect(bookmarkMarker.props.pointerEvents).toBe('none');
+    expect(leftPct('timeline-marker-bookmark-bm-ch02')).toBeCloseTo(
+      (1 - (100 / 220 + (120 / 220) * ch02Local)) * 100,
+      1,
+    );
+
+    // The highlight at the very first block of chapter 1 is on the physical right edge in RTL.
+    const highlightMarker = getByTestId('timeline-marker-highlight-hl-ch01');
+    expect(highlightMarker.props.pointerEvents).toBe('none');
+    expect(leftPct('timeline-marker-highlight-hl-ch01')).toBeCloseTo(100, 1);
+  });
+
   it('P2 #60 (Codex P2): isolates ~total and % with LRI..PDI and matches swipe hint to effectiveDir', () => {
     const { formatRunningFooterCounter, getHudHintText } = jest.requireActual('@/screens/reader-screen');
     expect(formatRunningFooterCounter(8, 13, false, 58)).toBe('صفحة 8 من 13 · \u206658%\u2069');

@@ -78,6 +78,12 @@ flows:
     target: release-apk
     run: "bash scripts/ci-flows.sh scrubber-direction"
     artifact: ".factory/evidence/latest/apk/app.apk"
+  - id: chapter-timeline
+    who: "قارئ عربي بيستخدم شريط الصفحات الموزون بالفصول"
+    steps: "يفتح الرواية ← يفتح الـ HUD ← الشريط عليه علامة فصل (طول كل فصل على قد كلماته) ← يسحب الشريط ← يظهر tooltip فيه اسم الفصل ورقم الصفحة وأول سطر من الفصل ← يقفل ويرجع عادي"
+    target: release-apk
+    run: "bash scripts/ci-flows.sh chapter-timeline"
+    artifact: ".factory/evidence/latest/apk/app.apk"
   - id: import-epub
     who: "قارئ عنده رواية EPUB فيها صور"
     steps: "المكتبة ← استيراد ← يختار ملف epub ← الكتاب يفتح بفصوله بالترتيب ← صورة الفصل التاني باينة فعلاً على الصفحة"

@@ -101,6 +101,14 @@ import type {
 } from '@/types/reader';
 import { debounce } from '@/utils/debounce';
 import {
+  buildChapterTimeline,
+  firstLinePreview,
+  mapBookmarks,
+  mapHighlights,
+  stripHtmlToText,
+  type TimelineChapterInput,
+} from '@/utils/chapter-timeline';
+import {
   chapterIdFromAnchor,
   dismissJumpBack,
   emptyJumpBackState,
@@ -361,6 +369,9 @@ export function ReaderScreen() {
   } | null>(null);
   const [measuredRunningFootHeight, setMeasuredRunningFootHeight] = useState<number | null>(null);
   const [tocEntries, setTocEntries] = useState<TocEntry[]>([]);
+  // Why (F29): the initial TOC is a guess (one page per chapter); only the engine's 'toc' message
+  // carries measured page ranges, and the scrubber tooltip must not claim a wrong chapter.
+  const [tocMeasured, setTocMeasured] = useState(false);
   const [pageInfo, setPageInfo] = useState<{
     chapterId: string;
     page: number;
@@ -548,6 +559,7 @@ export function ReaderScreen() {
     setWebLoaded(false);
     setEngineReady(false);
     setLoadError(null);
+    setTocMeasured(false);
     setBook(null);
     setBookBaseUrl(null);
     setReadAccessUrl(null);
@@ -863,6 +875,7 @@ export function ReaderScreen() {
           break;
         case 'toc':
           setTocEntries(parsed.chapters);
+          setTocMeasured(true);
           break;
         case 'tap':
           if (Date.now() < suppressTapUntilRef.current) {
@@ -1140,6 +1153,41 @@ export function ReaderScreen() {
     return book?.chapters.find((c) => c.id === pageInfo.chapterId)?.title ?? book?.meta.title ?? '';
   }, [tocEntries, book, pageInfo.chapterId]);
   chapterTitleRef.current = activeChapterTitle;
+
+  // F29 — the scrubber's track is weighted by chapter word count, so a long chapter owns a longer
+  // stretch of the rail, and bookmarks/highlights are dots on that same rail.
+  // Why (Codex #54 P1/P3): once the TOC is measured, page count (not word count) is the honest
+  // weight; and every block's text length is measured here, once, so a marker can sit at a real
+  // character offset instead of at "block n of m".
+  const timelineChapters = useMemo<TimelineChapterInput[]>(() => {
+    const chapters = book?.chapters ?? [];
+    return chapters.map((chapter) => {
+      const toc = tocMeasured ? tocEntries.find((entry) => entry.id === chapter.id) : undefined;
+      const hasMeasuredPages = Boolean(toc && toc.pageCount > 0 && toc.startPage > 0);
+      return {
+        id: chapter.id,
+        title: chapter.title,
+        wordCount: hasMeasuredPages ? toc!.pageCount : chapter.wordCount,
+        blockIds: chapter.blocks.map((block) => block.id),
+        blockTextLengths: chapter.blocks.map((block) => stripHtmlToText(block.html).length),
+        preview: firstLinePreview(chapter),
+        ...(hasMeasuredPages ? { startPage: toc!.startPage, pageCount: toc!.pageCount } : {}),
+      };
+    });
+  }, [book, tocEntries, tocMeasured]);
+
+  const timelineSegments = useMemo(
+    () => buildChapterTimeline(timelineChapters),
+    [timelineChapters],
+  );
+
+  const timelineMarkers = useMemo(
+    () => [
+      ...mapBookmarks(timelineChapters, timelineSegments, bookmarkItems),
+      ...mapHighlights(timelineChapters, timelineSegments, highlights),
+    ],
+    [timelineChapters, timelineSegments, bookmarkItems, highlights],
+  );
 
   const persistBookmarks = useCallback(
     (nextItems: BookmarkItem[]) => {
@@ -1799,6 +1847,9 @@ export function ReaderScreen() {
               isTabletLandscape={layout.isTabletLandscape}
               dir={effectiveDir}
               theme={settings.theme}
+              timelineChapters={timelineChapters}
+              timelineSegments={timelineSegments}
+              timelineMarkers={timelineMarkers}
               onBack={handleBack}
               onOpenToc={() => {
                 setActiveSelection(null);
