@@ -9,15 +9,8 @@ appId: com.rewiaty.app
 - extendedWaitUntil:
     visible: "حَجَرُ الْمَاءِ"
     timeout: 20000
-# Delete the seeded sample so the imported book is the only one in the library
-- longPressOn: "حَجَرُ الْمَاءِ"
-- extendedWaitUntil:
-    visible: "حذف"
-    timeout: 5000
-- tapOn: "حذف"
-- extendedWaitUntil:
-    visible: "المكتبة فارغة"
-    timeout: 5000
+# The seeded novel is bundled (isBundled) and can no longer be deleted: the library keeps it while
+# the EPUB import opens its own book.
 - tapOn:
     id: "import-book-button"
 # First 3 imports show the Telegram-first guide sheet before the system picker

@@ -1,6 +1,6 @@
 import * as ReactNative from 'react-native';
 import { Alert, Dimensions } from 'react-native';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 
 import { ToastOverlay } from '@/components/toast-overlay';
 import { IMPORT_GUIDE_COUNT_KV_KEY, LibraryScreen } from '@/screens/library-screen';
@@ -25,8 +25,10 @@ jest.mock('expo-router', () => {
   };
 });
 
+var mockInsets = { top: 0, bottom: 0, left: 0, right: 0 };
+
 jest.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  useSafeAreaInsets: () => mockInsets,
 }));
 
 // The global reanimated mock has no `withRepeat`; the Mission Control badge
@@ -100,8 +102,23 @@ const IMPORTED_RECORD: BookLibraryRecord = {
   coverSeed: 'رواية مستوردة',
   coverColor: null,
   progress: 0,
+  isBundled: false,
   lastOpenedAt: 3000,
   addedAt: 3000,
+};
+
+/** The novel that ships inside the app: it is protected and never deletable. */
+const BUNDLED_RECORD: BookLibraryRecord = {
+  id: 'book_bundled',
+  title: 'الرواية المدمجة',
+  author: 'روايتي',
+  dir: 'rtl',
+  coverSeed: 'الرواية المدمجة',
+  coverColor: '#2F5D62',
+  progress: 0,
+  isBundled: true,
+  lastOpenedAt: 1000,
+  addedAt: 1000,
 };
 
 describe('LibraryScreen', () => {
@@ -111,6 +128,7 @@ describe('LibraryScreen', () => {
     jest.clearAllMocks();
     mockKv.clear();
     clearToast();
+    mockInsets = { top: 0, bottom: 0, left: 0, right: 0 };
     colorSchemeSpy = jest.spyOn(ReactNative, 'useColorScheme').mockReturnValue('light');
     Dimensions.set({
       window: { width: 390, height: 844, scale: 2, fontScale: 1 },
@@ -461,5 +479,248 @@ describe('LibraryScreen', () => {
     expect(locPlugin?.[1]).toEqual(
       expect.objectContaining({ supportsRTL: true, forcesRTL: true }),
     );
+  });
+
+  it('exposes labelled delete buttons on the hero and shelf cards that confirm deletion (#61)', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert');
+    (listBooks as jest.Mock).mockResolvedValueOnce([SAMPLE_RECORD, IMPORTED_RECORD]);
+
+    const { getByTestId } = await render(<LibraryScreen />);
+
+    await waitFor(() => {
+      expect(getByTestId(`book-delete-${SAMPLE_RECORD.id}`)).toBeTruthy();
+      expect(getByTestId(`book-delete-${IMPORTED_RECORD.id}`)).toBeTruthy();
+    });
+
+    expect(getByTestId(`book-delete-${SAMPLE_RECORD.id}`).props.accessibilityLabel).toBe(
+      `حذف ${SAMPLE_RECORD.title}`,
+    );
+
+    await fireEvent.press(getByTestId(`book-delete-${IMPORTED_RECORD.id}`));
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+
+    const buttons = alertSpy.mock.calls[0]?.[2];
+    const deleteBtn = buttons?.find((b) => b.style === 'destructive');
+    expect(deleteBtn).toBeDefined();
+
+    (deleteBookBundle as jest.Mock).mockResolvedValueOnce(undefined);
+    (listBooks as jest.Mock).mockResolvedValueOnce([SAMPLE_RECORD]);
+
+    await act(async () => {
+      deleteBtn?.onPress?.();
+    });
+
+    await waitFor(() => {
+      expect(deleteBookBundle).toHaveBeenCalledWith(IMPORTED_RECORD.id);
+    });
+
+    alertSpy.mockRestore();
+  });
+
+  it('still opens the same confirmation on long-press of a card (#61)', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert');
+    (listBooks as jest.Mock).mockResolvedValueOnce([SAMPLE_RECORD, IMPORTED_RECORD]);
+
+    const { getByTestId } = await render(<LibraryScreen />);
+    await waitFor(() => {
+      expect(getByTestId(`book-card-${IMPORTED_RECORD.id}`)).toBeTruthy();
+    });
+
+    await fireEvent(getByTestId(`book-card-${IMPORTED_RECORD.id}`), 'longPress');
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(alertSpy.mock.calls[0]?.[0]).toBe('حذف الكتاب');
+
+    alertSpy.mockRestore();
+  });
+
+  it('keeps جديدة on the fresh imported book and never on the seeded oldest book (#61)', async () => {
+    const activeHero: BookLibraryRecord = {
+      ...SAMPLE_RECORD,
+      id: 'book_hero',
+      title: 'كتاب حالي',
+      progress: 0.5,
+      addedAt: 500,
+      lastOpenedAt: 9000,
+    };
+    const sampleOldest: BookLibraryRecord = {
+      ...SAMPLE_RECORD,
+      id: 'book_sample',
+      title: 'كتاب مدمج تجريبي',
+      progress: 0,
+      addedAt: 1000,
+      lastOpenedAt: 1000,
+    };
+    const freshImport: BookLibraryRecord = {
+      ...IMPORTED_RECORD,
+      id: 'book_fresh',
+      title: 'رواية مستوردة حديثاً',
+      progress: 0,
+      addedAt: 5000,
+      // The importer touches lastOpenedAt at import time; the badge must survive it.
+      lastOpenedAt: 6000,
+    };
+    (listBooks as jest.Mock).mockResolvedValueOnce([activeHero, freshImport, sampleOldest]);
+
+    const { getAllByText, getByTestId } = await render(<LibraryScreen />);
+
+    await waitFor(() => {
+      expect(getAllByText('جديدة')).toHaveLength(1);
+    });
+    expect(within(getByTestId('book-card-book_fresh')).getByText('جديدة')).toBeTruthy();
+    expect(within(getByTestId('book-card-book_sample')).queryByText('جديدة')).toBeNull();
+    expect(within(getByTestId('book-card-book_sample')).getByText('0%')).toBeTruthy();
+  });
+
+  it('pads the list and footer using insets.bottom so links clear the Android nav bar (#52)', async () => {
+    mockInsets = { top: 0, bottom: 34, left: 0, right: 0 };
+    (listBooks as jest.Mock).mockResolvedValueOnce([SAMPLE_RECORD]);
+
+    const { getByTestId } = await render(<LibraryScreen />);
+
+    await waitFor(() => {
+      expect(getByTestId('library-footer')).toBeTruthy();
+    });
+
+    const listStyle =
+      ReactNative.StyleSheet.flatten(
+        getByTestId('library-book-list').props.contentContainerStyle as ReactNative.StyleProp<ReactNative.ViewStyle>,
+      ) ?? {};
+    expect(listStyle.paddingBottom).toBe(Math.max(34, 24) + 16);
+
+    const footerStyle =
+      ReactNative.StyleSheet.flatten(
+        getByTestId('library-footer').props.style as ReactNative.StyleProp<ReactNative.ViewStyle>,
+      ) ?? {};
+    expect(footerStyle.paddingBottom).toBe(Math.max(34, 20));
+  });
+
+  it('keeps the import label unclipped at large font scale and keeps + outside the text (#52)', async () => {
+    const { getByTestId, queryByText } = await render(<LibraryScreen />);
+
+    await waitFor(() => {
+      expect(getByTestId('import-book-button')).toBeTruthy();
+    });
+
+    const flat =
+      ReactNative.StyleSheet.flatten(
+        getByTestId('import-book-button').props.style as ReactNative.StyleProp<ReactNative.ViewStyle>,
+      ) ?? {};
+    expect(flat.height).toBeUndefined();
+    expect(Number(flat.minHeight)).toBeGreaterThanOrEqual(48);
+    expect(Number(flat.paddingVertical)).toBeGreaterThan(0);
+    expect(queryByText('+ استيراد')).toBeNull();
+    expect(within(getByTestId('import-book-button')).getByText('استيراد')).toBeTruthy();
+  });
+
+  it('gives the search and import header controls an explicit >= 48dp touch target', async () => {
+    const flatStyle = (testID: string) =>
+      ReactNative.StyleSheet.flatten(
+        getByTestId(testID).props.style as ReactNative.StyleProp<ReactNative.ViewStyle>,
+      ) ?? {};
+
+    const { getByTestId } = await render(<LibraryScreen />);
+    await waitFor(() => expect(getByTestId('import-book-button')).toBeTruthy());
+
+    for (const id of ['library-search-button', 'import-book-button']) {
+      const flat = flatStyle(id);
+      expect(Number(flat.minHeight ?? flat.height)).toBeGreaterThanOrEqual(48);
+    }
+  });
+
+  it('never renders a delete affordance for the bundled novel, in the hero or on the shelf (P2 #1)', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert');
+    (listBooks as jest.Mock).mockResolvedValueOnce([BUNDLED_RECORD, IMPORTED_RECORD]);
+
+    const { getByTestId, queryByTestId } = await render(<LibraryScreen />);
+
+    await waitFor(() => {
+      // Hero = bundled book, shelf = imported book: delete lives only on the user's own book.
+      expect(getByTestId(`book-card-${BUNDLED_RECORD.id}`)).toBeTruthy();
+      expect(getByTestId(`book-card-${IMPORTED_RECORD.id}`)).toBeTruthy();
+    });
+    expect(queryByTestId(`book-delete-${BUNDLED_RECORD.id}`)).toBeNull();
+    expect(getByTestId(`book-delete-${IMPORTED_RECORD.id}`)).toBeTruthy();
+
+    // Long-press must not offer deletion of the bundled novel either.
+    await fireEvent(getByTestId(`book-card-${BUNDLED_RECORD.id}`), 'longPress');
+    expect(alertSpy).not.toHaveBeenCalled();
+
+    alertSpy.mockRestore();
+  });
+
+  it('keeps the delete affordance on an imported hero and hides it on a bundled shelf card (P2 #1)', async () => {
+    (listBooks as jest.Mock).mockResolvedValueOnce([IMPORTED_RECORD, BUNDLED_RECORD]);
+
+    const { getByTestId, queryByTestId } = await render(<LibraryScreen />);
+
+    await waitFor(() => {
+      expect(getByTestId(`book-card-${IMPORTED_RECORD.id}`)).toBeTruthy();
+      expect(getByTestId(`book-card-${BUNDLED_RECORD.id}`)).toBeTruthy();
+    });
+    expect(getByTestId(`book-delete-${IMPORTED_RECORD.id}`)).toBeTruthy();
+    expect(queryByTestId(`book-delete-${BUNDLED_RECORD.id}`)).toBeNull();
+  });
+
+  it('never badges the bundled novel as جديدة, even when it is the only book (P2 #2)', async () => {
+    (listBooks as jest.Mock).mockResolvedValueOnce([BUNDLED_RECORD]);
+
+    const { queryByText, queryByTestId } = await render(<LibraryScreen />);
+
+    await waitFor(() => expect(queryByTestId('library-book-list')).toBeTruthy());
+    expect(queryByText('جديدة')).toBeNull();
+    expect(queryByTestId(`book-new-badge-${BUNDLED_RECORD.id}`)).toBeNull();
+    expect(queryByText('لم تبدأ بعد')).toBeTruthy();
+  });
+
+  it('badges the newest imported book even when every book in the library is imported (P2 #2)', async () => {
+    const olderImport: BookLibraryRecord = {
+      ...IMPORTED_RECORD,
+      id: 'book_imported_old',
+      title: 'رواية مستوردة قديمة',
+      addedAt: 1500,
+      lastOpenedAt: 1500,
+    };
+    const activeImport: BookLibraryRecord = {
+      ...IMPORTED_RECORD,
+      id: 'book_imported_active',
+      title: 'رواية مستوردة حاليّة',
+      progress: 0.4,
+      addedAt: 2000,
+      lastOpenedAt: 9000,
+    };
+    (listBooks as jest.Mock).mockResolvedValueOnce([activeImport, olderImport]);
+
+    const { getAllByText, getByTestId, queryByTestId } = await render(<LibraryScreen />);
+
+    await waitFor(() => expect(getAllByText('جديدة')).toHaveLength(1));
+    expect(within(getByTestId(`book-card-${olderImport.id}`)).getByText('جديدة')).toBeTruthy();
+    expect(queryByTestId(`book-new-badge-${activeImport.id}`)).toBeNull();
+  });
+
+  it('shows the جديدة badge on the hero when the newest imported book is the hero (P2 #2)', async () => {
+    const openedImport: BookLibraryRecord = {
+      ...IMPORTED_RECORD,
+      id: 'book_opened_import',
+      title: 'رواية مفتوحة',
+      progress: 0.3,
+      addedAt: 1000,
+      lastOpenedAt: 1000,
+    };
+    const freshImport: BookLibraryRecord = {
+      ...IMPORTED_RECORD,
+      id: 'book_fresh_import',
+      title: 'رواية جديدة',
+      addedAt: 4000,
+      lastOpenedAt: 9000,
+    };
+    // books[0] is the hero; the freshly imported book sits there with zero progress.
+    (listBooks as jest.Mock).mockResolvedValueOnce([freshImport, openedImport]);
+
+    const { getByTestId, queryByTestId, getAllByText } = await render(<LibraryScreen />);
+
+    await waitFor(() => expect(getByTestId(`book-new-badge-${freshImport.id}`)).toBeTruthy());
+    expect(getByTestId(`book-card-${freshImport.id}`)).toBeTruthy();
+    expect(queryByTestId(`book-new-badge-${openedImport.id}`)).toBeNull();
+    expect(getAllByText('جديدة')).toHaveLength(1);
   });
 });

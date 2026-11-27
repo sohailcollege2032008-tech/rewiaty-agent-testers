@@ -4,15 +4,8 @@ appId: com.rewiaty.app
 - extendedWaitUntil:
     visible: "حَجَرُ الْمَاءِ"
     timeout: 20000
-# Delete the seeded sample so importing from the picker proves frontmatter title extraction
-- longPressOn: "حَجَرُ الْمَاءِ"
-- extendedWaitUntil:
-    visible: "حذف"
-    timeout: 5000
-- tapOn: "حذف"
-- extendedWaitUntil:
-    visible: "المكتبة فارغة"
-    timeout: 5000
+# The seeded novel is bundled (isBundled) and can no longer be deleted: the library starts with it
+# in place, and the import below opens the picked file on top of it.
 - tapOn:
     id: "import-book-button"
 # First 3 imports show the Telegram-first guide sheet before the system picker

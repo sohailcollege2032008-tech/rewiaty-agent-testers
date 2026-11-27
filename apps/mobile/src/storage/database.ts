@@ -25,7 +25,8 @@ export async function initDatabase(db: DatabaseAdapter): Promise<void> {
       coverColor TEXT,
       progress REAL NOT NULL DEFAULT 0,
       lastOpenedAt INTEGER NOT NULL,
-      addedAt INTEGER NOT NULL
+      addedAt INTEGER NOT NULL,
+      isBundled INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS kv (
       key TEXT PRIMARY KEY NOT NULL,
@@ -36,6 +37,14 @@ export async function initDatabase(db: DatabaseAdapter): Promise<void> {
   const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(books)');
   if (!columns.some((col) => col.name === 'coverColor')) {
     await db.execAsync('ALTER TABLE books ADD COLUMN coverColor TEXT');
+  }
+  if (!columns.some((col) => col.name === 'isBundled')) {
+    await db.execAsync('ALTER TABLE books ADD COLUMN isBundled INTEGER NOT NULL DEFAULT 0');
+    // Why: libraries created before this column shipped already hold the bundled novel, and it
+    // must stay protected (no delete, no «جديدة») without waiting for a re-seed that never happens.
+    await db.runAsync(
+      "UPDATE books SET isBundled = 1 WHERE title = 'حَجَرُ الْمَاءِ' AND author = 'روايتي'",
+    );
   }
 
   await initSearchSchema(db);
@@ -61,15 +70,23 @@ export async function getDatabase(): Promise<DatabaseAdapter> {
   return defaultDbPromise;
 }
 
+type BookRow = Omit<BookLibraryRecord, 'isBundled'> & { isBundled?: number | boolean | null };
+
+/** SQLite stores booleans as 0/1; the app works with `boolean`. */
+function mapBookRow(row: BookRow): BookLibraryRecord {
+  return { ...row, isBundled: Boolean(row.isBundled) };
+}
+
 export async function upsertBook(
   record: BookLibraryRecord,
   db?: DatabaseAdapter,
 ): Promise<BookLibraryRecord> {
   const conn = db ?? (await getDatabase());
-  const existing = await conn.getFirstAsync<BookLibraryRecord>(
-    'SELECT id, title, author, dir, coverSeed, coverColor, progress, lastOpenedAt, addedAt FROM books WHERE id = ?',
+  const existingRow = await conn.getFirstAsync<BookRow>(
+    'SELECT id, title, author, dir, coverSeed, coverColor, progress, lastOpenedAt, addedAt, isBundled FROM books WHERE id = ?',
     record.id,
   );
+  const existing = existingRow ? mapBookRow(existingRow) : null;
 
   if (existing) {
     const merged: BookLibraryRecord = {
@@ -80,10 +97,12 @@ export async function upsertBook(
       coverSeed: record.coverSeed,
       coverColor: record.coverColor,
       lastOpenedAt: Math.max(existing.lastOpenedAt, record.lastOpenedAt),
+      // Protection is one-way: re-importing the same bytes without the flag must not un-bundle it.
+      isBundled: Boolean(existing.isBundled) || Boolean(record.isBundled),
     };
     await conn.runAsync(
       `UPDATE books
-       SET title = ?, author = ?, dir = ?, coverSeed = ?, coverColor = ?, lastOpenedAt = ?
+       SET title = ?, author = ?, dir = ?, coverSeed = ?, coverColor = ?, lastOpenedAt = ?, isBundled = ?
        WHERE id = ?`,
       merged.title,
       merged.author,
@@ -91,34 +110,38 @@ export async function upsertBook(
       merged.coverSeed,
       merged.coverColor,
       merged.lastOpenedAt,
+      merged.isBundled ? 1 : 0,
       merged.id,
     );
     return merged;
   }
 
+  const saved: BookLibraryRecord = { ...record, isBundled: Boolean(record.isBundled) };
   await conn.runAsync(
-    `INSERT INTO books (id, title, author, dir, coverSeed, coverColor, progress, lastOpenedAt, addedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    record.id,
-    record.title,
-    record.author,
-    record.dir,
-    record.coverSeed,
-    record.coverColor,
-    record.progress,
-    record.lastOpenedAt,
-    record.addedAt,
+    `INSERT INTO books (id, title, author, dir, coverSeed, coverColor, progress, lastOpenedAt, addedAt, isBundled)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    saved.id,
+    saved.title,
+    saved.author,
+    saved.dir,
+    saved.coverSeed,
+    saved.coverColor,
+    saved.progress,
+    saved.lastOpenedAt,
+    saved.addedAt,
+    saved.isBundled ? 1 : 0,
   );
-  return record;
+  return saved;
 }
 
 export async function listBooks(db?: DatabaseAdapter): Promise<BookLibraryRecord[]> {
   const conn = db ?? (await getDatabase());
-  return conn.getAllAsync<BookLibraryRecord>(
-    `SELECT id, title, author, dir, coverSeed, coverColor, progress, lastOpenedAt, addedAt
+  const rows = await conn.getAllAsync<BookRow>(
+    `SELECT id, title, author, dir, coverSeed, coverColor, progress, lastOpenedAt, addedAt, isBundled
      FROM books
      ORDER BY lastOpenedAt DESC, addedAt DESC`,
   );
+  return rows.map(mapBookRow);
 }
 
 export async function getBookRecord(
@@ -126,12 +149,13 @@ export async function getBookRecord(
   db?: DatabaseAdapter,
 ): Promise<BookLibraryRecord | null> {
   const conn = db ?? (await getDatabase());
-  return conn.getFirstAsync<BookLibraryRecord>(
-    `SELECT id, title, author, dir, coverSeed, coverColor, progress, lastOpenedAt, addedAt
+  const row = await conn.getFirstAsync<BookRow>(
+    `SELECT id, title, author, dir, coverSeed, coverColor, progress, lastOpenedAt, addedAt, isBundled
      FROM books
      WHERE id = ?`,
     id,
   );
+  return row ? mapBookRow(row) : null;
 }
 
 export async function updateBookProgress(

@@ -86,6 +86,11 @@ export type ImportBookContentOptions = {
   bookId?: string;
   /** Write into this directory instead of the library's `books/<id>` (staging before commit). */
   bookDir?: Directory;
+  /**
+   * True only for the novel shipped inside the app. Bundled books are protected: the library
+   * hides their delete affordance and never badges them as «جديدة».
+   */
+  isBundled?: boolean;
 };
 
 export async function importBookContent(
@@ -179,6 +184,7 @@ export async function importBookContent(
     progress: initialProgress,
     lastOpenedAt: now,
     addedAt: now,
+    isBundled: options.isBundled ?? false,
   };
 
   const savedRecord = await upsertBook(record, db);
@@ -339,7 +345,7 @@ export async function ensureSampleBookSeeded(db?: DatabaseAdapter): Promise<bool
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const sampleAsset = require('@/assets/sample-ar.md') as number;
     const sampleText = await readAssetText(sampleAsset);
-    await importBookContent(sampleText, 'sample-ar.md', db);
+    await importBookContent(sampleText, 'sample-ar.md', db, { isBundled: true });
   }
 
   await setKv(SAMPLE_SEEDED_KV_KEY, true, db);

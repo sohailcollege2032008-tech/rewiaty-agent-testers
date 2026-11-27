@@ -165,12 +165,15 @@ export function LibraryScreen() {
   const heroBook = books[0] ?? null;
   const shelfBooks = useMemo(() => books.slice(1), [books]);
   const newestUnopenedBookId = useMemo(() => {
+    // «جديدة» means "an imported book you have not started yet". The bundled novel is app content,
+    // not something the user just added, so it never wears the badge — even if it is the only book.
+    // Newest wins by addedAt; lastOpenedAt is useless here because the importer touches it.
     let newest: BookLibraryRecord | null = null;
     for (const b of books) {
-      if (b.progress === 0 && b.lastOpenedAt <= b.addedAt) {
-        if (!newest || b.addedAt > newest.addedAt) {
-          newest = b;
-        }
+      if (b.isBundled) continue;
+      if (b.progress !== 0) continue;
+      if (!newest || b.addedAt > newest.addedAt) {
+        newest = b;
       }
     }
     return newest?.id ?? null;
@@ -203,185 +206,250 @@ export function LibraryScreen() {
     if (!heroBook) return null;
     const heroPct = progressToPercent(heroBook.progress);
     const isHeroRtl = heroBook.dir !== 'ltr';
+    const heroIsBundled = Boolean(heroBook.isBundled);
+    const isHeroNew = heroBook.id === newestUnopenedBookId;
 
     return (
       <View>
-        <Pressable
-          testID={`book-card-${heroBook.id}`}
-          onPress={() => handleOpenBook(heroBook)}
-          onLongPress={() => handleLongPressBook(heroBook)}
-          delayLongPress={450}
-          accessibilityRole="button"
-          accessibilityLabel={heroBook.title}
-          accessibilityHint="افتح الكتاب أو اضغط مطولاً للحذف"
-          style={[
-            styles.heroSpread,
-            layout.isTablet && styles.heroSpreadTablet,
-            { borderBottomColor: palette.border },
-          ]}
-        >
-          <View
+        {/* Why (a11y): the hero's open target and its delete button are siblings inside a plain
+            View, never nested Pressables — VoiceOver/TalkBack can focus each one on its own (#67). */}
+        <View style={styles.heroWrap}>
+          <Pressable
+            testID={`book-card-${heroBook.id}`}
+            onPress={() => handleOpenBook(heroBook)}
+            onLongPress={heroIsBundled ? undefined : () => handleLongPressBook(heroBook)}
+            delayLongPress={450}
+            accessibilityRole="button"
+            accessibilityLabel={heroBook.title}
+            accessibilityHint={
+              heroIsBundled ? 'افتح الكتاب' : 'افتح الكتاب أو اضغط مطولاً للحذف'
+            }
             style={[
-              styles.heroCoverWrap,
-              {
-                width: layout.heroCoverSize.width,
-                height: layout.heroCoverSize.height,
-              },
+              styles.heroSpread,
+              layout.isTablet && styles.heroSpreadTablet,
+              { borderBottomColor: palette.border },
             ]}
           >
-            <BookCover
-              title={heroBook.title}
-              author={heroBook.author}
-              coverColor={heroBook.coverColor}
-              dir={heroBook.dir}
-              theme={themeId}
-              variant="hero"
-              width={layout.heroCoverSize.width}
-              height={layout.heroCoverSize.height}
-            />
-          </View>
+            <View
+              style={[
+                styles.heroCoverWrap,
+                {
+                  width: layout.heroCoverSize.width,
+                  height: layout.heroCoverSize.height,
+                },
+              ]}
+            >
+              <BookCover
+                title={heroBook.title}
+                author={heroBook.author}
+                coverColor={heroBook.coverColor}
+                dir={heroBook.dir}
+                theme={themeId}
+                variant="hero"
+                width={layout.heroCoverSize.width}
+                height={layout.heroCoverSize.height}
+              />
+            </View>
 
-          <View style={styles.heroInfo}>
-            <View>
-              <View style={styles.heroStateRow}>
-                <View style={styles.heroState}>
-                  <View style={[styles.heroDot, { backgroundColor: palette.accent }]} />
-                  <Text
-                    style={[
-                      styles.heroStateText,
-                      { color: palette.accent, fontFamily: TYPOGRAPHY.uiFont },
-                    ]}
-                  >
-                    قراءة حالية
-                  </Text>
-                </View>
-
-                {layout.isTablet ? (
-                  <View
-                    style={[
-                      styles.heroModeTag,
-                      {
-                        backgroundColor: palette.surface,
-                        borderColor: palette.border,
-                      },
-                    ]}
-                  >
+            <View style={styles.heroInfo}>
+              <View>
+                <View style={styles.heroStateRow}>
+                  <View style={styles.heroState}>
+                    <View style={[styles.heroDot, { backgroundColor: palette.accent }]} />
                     <Text
                       style={[
-                        styles.heroModeTagText,
-                        { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
+                        styles.heroStateText,
+                        { color: palette.accent, fontFamily: TYPOGRAPHY.uiFont },
                       ]}
                     >
-                      {layout.isTabletLandscape
-                        ? 'يفتح بوضع صفحتين جنب بعض'
-                        : 'يفتح بصفحة مريحة وهوامش واسعة'}
+                      قراءة حالية
                     </Text>
                   </View>
-                ) : null}
-              </View>
 
-              <Text
-                style={[
-                  styles.heroTitle,
-                  {
-                    color: palette.text,
-                    fontFamily: TYPOGRAPHY.displayFont,
-                    fontSize: heroTitleScale.fontSize,
-                    lineHeight: heroTitleScale.lineHeight,
-                    writingDirection: isHeroRtl ? 'rtl' : 'ltr',
-                  },
-                ]}
-                numberOfLines={2}
-              >
-                {heroBook.title}
-              </Text>
+                  {isHeroNew ? (
+                    <View
+                      testID={`book-new-badge-${heroBook.id}`}
+                      style={[
+                        styles.heroNewBadge,
+                        {
+                          backgroundColor: palette.accentSoft,
+                          borderColor: palette.accent,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.heroNewBadgeText,
+                          { color: palette.accent, fontFamily: TYPOGRAPHY.uiFont },
+                        ]}
+                      >
+                        جديدة
+                      </Text>
+                    </View>
+                  ) : null}
 
-              {heroBook.author ? (
+                  {layout.isTablet ? (
+                    <View
+                      style={[
+                        styles.heroModeTag,
+                        {
+                          backgroundColor: palette.surface,
+                          borderColor: palette.border,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.heroModeTagText,
+                          { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
+                        ]}
+                      >
+                        {layout.isTabletLandscape
+                          ? 'يفتح بوضع صفحتين جنب بعض'
+                          : 'يفتح بصفحة مريحة وهوامش واسعة'}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {/* Reserves the row end so the absolutely-placed 48dp delete target cannot
+                      overlap the tablet mode tag. */}
+                  {heroIsBundled ? null : <View style={styles.heroDeleteSlot} />}
+                </View>
+
                 <Text
                   style={[
-                    styles.heroAuthor,
+                    styles.heroTitle,
                     {
-                      color: palette.muted,
-                      fontFamily: TYPOGRAPHY.uiFont,
-                      fontSize: layout.isTablet ? 15 : 13,
+                      color: palette.text,
+                      fontFamily: TYPOGRAPHY.displayFont,
+                      fontSize: heroTitleScale.fontSize,
+                      lineHeight: heroTitleScale.lineHeight,
                       writingDirection: isHeroRtl ? 'rtl' : 'ltr',
                     },
                   ]}
-                  numberOfLines={1}
+                  numberOfLines={2}
                 >
-                  {heroBook.author}
+                  {heroBook.title}
                 </Text>
-              ) : null}
-            </View>
 
-            <View style={styles.heroBottom}>
-              <View style={styles.heroProgressWrap}>
-                <View style={[styles.hairTrack, { backgroundColor: palette.border }]}>
-                  <View
-                    style={[
-                      styles.hairFill,
-                      {
-                        width: `${heroPct}%`,
-                        backgroundColor: palette.accent,
-                      },
-                    ]}
-                  />
-                </View>
-                <View style={styles.heroMetaRow}>
+                {heroBook.author ? (
                   <Text
                     style={[
-                      styles.heroPctLabel,
-                      { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
+                      styles.heroAuthor,
+                      {
+                        color: palette.muted,
+                        fontFamily: TYPOGRAPHY.uiFont,
+                        fontSize: layout.isTablet ? 15 : 13,
+                        writingDirection: isHeroRtl ? 'rtl' : 'ltr',
+                      },
                     ]}
+                    numberOfLines={1}
                   >
-                    {`${heroPct}%`}
+                    {heroBook.author}
                   </Text>
-                  {heroPct === 0 || heroPct >= 98 ? (
+                ) : null}
+              </View>
+
+              <View style={styles.heroBottom}>
+                <View style={styles.heroProgressWrap}>
+                  <View style={[styles.hairTrack, { backgroundColor: palette.border }]}>
+                    <View
+                      style={[
+                        styles.hairFill,
+                        {
+                          width: `${heroPct}%`,
+                          backgroundColor: palette.accent,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <View style={styles.heroMetaRow}>
                     <Text
                       style={[
-                        styles.heroStatusLabel,
+                        styles.heroPctLabel,
                         { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
                       ]}
                     >
-                      {heroPct === 0 ? 'لم تبدأ بعد' : 'مقروء'}
+                      {`${heroPct}%`}
                     </Text>
-                  ) : null}
+                    {heroPct === 0 || heroPct >= 98 ? (
+                      <Text
+                        style={[
+                          styles.heroStatusLabel,
+                          { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
+                        ]}
+                      >
+                        {heroPct === 0 ? 'لم تبدأ بعد' : 'مقروء'}
+                      </Text>
+                    ) : null}
+                  </View>
                 </View>
-              </View>
 
-              <Pressable
-                testID="continue-reading-button"
-                onPress={() => handleOpenBook(heroBook)}
-                hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
-                style={({ pressed }) => [
-                  styles.continueCta,
-                  { backgroundColor: palette.ctaBg },
-                  pressed && styles.pressed,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={heroPct === 0 ? 'ابدأ القراية' : 'كمّل القراية'}
-              >
-                <Text
-                  style={[
-                    styles.continueCtaText,
-                    { color: palette.ctaText, fontFamily: TYPOGRAPHY.uiFont },
+                <Pressable
+                  testID="continue-reading-button"
+                  onPress={() => handleOpenBook(heroBook)}
+                  hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+                  style={({ pressed }) => [
+                    styles.continueCta,
+                    { backgroundColor: palette.ctaBg },
+                    pressed && styles.pressed,
                   ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={heroPct === 0 ? 'ابدأ القراية' : 'كمّل القراية'}
                 >
-                  {heroPct === 0 ? 'ابدأ القراية' : 'كمّل القراية'}
-                </Text>
-                <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                  <Text
+                    style={[
+                      styles.continueCtaText,
+                      { color: palette.ctaText, fontFamily: TYPOGRAPHY.uiFont },
+                    ]}
+                  >
+                    {heroPct === 0 ? 'ابدأ القراية' : 'كمّل القراية'}
+                  </Text>
+                  <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                    <Path
+                      d="M15 18l-6-6 6-6"
+                      stroke={palette.ctaText}
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </Svg>
+                </Pressable>
+              </View>
+            </View>
+          </Pressable>
+
+          {heroIsBundled ? null : (
+            <Pressable
+              testID={`book-delete-${heroBook.id}`}
+              onPress={() => handleLongPressBook(heroBook)}
+              style={({ pressed }) => [styles.heroDeleteBtn, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={`حذف ${heroBook.title}`}
+              accessibilityHint="يحذف الكتاب من المكتبة بعد تأكيد"
+            >
+              <View
+                style={[
+                  styles.heroDeleteVisual,
+                  {
+                    borderColor: palette.border,
+                    backgroundColor: palette.surface,
+                  },
+                ]}
+              >
+                <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
                   <Path
-                    d="M15 18l-6-6 6-6"
-                    stroke={palette.ctaText}
-                    strokeWidth={2}
+                    d="M5 7h14M10 7V5h4v2M7.5 7l.8 12h7.4l.8-12M10 10.5v5.5M14 10.5v5.5"
+                    stroke={palette.danger}
+                    strokeWidth={1.6}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   />
                 </Svg>
-              </Pressable>
-            </View>
-          </View>
-        </Pressable>
+              </View>
+            </Pressable>
+          )}
+        </View>
 
         {shelfBooks.length > 0 ? (
           <View style={styles.shelfHead}>
@@ -554,17 +622,33 @@ export function LibraryScreen() {
             accessibilityLabel="استيراد كتاب جديد"
           >
             {({ pressed }) => (
-              <Text
-                style={[
-                  styles.importBtnText,
-                  {
-                    color: pressed ? palette.ctaText : palette.accent,
-                    fontFamily: TYPOGRAPHY.uiFont,
-                  },
-                ]}
-              >
-                {importing ? 'جاري الاستيراد...' : layout.isTablet ? '+ استيراد رواية' : '+ استيراد'}
-              </Text>
+              <View style={styles.importBtnInner}>
+                {importing ? null : (
+                  <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
+                    <Path
+                      d="M12 5v14M5 12h14"
+                      stroke={pressed ? palette.ctaText : palette.accent}
+                      strokeWidth={2.4}
+                      strokeLinecap="round"
+                    />
+                  </Svg>
+                )}
+                <Text
+                  style={[
+                    styles.importBtnText,
+                    {
+                      color: pressed ? palette.ctaText : palette.accent,
+                      fontFamily: TYPOGRAPHY.uiFont,
+                    },
+                  ]}
+                >
+                  {importing
+                    ? 'جاري الاستيراد...'
+                    : layout.isTablet
+                      ? 'استيراد رواية'
+                      : 'استيراد'}
+                </Text>
+              </View>
             )}
           </Pressable>
         </View>
@@ -652,7 +736,8 @@ export function LibraryScreen() {
                 isTablet={layout.isTablet}
                 isNew={item.id === newestUnopenedBookId}
                 onPress={handleOpenBook}
-                onLongPress={handleLongPressBook}
+                onLongPress={item.isBundled ? undefined : handleLongPressBook}
+                onDelete={item.isBundled ? undefined : handleLongPressBook}
               />
             );
           }}
@@ -717,23 +802,28 @@ export function LibraryScreen() {
           }
           ListFooterComponent={
             books.length > 0 ? (
-              <Pressable
-                testID="library-how-to-get-books-link"
-                onPress={handleOpenHowToGetBooks}
-                hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
-                style={({ pressed }) => [styles.howToLinkBtn, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel="إزاي أجيب روايات؟"
+              <View
+                testID="library-footer"
+                style={{ paddingBottom: Math.max(insets.bottom, 20) }}
               >
-                <Text
-                  style={[
-                    styles.howToLinkText,
-                    { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
-                  ]}
+                <Pressable
+                  testID="library-how-to-get-books-link"
+                  onPress={handleOpenHowToGetBooks}
+                  hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+                  style={({ pressed }) => [styles.howToLinkBtn, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel="إزاي أجيب روايات؟"
                 >
-                  إزاي أجيب روايات؟
-                </Text>
-              </Pressable>
+                  <Text
+                    style={[
+                      styles.howToLinkText,
+                      { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
+                    ]}
+                  >
+                    إزاي أجيب روايات؟
+                  </Text>
+                </Pressable>
+              </View>
             ) : undefined
           }
         />
@@ -790,8 +880,10 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   searchBtn: {
-    width: 38,
-    height: 38,
+    width: 48,
+    height: 48,
+    minWidth: 48,
+    minHeight: 48,
     borderRadius: RADIUS.button,
     borderWidth: 1,
     alignItems: 'center',
@@ -808,12 +900,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   importBtn: {
-    height: 38,
+    minHeight: 48,
+    minWidth: 48,
+    paddingVertical: 8,
     paddingHorizontal: 13,
     borderRadius: RADIUS.button,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  importBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   importBtnDisabled: {
     opacity: 0.6,
@@ -830,6 +929,9 @@ const styles = StyleSheet.create({
   },
   gridSpacer: {
     flex: 1,
+  },
+  heroWrap: {
+    position: 'relative',
   },
   heroSpread: {
     flexDirection: 'row',
@@ -872,6 +974,40 @@ const styles = StyleSheet.create({
   heroStateText: {
     fontSize: 11.5,
     fontWeight: '600',
+  },
+  heroDeleteBtn: {
+    position: 'absolute',
+    top: 0,
+    end: 0,
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroDeleteVisual: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.94,
+  },
+  heroDeleteSlot: {
+    width: 48,
+    height: 48,
+    marginStart: 'auto',
+    flexShrink: 0,
+  },
+  heroNewBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 2,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  heroNewBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   heroModeTag: {
     paddingHorizontal: 9,

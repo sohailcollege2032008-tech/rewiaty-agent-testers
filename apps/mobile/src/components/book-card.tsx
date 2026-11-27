@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { cubicBezier } from 'react-native-reanimated';
+import Svg, { Path } from 'react-native-svg';
 
 import { BookCover } from './book-cover';
 import { TYPOGRAPHY } from '@/theme/layout';
@@ -14,7 +15,9 @@ export type BookCardProps = {
   isTablet?: boolean;
   isNew?: boolean;
   onPress: (book: BookLibraryRecord) => void;
-  onLongPress: (book: BookLibraryRecord) => void;
+  onLongPress?: (book: BookLibraryRecord) => void;
+  /** Omit for books that must not be deleted (e.g. the bundled novel). */
+  onDelete?: (book: BookLibraryRecord) => void;
 };
 
 const PRESS_EASING = cubicBezier(0.22, 1, 0.36, 1);
@@ -26,6 +29,7 @@ export function BookCard({
   isNew = false,
   onPress,
   onLongPress,
+  onDelete,
 }: BookCardProps) {
   const [pressed, setPressed] = useState(false);
   const palette = getAppThemeTokens(theme);
@@ -33,109 +37,158 @@ export function BookCard({
   const isRtl = book.dir !== 'ltr';
   const titleScale = isTablet ? TYPOGRAPHY.scale.tileTitleTablet : TYPOGRAPHY.scale.tileTitle;
 
+  // The bundled novel belongs to the app, not the user: no delete button and no long-press delete.
+  const isBundled = Boolean(book.isBundled);
+  const showDelete = !isBundled && Boolean(onDelete);
+  const handleLongPress = !isBundled && onLongPress ? () => onLongPress(book) : undefined;
+
   const statusText = pct >= 98 ? 'مقروء' : isNew ? 'جديدة' : `${pct}%`;
 
+  // Why (a11y): the open target and the delete button are SIBLINGS under a non-pressable view.
+  // A Pressable nested inside a Pressable is one accessibility node for VoiceOver/TalkBack and the
+  // inner tap fights the outer one (#67 review, P2 #3).
   return (
-    <Pressable
-      testID={`book-card-${book.id}`}
-      accessibilityRole="button"
-      accessibilityLabel={book.title}
-      accessibilityHint="افتح الكتاب أو اضغط مطولاً للحذف"
-      onPress={() => onPress(book)}
-      onLongPress={() => onLongPress(book)}
-      onPressIn={() => setPressed(true)}
-      onPressOut={() => setPressed(false)}
-      delayLongPress={450}
-      pressRetentionOffset={16}
-      style={styles.pressable}
-    >
-      <Animated.View
-        style={[
-          styles.tile,
-          {
-            transitionProperty: 'transform',
-            transitionDuration: '140ms',
-            transitionTimingFunction: PRESS_EASING,
-          },
-          pressed && styles.tilePressed,
-        ]}
+    <View style={styles.root}>
+      <Pressable
+        testID={`book-card-${book.id}`}
+        accessibilityRole="button"
+        accessibilityLabel={book.title}
+        accessibilityHint={
+          isBundled ? 'افتح الكتاب' : 'افتح الكتاب أو اضغط مطولاً للحذف'
+        }
+        onPress={() => onPress(book)}
+        onLongPress={handleLongPress}
+        onPressIn={() => setPressed(true)}
+        onPressOut={() => setPressed(false)}
+        delayLongPress={450}
+        pressRetentionOffset={16}
+        style={styles.pressable}
       >
-        <View style={styles.coverBox}>
-          <BookCover
-            title={book.title}
-            author={book.author}
-            coverColor={book.coverColor}
-            dir={book.dir}
-            theme={theme}
-            variant="tile"
-          />
-        </View>
-
-        <Text
+        <Animated.View
           style={[
-            styles.title,
+            styles.tile,
             {
-              color: palette.text,
-              fontFamily: TYPOGRAPHY.displayFont,
-              fontSize: titleScale.fontSize,
-              lineHeight: titleScale.lineHeight,
-              writingDirection: isRtl ? 'rtl' : 'ltr',
+              transitionProperty: 'transform',
+              transitionDuration: '140ms',
+              transitionTimingFunction: PRESS_EASING,
             },
+            pressed && styles.tilePressed,
           ]}
-          numberOfLines={2}
         >
-          {book.title}
-        </Text>
+          <View style={styles.coverBox}>
+            <BookCover
+              title={book.title}
+              author={book.author}
+              coverColor={book.coverColor}
+              dir={book.dir}
+              theme={theme}
+              variant="tile"
+            />
+          </View>
 
-        {book.author ? (
           <Text
             style={[
-              styles.author,
+              styles.title,
               {
-                color: palette.muted,
-                fontFamily: TYPOGRAPHY.uiFont,
-                fontSize: isTablet ? 13 : 12,
+                color: palette.text,
+                fontFamily: TYPOGRAPHY.displayFont,
+                fontSize: titleScale.fontSize,
+                lineHeight: titleScale.lineHeight,
                 writingDirection: isRtl ? 'rtl' : 'ltr',
               },
             ]}
-            numberOfLines={1}
+            numberOfLines={2}
           >
-            {book.author}
+            {book.title}
           </Text>
-        ) : (
-          <View style={styles.authorSpacer} />
-        )}
 
-        <View style={styles.footRow}>
-          <View style={[styles.hairTrack, { backgroundColor: palette.border }]}>
-            <View
+          {book.author ? (
+            <Text
               style={[
-                styles.hairFill,
+                styles.author,
                 {
-                  width: `${pct}%`,
-                  backgroundColor: palette.accent,
+                  color: palette.muted,
+                  fontFamily: TYPOGRAPHY.uiFont,
+                  fontSize: isTablet ? 13 : 12,
+                  writingDirection: isRtl ? 'rtl' : 'ltr',
                 },
               ]}
-            />
+              numberOfLines={1}
+            >
+              {book.author}
+            </Text>
+          ) : (
+            <View style={styles.authorSpacer} />
+          )}
+
+          <View style={styles.footRow}>
+            <View style={[styles.hairTrack, { backgroundColor: palette.border }]}>
+              <View
+                style={[
+                  styles.hairFill,
+                  {
+                    width: `${pct}%`,
+                    backgroundColor: palette.accent,
+                  },
+                ]}
+              />
+            </View>
+            <Text
+              style={[
+                styles.pctLabel,
+                {
+                  color: palette.muted,
+                  fontFamily: TYPOGRAPHY.uiFont,
+                },
+              ]}
+            >
+              {statusText}
+            </Text>
           </View>
-          <Text
+        </Animated.View>
+      </Pressable>
+
+      {showDelete ? (
+        <Pressable
+          testID={`book-delete-${book.id}`}
+          onPress={() => onDelete?.(book)}
+          style={({ pressed: deletePressed }) => [
+            styles.deleteBtn,
+            deletePressed && styles.deleteBtnPressed,
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={`حذف ${book.title}`}
+          accessibilityHint="يحذف الكتاب من المكتبة بعد تأكيد"
+        >
+          <View
             style={[
-              styles.pctLabel,
+              styles.deleteBtnVisual,
               {
-                color: palette.muted,
-                fontFamily: TYPOGRAPHY.uiFont,
+                backgroundColor: palette.surface,
+                borderColor: palette.border,
               },
             ]}
           >
-            {statusText}
-          </Text>
-        </View>
-      </Animated.View>
-    </Pressable>
+            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M5 7h14M10 7V5h4v2M7.5 7l.8 12h7.4l.8-12M10 10.5v5.5M14 10.5v5.5"
+                stroke={palette.danger}
+                strokeWidth={1.6}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </Svg>
+          </View>
+        </Pressable>
+      ) : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
   pressable: {
     flex: 1,
   },
@@ -149,6 +202,30 @@ const styles = StyleSheet.create({
   coverBox: {
     width: '100%',
     marginBottom: 10,
+    position: 'relative',
+  },
+  // Why (a11y): the Pressable itself is the 48×48 touch target; the drawn circle inside may be
+  // smaller. Never pad a 36dp button with a hitSlop that a parent clips (P2 #4).
+  deleteBtn: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteBtnVisual: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.94,
+  },
+  deleteBtnPressed: {
+    opacity: 0.7,
   },
   title: {
     fontWeight: '700',

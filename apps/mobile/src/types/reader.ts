@@ -74,6 +74,11 @@ export type BookLibraryRecord = {
   progress: number; // 0..1
   lastOpenedAt: number;
   addedAt: number;
+  /**
+   * True for the novel that ships inside the app (`ensureSampleBookSeeded`). Bundled books are
+   * the app's own demo content, not user data: they never wear «جديدة» and cannot be deleted.
+   */
+  isBundled?: boolean;
 };
 
 export type BookManifest = {

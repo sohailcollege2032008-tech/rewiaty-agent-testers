@@ -26,7 +26,7 @@ const GUIDE_STEPS: readonly GuideStep[] = [
   {
     number: '١',
     title: 'افتح الملف في تيليجرام',
-    detail: 'ادخل على القناة أو الشات اللي فيه ملف الرواية (.md أو .txt أو .zip أو .epub)',
+    detail: 'ادخل على القناة أو الشات اللي فيه ملف الرواية، بصيغة md أو txt أو zip أو epub',
     renderIcon: (color) => (
       <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
         <Path
@@ -41,7 +41,7 @@ const GUIDE_STEPS: readonly GuideStep[] = [
   {
     number: '٢',
     title: 'اضغط ⋮ واختر «فتح بواسطة»',
-    detail: 'من قائمة الملف اختار فتح بواسطة (Open with) أو مشاركة',
+    detail: 'من قائمة الملف اختار «فتح بواسطة» أو «مشاركة»',
     renderIcon: (color) => (
       <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
         <Circle cx={12} cy={5} r={1.6} fill={color} />
@@ -101,26 +101,74 @@ export function ImportGuideSheet({
         />
 
         <View
+          testID="import-guide-sheet-panel"
           style={[
             styles.sheet,
             {
               backgroundColor: palette.sheetBg,
               borderColor: palette.border,
-              paddingBottom: Math.max(insets.bottom, 20) + 8,
+              paddingBottom: Math.max(insets.bottom, 20) + 16,
             },
           ]}
         >
           <View style={[styles.handle, { backgroundColor: palette.muted }]} />
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.body}>
-            <Text
-              style={[
-                styles.title,
-                { color: palette.text, fontFamily: TYPOGRAPHY.displayFont },
+            <View style={styles.titleRow}>
+              <Text
+                style={[
+                  styles.title,
+                  { color: palette.text, fontFamily: TYPOGRAPHY.displayFont },
+                ]}
+              >
+                أسهل طريقة تستورد بيها رواية
+              </Text>
+              <Pressable
+                testID="import-guide-close-button"
+                onPress={onClose}
+                style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel="إغلاق دليل الاستيراد"
+              >
+                <View
+                  style={[
+                    styles.closeBtnVisual,
+                    { borderColor: palette.border, backgroundColor: palette.surface },
+                  ]}
+                >
+                  <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+                    <Path
+                      d="M6 6l12 12M18 6L6 18"
+                      stroke={palette.text}
+                      strokeWidth={1.8}
+                      strokeLinecap="round"
+                    />
+                  </Svg>
+                </View>
+              </Pressable>
+            </View>
+
+            <Pressable
+              testID="import-guide-pick-button"
+              onPress={onPickFile}
+              hitSlop={4}
+              style={({ pressed }) => [
+                styles.pickBtn,
+                { backgroundColor: palette.ctaBg },
+                pressed && styles.pressed,
               ]}
+              accessibilityRole="button"
+              accessibilityLabel="اختار ملف من الموبايل"
             >
-              أسهل طريقة تستورد بيها رواية
-            </Text>
+              <Text
+                style={[
+                  styles.pickBtnText,
+                  { color: palette.ctaText, fontFamily: TYPOGRAPHY.uiFont },
+                ]}
+              >
+                اختار ملف من الموبايل
+              </Text>
+            </Pressable>
 
             <Text
               style={[
@@ -173,28 +221,6 @@ export function ImportGuideSheet({
             </View>
 
             <Pressable
-              testID="import-guide-pick-button"
-              onPress={onPickFile}
-              hitSlop={4}
-              style={({ pressed }) => [
-                styles.pickBtn,
-                { backgroundColor: palette.ctaBg },
-                pressed && styles.pressed,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="اختار ملف من الموبايل"
-            >
-              <Text
-                style={[
-                  styles.pickBtnText,
-                  { color: palette.ctaText, fontFamily: TYPOGRAPHY.uiFont },
-                ]}
-              >
-                اختار ملف من الموبايل
-              </Text>
-            </Pressable>
-
-            <Pressable
               testID="import-guide-help-link"
               onPress={() => setHelpExpanded((prev) => !prev)}
               hitSlop={{ top: 10, bottom: 10, left: 12, right: 12 }}
@@ -229,7 +255,7 @@ export function ImportGuideSheet({
                     { color: palette.text, fontFamily: TYPOGRAPHY.uiFont },
                   ]}
                 >
-                  التطبيق بيقرا ملفات النص الجاهزة بصيغة .md أو .txt، وكمان أرشيف .zip وكتاب .epub، من جهازك. تقدر تبعت الملف لنفسك أو تنزّله من قنوات الكتب على تيليجرام أو تنقله من الكمبيوتر، وبعدها تفتحه في «روايتي» من غير بحث في الفولدرات.
+                  التطبيق بيقرا ملفات النص الجاهزة بصيغة md أو txt، وكمان أرشيف zip وكتاب epub، من جهازك. تقدر تبعت الملف لنفسك أو تنزّله من قنوات الكتب على تيليجرام أو تنقله من الكمبيوتر، وبعدها تفتحه في «روايتي» من غير بحث في الفولدرات.
                 </Text>
               </View>
             ) : null}
@@ -268,10 +294,33 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingBottom: 6,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   title: {
+    flex: 1,
     fontSize: 20,
     fontWeight: '700',
     textAlign: 'right',
+  },
+  closeBtn: {
+    width: 48,
+    height: 48,
+    minWidth: 48,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  closeBtnVisual: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   flowBanner: {
     fontSize: 12.5,

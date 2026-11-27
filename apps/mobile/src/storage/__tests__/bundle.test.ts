@@ -47,18 +47,29 @@ function createInMemoryDb(): DatabaseAdapter {
     async runAsync(source: string, ...params: unknown[]) {
       const sql = source.replace(/\s+/g, ' ').trim();
       if (sql.startsWith('INSERT INTO books')) {
-        const [id, title, author, dir, coverSeed, coverColor, progress, lastOpenedAt, addedAt] =
-          params as [
-            string,
-            string,
-            string | null,
-            'rtl' | 'ltr',
-            string,
-            string | null,
-            number,
-            number,
-            number,
-          ];
+        const [
+          id,
+          title,
+          author,
+          dir,
+          coverSeed,
+          coverColor,
+          progress,
+          lastOpenedAt,
+          addedAt,
+          isBundled,
+        ] = params as [
+          string,
+          string,
+          string | null,
+          'rtl' | 'ltr',
+          string,
+          string | null,
+          number,
+          number,
+          number,
+          number,
+        ];
         books.set(id, {
           id,
           title,
@@ -69,22 +80,34 @@ function createInMemoryDb(): DatabaseAdapter {
           progress,
           lastOpenedAt,
           addedAt,
+          isBundled: Boolean(isBundled),
         });
         return { changes: 1 };
       }
       if (sql.startsWith('UPDATE books SET title =')) {
-        const [title, author, dir, coverSeed, coverColor, lastOpenedAt, id] = params as [
-          string,
-          string | null,
-          'rtl' | 'ltr',
-          string,
-          string | null,
-          number,
-          string,
-        ];
+        const [title, author, dir, coverSeed, coverColor, lastOpenedAt, isBundled, id] =
+          params as [
+            string,
+            string | null,
+            'rtl' | 'ltr',
+            string,
+            string | null,
+            number,
+            number,
+            string,
+          ];
         const existing = books.get(id);
         if (!existing) return { changes: 0 };
-        books.set(id, { ...existing, title, author, dir, coverSeed, coverColor, lastOpenedAt });
+        books.set(id, {
+          ...existing,
+          title,
+          author,
+          dir,
+          coverSeed,
+          coverColor,
+          lastOpenedAt,
+          isBundled: Boolean(existing.isBundled) || Boolean(isBundled),
+        });
         return { changes: 1 };
       }
       if (sql.startsWith('UPDATE books SET progress =')) {
@@ -128,7 +151,7 @@ function createInMemoryDb(): DatabaseAdapter {
     async getAllAsync<T>(source: string): Promise<T[]> {
       const sql = source.replace(/\s+/g, ' ').trim();
       if (sql.startsWith('PRAGMA table_info(books)')) {
-        return [{ name: 'coverColor' }] as T[];
+        return [{ name: 'coverColor' }, { name: 'isBundled' }] as T[];
       }
       if (sql.includes('FROM books')) {
         const rows = Array.from(books.values()).sort(
@@ -340,6 +363,48 @@ describe('bundle storage & importer', () => {
     expect(getBookDir(record.id).exists).toBe(false);
     expect(await getBookRecord(record.id, db)).toBeNull();
     expect(await listBooks(db)).toEqual([]);
+  });
+
+  it('stores the isBundled flag on import and never loses it on a later plain re-import (P2 #1)', async () => {
+    const userBook = await importBookContent(SAMPLE_MD, 'sea-notes.md', db);
+    expect(userBook.isBundled).toBe(false);
+    expect((await getBookRecord(userBook.id, db))?.isBundled).toBe(false);
+
+    const bundledBook = await importBookContent(SAMPLE_MD, 'sample-ar.md', db, {
+      isBundled: true,
+    });
+    // Same content → same bundle id, so the stored flag is what matters here.
+    expect(bundledBook.id).toBe(userBook.id);
+    expect(bundledBook.isBundled).toBe(true);
+    expect((await getBookRecord(userBook.id, db))?.isBundled).toBe(true);
+    expect((await listBooks(db))[0]?.isBundled).toBe(true);
+
+    // A later import without the option (e.g. sharing the same file again) must not un-protect it.
+    const reimported = await importBookContent(SAMPLE_MD, 'shared-again.md', db);
+    expect(reimported.isBundled).toBe(true);
+    expect((await getBookRecord(userBook.id, db))?.isBundled).toBe(true);
+  });
+
+  it('marks only the seeded sample book as bundled', async () => {
+    const samplePath = path.resolve(__dirname, '../../../assets/sample-ar.md');
+    const sampleDiskContent = fs.readFileSync(samplePath, 'utf8');
+    const sampleCacheFile = new File(Paths.cache, 'bundled-sample-ar.md');
+    await sampleCacheFile.write(sampleDiskContent);
+
+    (Asset.fromModule as jest.Mock).mockReturnValue({
+      localUri: sampleCacheFile.uri,
+      uri: sampleCacheFile.uri,
+      downloadAsync: jest.fn().mockResolvedValue(undefined),
+    });
+
+    await ensureSampleBookSeeded(db);
+    const seeded = await listBooks(db);
+    expect(seeded).toHaveLength(1);
+    expect(seeded[0]?.isBundled).toBe(true);
+    expect(seeded[0]?.title).toBe('حَجَرُ الْمَاءِ');
+
+    const imported = await importBookContent(SAMPLE_MD, 'other-book.md', db);
+    expect(imported.isBundled).toBe(false);
   });
 
   it('persists settings/flags in kv and seeds sample book only once', async () => {
