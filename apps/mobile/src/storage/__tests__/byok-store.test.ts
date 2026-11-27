@@ -1,5 +1,8 @@
 import {
   BYOK_CUSTOM_BASE_URL_ERROR_AR,
+  BYOK_CUSTOM_BASE_URL_REQUIRED_ERROR_AR,
+  BYOK_CUSTOM_MODEL_LEGACY_ERROR_AR,
+  BYOK_CUSTOM_MODEL_REQUIRED_ERROR_AR,
   BYOK_DELETED_MESSAGE_AR,
   BYOK_KEY_TOO_SHORT_ERROR_AR,
   BYOK_KV_KEY,
@@ -10,6 +13,7 @@ import {
   BYOK_SERVER_MODE_UNAVAILABLE_AR,
   BYOK_UNKNOWN_ERROR_AR,
   DEFAULT_BYOK_CONFIG,
+  LEGACY_CUSTOM_MODEL_ID,
   MIN_BYOK_KEY_LENGTH,
   assertByokModelCapabilities,
   buildSafeRequestHeaders,
@@ -18,8 +22,10 @@ import {
   getByokModelsForProvider,
   getByokSecretEntryKey,
   getByokStatusLabel,
+  isValidCustomModelId,
   loadByokConfig,
   maskApiKey,
+  normalizeCustomModelId,
   readByokApiKey,
   readByokSecret,
   redactSecrets,
@@ -848,11 +854,12 @@ describe('byok-store — رابط السيرفر للمزوّد المخصّص (
     expect(JSON.stringify([...kv.entries()])).not.toContain(OPENAI_KEY);
   });
 
-  it('stores the base URL alongside a saved custom key', async () => {
+  it('stores the base URL and the real model name alongside a saved custom key', async () => {
     await saveByokKey(
       {
         apiKey: OPENAI_KEY,
         provider: 'custom',
+        modelId: 'deepseek-chat',
         customBaseUrl: 'https://api.my-gateway.example/v1',
         now: 11,
       },
@@ -863,8 +870,98 @@ describe('byok-store — رابط السيرفر للمزوّد المخصّص (
     const loaded = await loadByokConfig(db, adapter);
     expect(loaded.provider).toBe('custom');
     expect(loaded.hasKey).toBe(true);
+    expect(loaded.modelId).toBe('deepseek-chat');
     expect(loaded.customBaseUrl).toBe('https://api.my-gateway.example/v1');
     expect(entries.get(getByokSecretEntryKey('custom'))).toBe(OPENAI_KEY);
+  });
+
+  it('saves and reloads a user-specified custom model id that is not in the presets', async () => {
+    const saved = await saveByokPreferences(
+      {
+        provider: 'custom',
+        modelId: 'meta-llama/Llama-3.1-70B-Instruct',
+        customBaseUrl: 'https://api.my-gateway.example/v1',
+      },
+      db,
+      adapter,
+    );
+    expect(saved.modelId).toBe('meta-llama/Llama-3.1-70B-Instruct');
+
+    const loaded = await loadByokConfig(db, adapter);
+    // The arbitrary id survived the kv round-trip (no fallback to a fixed placeholder).
+    expect(loaded.modelId).toBe('meta-llama/Llama-3.1-70B-Instruct');
+    expect(JSON.parse(kv.get(BYOK_KV_KEY)!).modelId).toBe('meta-llama/Llama-3.1-70B-Instruct');
+  });
+
+  it('refuses to save a custom key without a base_url', async () => {
+    await expect(
+      saveByokKey(
+        { apiKey: OPENAI_KEY, provider: 'custom', modelId: 'deepseek-chat', customBaseUrl: null },
+        db,
+        adapter,
+      ),
+    ).rejects.toThrow(BYOK_CUSTOM_BASE_URL_REQUIRED_ERROR_AR);
+    await expect(
+      saveByokKey({ apiKey: OPENAI_KEY, provider: 'custom', modelId: 'deepseek-chat' }, db, adapter),
+    ).rejects.toThrow(BYOK_CUSTOM_BASE_URL_REQUIRED_ERROR_AR);
+
+    expect(adapter.setItemAsync).not.toHaveBeenCalled();
+    expect(kv.size).toBe(0);
+    expect(entries.size).toBe(0);
+  });
+
+  it('refuses to save a custom key without a real model name', async () => {
+    await expect(
+      saveByokKey(
+        {
+          apiKey: OPENAI_KEY,
+          provider: 'custom',
+          modelId: '',
+          customBaseUrl: 'https://api.my-gateway.example/v1',
+        },
+        db,
+        adapter,
+      ),
+    ).rejects.toThrow(BYOK_CUSTOM_MODEL_REQUIRED_ERROR_AR);
+
+    expect(adapter.setItemAsync).not.toHaveBeenCalled();
+    expect(entries.size).toBe(0);
+  });
+
+  it('refuses the legacy placeholder as a custom model name with a clear message', () => {
+    expect(() => normalizeCustomModelId(LEGACY_CUSTOM_MODEL_ID)).toThrow(
+      BYOK_CUSTOM_MODEL_LEGACY_ERROR_AR,
+    );
+    expect(() => normalizeCustomModelId('  ')).toThrow(BYOK_CUSTOM_MODEL_REQUIRED_ERROR_AR);
+    expect(isValidCustomModelId('deepseek-chat')).toBe(true);
+    expect(isValidCustomModelId('meta-llama/Llama-3.1-70B-Instruct')).toBe(true);
+    expect(isValidCustomModelId(LEGACY_CUSTOM_MODEL_ID)).toBe(false);
+    expect(isValidCustomModelId('model with spaces')).toBe(false);
+    expect(normalizeCustomModelId(' deepseek-chat ')).toBe('deepseek-chat');
+  });
+
+  it('keeps legacy custom data readable and exposes the update message', async () => {
+    await db.runAsync(
+      'INSERT INTO kv (key, value) VALUES (?, ?)',
+      BYOK_KV_KEY,
+      JSON.stringify({
+        ...DEFAULT_BYOK_CONFIG,
+        provider: 'custom',
+        modelId: LEGACY_CUSTOM_MODEL_ID,
+        customBaseUrl: 'https://api.my-gateway.example/v1',
+      }),
+    );
+
+    const loaded = await loadByokConfig(db, adapter);
+    // The placeholder is preserved so the UI can explain it, but it is never a valid model.
+    expect(loaded.modelId).toBe(LEGACY_CUSTOM_MODEL_ID);
+    expect(isValidCustomModelId(loaded.modelId)).toBe(false);
+    expect(() => normalizeCustomModelId(loaded.modelId)).toThrow(
+      BYOK_CUSTOM_MODEL_LEGACY_ERROR_AR,
+    );
+    expect(toSafeByokErrorMessage(new Error(BYOK_CUSTOM_MODEL_LEGACY_ERROR_AR))).toBe(
+      BYOK_CUSTOM_MODEL_LEGACY_ERROR_AR,
+    );
   });
 
   it('rejects an invalid base URL without writing the key or preferences', async () => {

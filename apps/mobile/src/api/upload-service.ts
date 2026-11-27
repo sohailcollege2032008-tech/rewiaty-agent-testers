@@ -24,6 +24,7 @@ import { Directory, File } from 'expo-file-system';
 
 import {
   loadByokConfig,
+  normalizeCustomModelId,
   readByokSecret,
   sanitizeCustomBaseUrl,
   type ByokProvider,
@@ -171,18 +172,23 @@ async function resolveByokFromStorage(db?: DatabaseAdapter): Promise<ByokInput |
   if (!apiKey) return undefined;
 
   // The backend only understands `openai_compatible` for arbitrary gateways; the app's
-  // `custom` provider is that same thing plus a mandatory `base_url`.
+  // `custom` provider is that same thing plus a mandatory `base_url` and a real model name.
   if (config.provider === 'custom') {
     const baseUrl = sanitizeCustomBaseUrl(config.customBaseUrl);
     if (!baseUrl) {
       throw new Error(CUSTOM_BASE_URL_NEEDED_AR);
     }
+    // Why (review finding): the old fixed placeholder (`custom-vision-model`) is not a model
+    // any real gateway knows. `normalizeCustomModelId` throws the right Arabic message:
+    // «اكتب اسم الموديل» for a missing name and a clear «البيانات القديمة» message for the
+    // placeholder, instead of sending it and failing with an opaque 404.
+    const model = normalizeCustomModelId(config.modelId);
     return {
       mode: 'ephemeral',
       provider: 'openai_compatible',
       api_key: apiKey,
       base_url: baseUrl,
-      model: config.modelId,
+      model,
     };
   }
 

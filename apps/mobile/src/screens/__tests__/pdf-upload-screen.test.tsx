@@ -653,6 +653,41 @@ describe('PdfUploadScreen (PR 4B)', () => {
     expect(screen.queryByText(LIVE_PROGRESS_DISCONNECTED_AR)).toBeNull();
   });
 
+  it('imports every chapter when the job completes after a chapter.ready (review finding)', async () => {
+    const harness = buildService();
+    const onOpenReader = jest.fn();
+    const ensureChapterImported = jest.fn(async () => {});
+    harness.service.ensureChapterImported = ensureChapterImported;
+    const screen = await renderAtPreflight(harness, onOpenReader);
+    await startAndTrackJob(harness, screen);
+
+    // Early open of the first chapter is still allowed while the job runs…
+    await act(async () => {
+      harness.push(READY_CHAPTER_EVENT);
+    });
+    await waitFor(() => expect(screen.getByTestId('first-chapter-banner')).toBeTruthy());
+
+    // …but once the job is completed the reader must import the whole manifest, not just ch01.
+    await act(async () => {
+      harness.push({
+        type: 'job.completed',
+        job_id: 'job_1',
+        book_id: 'book_9',
+        manifest_url: '/v1/books/book_9/bundle/manifest',
+        book_md_url: '/v1/books/book_9/bundle/book.md',
+        chapters_count: 18,
+        pages_processed: 320,
+      });
+    });
+    await waitFor(() => expect(screen.getByText('الكتاب خلص')).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId('conversion-done-btn'));
+
+    await waitFor(() => expect(onOpenReader).toHaveBeenCalledWith('book_9'));
+    expect(ensureChapterImported).toHaveBeenCalledWith('book_9', undefined);
+    expect(ensureChapterImported).not.toHaveBeenCalledWith('book_9', 'ch01');
+  });
+
   it('imports the manifest chapters when a completed job never sent chapter.ready (review P1)', async () => {
     const harness = buildService();
     const onOpenReader = jest.fn();
