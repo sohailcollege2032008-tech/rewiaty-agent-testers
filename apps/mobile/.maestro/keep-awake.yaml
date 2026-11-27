@@ -18,12 +18,12 @@ appId: com.rewiaty.app
     timeout: 45000
 - waitForAnimationToEnd
 - assertVisible:
-    id: "reader-page-counter"
+    id: "reader-running-numbers"
     text: "صفحة 1 من .*"
 - takeScreenshot: "01-before-idle"
 - runScript: wait-45s.js
 # Still on page 1 and still Awake: no stray tap turned a page during the idle.
 - assertVisible:
-    id: "reader-page-counter"
+    id: "reader-running-numbers"
     text: "صفحة 1 من .*"
 - takeScreenshot: "02-after-45s-idle"

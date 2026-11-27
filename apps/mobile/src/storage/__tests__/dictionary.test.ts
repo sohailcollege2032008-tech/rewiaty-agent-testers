@@ -4,8 +4,10 @@ import {
   buildWiktionaryEntryUrl,
   DICTIONARY_ATTRIBUTION,
   DICTIONARY_DB_FILE_NAME,
+  DICTIONARY_DUMP_DATE,
   lookupDictionaryWord,
   openBundledDictionaryDb,
+  readBundledDictionaryMeta,
   resetBundledDictionaryDbCache,
   type DictionaryDbAdapter,
 } from '@/storage/dictionary';
@@ -644,5 +646,156 @@ describe('openBundledDictionaryDb — bundled asset import', () => {
 
     const found = await lookupDictionaryWord('بحر', handle);
     expect(found.status).toBe('found');
+  });
+});
+
+/**
+ * The shipped file carries its own `meta` table, so the About screen never has
+ * to trust a number baked into the JS bundle.
+ */
+describe('readBundledDictionaryMeta', () => {
+  function createMetaDb(options: {
+    entries: readonly FixtureEntry[];
+    meta?: readonly { key: string; value: string }[];
+    withMetaTable?: boolean;
+    withEntriesTable?: boolean;
+  }): { adapter: DictionaryDbAdapter; close: () => void } {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { DatabaseSync } = require('node:sqlite') as {
+      DatabaseSync: new (path: string) => NodeSqliteDatabase;
+    };
+    const sqliteDb = new DatabaseSync(':memory:');
+    if (options.withEntriesTable !== false) {
+      sqliteDb.exec(`
+        CREATE TABLE entries (
+          id INTEGER PRIMARY KEY,
+          word TEXT NOT NULL,
+          norm TEXT NOT NULL,
+          pos TEXT,
+          root TEXT,
+          defs TEXT NOT NULL
+        );
+      `);
+      const insert = sqliteDb.prepare(
+        'INSERT INTO entries (word, norm, pos, root, defs) VALUES (?, ?, ?, ?, ?)',
+      );
+      for (const entry of options.entries) {
+        insert.run(entry.word, entry.norm, entry.pos, entry.root, entry.defs);
+      }
+    }
+    if (options.withMetaTable !== false) {
+      sqliteDb.exec('CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);');
+      const insertMeta = sqliteDb.prepare('INSERT INTO meta (key, value) VALUES (?, ?)');
+      for (const row of options.meta ?? []) {
+        insertMeta.run(row.key, row.value);
+      }
+    }
+
+    return {
+      adapter: {
+        async getAllAsync<T>(source: string, ...params: unknown[]): Promise<T[]> {
+          return sqliteDb.prepare(source).all(...params) as T[];
+        },
+      },
+      close: () => sqliteDb.close(),
+    };
+  }
+
+  it('reads dump_date and entry_count from the meta table', async () => {
+    const { adapter, close } = createMetaDb({
+      entries: FIXTURES,
+      meta: [
+        { key: 'dump_date', value: '2027-03-04' },
+        { key: 'entry_count', value: '15714' },
+      ],
+    });
+    try {
+      await expect(readBundledDictionaryMeta(adapter)).resolves.toEqual({
+        dumpDate: '2027-03-04',
+        entryCount: 15714,
+      });
+    } finally {
+      close();
+    }
+  });
+
+  it('falls back to COUNT(*) FROM entries when entry_count is missing from meta', async () => {
+    const { adapter, close } = createMetaDb({
+      entries: FIXTURES,
+      meta: [{ key: 'dump_date', value: '2027-03-04' }],
+    });
+    try {
+      await expect(readBundledDictionaryMeta(adapter)).resolves.toEqual({
+        dumpDate: '2027-03-04',
+        entryCount: FIXTURES.length,
+      });
+    } finally {
+      close();
+    }
+  });
+
+  it('falls back to COUNT(*) FROM entries when entry_count is not a positive integer', async () => {
+    const { adapter, close } = createMetaDb({
+      entries: FIXTURES,
+      meta: [
+        { key: 'dump_date', value: '2027-03-04' },
+        { key: 'entry_count', value: 'not-a-number' },
+      ],
+    });
+    try {
+      await expect(readBundledDictionaryMeta(adapter)).resolves.toEqual({
+        dumpDate: '2027-03-04',
+        entryCount: FIXTURES.length,
+      });
+    } finally {
+      close();
+    }
+  });
+
+  it('falls back to DICTIONARY_DUMP_DATE when dump_date is missing from meta', async () => {
+    const { adapter, close } = createMetaDb({
+      entries: FIXTURES,
+      meta: [{ key: 'entry_count', value: '9001' }],
+    });
+    try {
+      await expect(readBundledDictionaryMeta(adapter)).resolves.toEqual({
+        dumpDate: DICTIONARY_DUMP_DATE,
+        entryCount: 9001,
+      });
+    } finally {
+      close();
+    }
+  });
+
+  it('counts entries even when the meta table does not exist', async () => {
+    const { adapter, close } = createMetaDb({ entries: FIXTURES, withMetaTable: false });
+    try {
+      await expect(readBundledDictionaryMeta(adapter)).resolves.toEqual({
+        dumpDate: DICTIONARY_DUMP_DATE,
+        entryCount: FIXTURES.length,
+      });
+    } finally {
+      close();
+    }
+  });
+
+  it('returns null calmly when the database is unavailable', async () => {
+    const openDatabaseAsync = SQLite.openDatabaseAsync as unknown as jest.Mock;
+    openDatabaseAsync.mockReset();
+    openDatabaseAsync.mockResolvedValue(null);
+    resetBundledDictionaryDbCache();
+
+    await expect(readBundledDictionaryMeta()).resolves.toBeNull();
+    openDatabaseAsync.mockReset();
+  });
+
+  it('never throws when both meta and entries reads fail', async () => {
+    const failingAdapter: DictionaryDbAdapter = {
+      async getAllAsync() {
+        throw new Error('no such table: entries');
+      },
+    };
+
+    await expect(readBundledDictionaryMeta(failingAdapter)).resolves.toBeNull();
   });
 });

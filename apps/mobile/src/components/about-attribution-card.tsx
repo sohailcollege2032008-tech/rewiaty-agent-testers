@@ -1,9 +1,12 @@
+import { useEffect, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import {
   DICTIONARY_ATTRIBUTION,
   DICTIONARY_DUMP_DATE,
   DICTIONARY_ENTRY_COUNT,
+  readBundledDictionaryMeta,
+  type BundledDictionaryMeta,
 } from '@/storage/dictionary';
 import { RADIUS, TYPOGRAPHY } from '@/theme/layout';
 import { getAppThemeTokens } from '@/theme/reader-theme';
@@ -26,10 +29,33 @@ function openExternalUrl(url: string): void {
 
 export function AboutAttributionCard({
   theme,
-  dumpDate = DICTIONARY_DUMP_DATE,
-  entryCount = DICTIONARY_ENTRY_COUNT,
+  dumpDate,
+  entryCount,
 }: AboutAttributionCardProps) {
   const palette = getAppThemeTokens(theme);
+  const [liveMeta, setLiveMeta] = useState<BundledDictionaryMeta | null>(null);
+
+  // The exact count ships inside the SQLite file, not in this bundle: read it
+  // from the bundled database on mount and only keep the constants as a calm
+  // fallback for dev/tests where no packaged database exists.
+  const needsLiveMeta = dumpDate === undefined || entryCount === undefined;
+
+  useEffect(() => {
+    if (!needsLiveMeta) return undefined;
+    let mounted = true;
+    void (async () => {
+      const meta = await readBundledDictionaryMeta();
+      if (mounted && meta) {
+        setLiveMeta(meta);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [needsLiveMeta]);
+
+  const resolvedDumpDate = dumpDate ?? liveMeta?.dumpDate ?? DICTIONARY_DUMP_DATE;
+  const resolvedEntryCount = entryCount ?? liveMeta?.entryCount ?? DICTIONARY_ENTRY_COUNT;
 
   return (
     <View
@@ -97,7 +123,7 @@ export function AboutAttributionCard({
         testID="about-dictionary-meta"
         style={[styles.metaText, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}
       >
-        {`نسخة القاموس: ${dumpDate} · ${entryCount} مدخل`}
+        {`نسخة القاموس: ${resolvedDumpDate} · ${resolvedEntryCount} مدخل`}
       </Text>
 
       <Text style={[styles.metaText, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}>

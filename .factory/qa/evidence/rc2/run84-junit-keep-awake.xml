@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<testsuites>
+  <testsuite name="Test Suite" device="test" tests="1" failures="0" time="74.768" timestamp="2026-11-27T10:20:33">
+    <testcase id="keep-awake" name="keep-awake" classname="keep-awake" file="app/apps/mobile/.maestro/keep-awake.yaml" time="74.747" timestamp="2026-11-27T10:20:33" status="SUCCESS"/>
+  </testsuite>
+</testsuites>

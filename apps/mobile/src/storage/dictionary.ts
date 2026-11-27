@@ -70,6 +70,16 @@ export interface DictionaryEntry {
   definitions: string[];
 }
 
+/**
+ * Build metadata recorded inside the bundled SQLite file itself (`meta` table),
+ * written by `scripts/build-dictionary.py`. Reading it from the database keeps
+ * the About screen honest even when the constant in this module goes stale.
+ */
+export interface BundledDictionaryMeta {
+  dumpDate: string;
+  entryCount: number;
+}
+
 export type DictionaryLookupResult =
   | {
       status: 'found';
@@ -403,4 +413,73 @@ async function openVerifiedBundledDictionaryDb(): Promise<DictionaryDbAdapter | 
 /** Forget the cached bundled database handle (tests, or a retry after a failure). */
 export function resetBundledDictionaryDbCache(): void {
   bundledDbPromise = null;
+}
+
+type DictionaryMetaRow = { key: string | null; value: string | null };
+type DictionaryCountRow = { count: number | string | null };
+
+/** Accept only a real, positive, whole entry count (string or number). */
+function toPositiveEntryCount(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value) && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed) && Number.isInteger(parsed) && parsed > 0) return parsed;
+  }
+  return null;
+}
+
+/**
+ * Read the `dump_date` / `entry_count` metadata out of the bundled dictionary.
+ *
+ * Never throws: a missing `meta` table, a missing `entries` table or any SQLite
+ * error resolves to `null` so the About card keeps its calm static fallback.
+ * When `db` is omitted the cached bundled handle is opened on demand; a `null`
+ * handle (dev/test without the packaged database) is also reported as `null`.
+ */
+export async function readBundledDictionaryMeta(
+  db?: DictionaryDbAdapter | null,
+): Promise<BundledDictionaryMeta | null> {
+  try {
+    const handle = db === undefined ? await openBundledDictionaryDb() : db;
+    if (!handle) return null;
+
+    let dumpDate: string | null = null;
+    let entryCount: number | null = null;
+
+    try {
+      const metaRows = await handle.getAllAsync<DictionaryMetaRow>(
+        "SELECT key, value FROM meta WHERE key IN ('dump_date', 'entry_count')",
+      );
+      for (const row of Array.isArray(metaRows) ? metaRows : []) {
+        if (!row || typeof row.key !== 'string') continue;
+        if (row.key === 'dump_date') {
+          const value = typeof row.value === 'string' ? row.value.trim() : '';
+          if (value.length > 0) dumpDate = value;
+        } else if (row.key === 'entry_count') {
+          entryCount = toPositiveEntryCount(row.value);
+        }
+      }
+    } catch {
+      // Older builds may ship without a `meta` table: fall through to COUNT(*).
+    }
+
+    if (entryCount === null) {
+      const countRows = await handle.getAllAsync<DictionaryCountRow>(
+        'SELECT COUNT(*) AS count FROM entries',
+      );
+      const first = Array.isArray(countRows) ? countRows[0] : null;
+      entryCount = toPositiveEntryCount(first?.count);
+    }
+
+    if (entryCount === null) return null;
+
+    return {
+      dumpDate: dumpDate ?? DICTIONARY_DUMP_DATE,
+      entryCount,
+    };
+  } catch {
+    return null;
+  }
 }
