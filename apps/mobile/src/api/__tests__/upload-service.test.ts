@@ -348,15 +348,78 @@ describe('createRewiatyApiUploadService', () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
-  it('imports the first ready chapter through ProgressiveBookImporter', async () => {
-    const importReadyChapters = jest.fn(async () => undefined);
+  it('imports the first ready chapter through ProgressiveBookImporter and reuses it per book', async () => {
+    const importReadyChapters = jest.fn(async () => ({
+      importedCount: 1,
+      skippedCount: 0,
+      totalChapters: 3,
+      isComplete: false,
+      bookRecord: { id: 'book_1' } as never,
+    }));
     importerMock.mockImplementation(() => ({ importReadyChapters }));
     const db = { name: 'db' } as never;
     const service = build({ db });
     await service.ensureChapterImported!('book_1', 'ch_01');
+    await service.ensureChapterImported!('book_1', 'ch_02');
 
+    expect(importerMock).toHaveBeenCalledTimes(1);
     expect(importerMock).toHaveBeenCalledWith(client, 'book_1', db);
-    expect(importReadyChapters).toHaveBeenCalledWith(['ch_01']);
+    expect(importReadyChapters).toHaveBeenNthCalledWith(1, ['ch_01']);
+    expect(importReadyChapters).toHaveBeenNthCalledWith(2, ['ch_02']);
+  });
+
+  it('throws when the initial chapter import persists no bundle on disk', async () => {
+    const importReadyChapters = jest.fn(async () => ({
+      importedCount: 0,
+      skippedCount: 1,
+      totalChapters: 3,
+      isComplete: false,
+      bookRecord: null,
+    }));
+    importerMock.mockImplementation(() => ({ importReadyChapters }));
+    const service = build();
+    await expect(service.ensureChapterImported!('book_1', 'ch_01')).rejects.toThrow(
+      'الفصل لسه مش جاهز',
+    );
+  });
+
+  it('measures file bytes before presignUpload when DocumentPicker reports sizeBytes = 0', async () => {
+    const bytes = new Uint8Array([10, 20, 30, 40, 50]);
+    readPdfBytes.mockResolvedValueOnce(bytes);
+    const service = build();
+
+    await service.uploadAndEstimate({ ...PDF, sizeBytes: 0 }, { ai_level: 'essential' });
+
+    expect(readPdfBytes).toHaveBeenCalledTimes(1);
+    expect(client.presignUpload).toHaveBeenCalledWith({
+      filename: 'riwaya.pdf',
+      content_type: 'application/pdf',
+      size_bytes: 5,
+    });
+    expect(client.uploadPdfBytes).toHaveBeenCalledWith(PRESIGN, bytes);
+  });
+
+  it('keeps book_id → upload_id separate when two PDFs are uploaded in one session', async () => {
+    client.presignUpload
+      .mockResolvedValueOnce({ ...PRESIGN, upload_id: 'up_1', book_id: 'book_1' })
+      .mockResolvedValueOnce({ ...PRESIGN, upload_id: 'up_2', book_id: 'book_2' });
+    client.completeUpload
+      .mockResolvedValueOnce({ upload_id: 'up_1', book_id: 'book_1' })
+      .mockResolvedValueOnce({ upload_id: 'up_2', book_id: 'book_2' });
+    client.estimateJob
+      .mockResolvedValueOnce({ ...ESTIMATE, upload_id: 'up_1', book_id: 'book_1' })
+      .mockResolvedValueOnce({ ...ESTIMATE, upload_id: 'up_2', book_id: 'book_2' });
+
+    const service = build();
+    await service.uploadAndEstimate(PDF, { ai_level: 'essential' });
+    await service.uploadAndEstimate({ ...PDF, uri: 'file:///cache/second.pdf' }, { ai_level: 'essential' });
+
+    await service.generateOnboardingSample({ book_id: 'book_1' });
+    expect(client.generateOnboardingSample).toHaveBeenCalledWith('book_1', {
+      upload_id: 'up_1',
+      byok: BYOK,
+      include_style_previews: true,
+    });
   });
 });
 

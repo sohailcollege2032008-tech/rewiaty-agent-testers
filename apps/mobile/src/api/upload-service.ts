@@ -234,6 +234,12 @@ export function createRewiatyApiUploadService(
   /** `book_id` since the last estimate, used when a caller omits it. */
   let lastBookId: string | undefined;
   let lastUploadId: string | undefined;
+  /** Per-book last known `upload_id`, so switching between PDFs never pairs mismatched ids. */
+  const bookToUploadId = new Map<string, string>();
+  /** One progressive importer per `book_id` so multi-chapter imports keep earlier chapters. */
+  const importers = new Map<string, ProgressiveBookImporter>();
+  /** Books that have persisted at least one bundle to disk through `ensureChapterImported`. */
+  const importedBooks = new Set<string>();
 
   /**
    * Per-picked-file upload cache. The key is the file identity, so changing only `ai_level`
@@ -246,12 +252,21 @@ export function createRewiatyApiUploadService(
     const cached = uploads.get(key);
     if (cached) return cached;
 
+    // Android SAF content URIs sometimes omit `asset.size` (leaving `sizeBytes === 0`).
+    // Read the file once upfront in that case so `presignUpload` never sends `size_bytes: 0`.
+    let preReadBytes: Uint8Array | null = null;
+    let sizeBytes = pdf.sizeBytes;
+    if (!(typeof sizeBytes === 'number' && sizeBytes > 0)) {
+      preReadBytes = await readBytes(pdf.uri);
+      sizeBytes = preReadBytes.byteLength;
+    }
+
     const presign = await client.presignUpload({
       filename: pdf.name,
       content_type: 'application/pdf',
-      size_bytes: pdf.sizeBytes,
+      size_bytes: sizeBytes,
     });
-    const bytes = await readBytes(pdf.uri);
+    const bytes = preReadBytes ?? (await readBytes(pdf.uri));
     await client.uploadPdfBytes(presign, bytes);
     const completed = await client.completeUpload(presign.upload_id);
 
@@ -261,6 +276,7 @@ export function createRewiatyApiUploadService(
       book_id: completed.book_id || presign.book_id,
     };
     uploads.set(key, entry);
+    bookToUploadId.set(entry.book_id, entry.upload_id);
     lastBookId = entry.book_id;
     lastUploadId = entry.upload_id;
     return entry;
@@ -276,6 +292,7 @@ export function createRewiatyApiUploadService(
       upload_id: estimate.upload_id || ids.upload_id,
       book_id: estimate.book_id || ids.book_id,
     };
+    bookToUploadId.set(resolved.book_id, resolved.upload_id);
     lastBookId = resolved.book_id;
     lastUploadId = resolved.upload_id;
     // Refresh the cache with whatever the estimate echoed, so the ids always agree.
@@ -303,7 +320,8 @@ export function createRewiatyApiUploadService(
       if (!bookId) {
         throw new Error('مفيش كتاب محدد نجهّز له عيّنة.');
       }
-      const uploadId = input?.uploadId ?? input?.upload_id ?? lastUploadId;
+      const uploadId =
+        input?.uploadId ?? input?.upload_id ?? bookToUploadId.get(bookId) ?? lastUploadId;
       const byok = input?.byok ?? (await resolveByok());
       if (!byok) {
         throw new Error(SAMPLE_NEEDS_BYOK_AR);
@@ -369,8 +387,19 @@ export function createRewiatyApiUploadService(
     },
 
     ensureChapterImported: async (bookId: string, chapterId: string): Promise<void> => {
-      const importer = new ProgressiveBookImporter(client, bookId, db);
-      await importer.importReadyChapters([chapterId]);
+      let importer = importers.get(bookId);
+      if (!importer) {
+        importer = new ProgressiveBookImporter(client, bookId, db);
+        importers.set(bookId, importer);
+      }
+      const result = await importer.importReadyChapters([chapterId]);
+      if (result) {
+        if (result.bookRecord) {
+          importedBooks.add(bookId);
+        } else if (!importedBooks.has(bookId)) {
+          throw new Error('الفصل لسه مش جاهز للفتح دلوقتي، جرّب تاني بعد ثواني.');
+        }
+      }
     },
   };
 

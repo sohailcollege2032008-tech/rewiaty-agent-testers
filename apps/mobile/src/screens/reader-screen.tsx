@@ -1584,7 +1584,11 @@ export function ReaderScreen() {
               result={dictResult}
               loading={dictLoading}
               theme={settings.theme}
-              onClose={() => setDictVisible(false)}
+              onClose={() => {
+                dictRequestRef.current += 1;
+                setDictLoading(false);
+                setDictVisible(false);
+              }}
             />
 
             <TocModal
