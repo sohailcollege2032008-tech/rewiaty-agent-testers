@@ -49,9 +49,9 @@
 
 ## الخطوة التالية حتى التسليم
 1. دمج PR إصلاح `chapter-timeline` (سطر `waitToSettleTimeoutMs: 500` في `.maestro/chapter-timeline.yaml`).
-2. على `origin/main` بعد الدمج: `rewiaty-gates.yml` + `scripts/ci-flows.sh all` + `proof check` (لازم `DONE`).
-3. بناء APK نهائي من نفس الـ SHA وتسليمه للمدير مع تقرير RC2 (`.factory/qa/runs/2026-11-27-rc2-reverify-smoke.md`).
-4. `rotate-position` مؤجلة بقرار منتج — مش gating، ومش جزء من شرط التسليم.
+2. على `origin/main` بعد الدمج، شغّل `rewiaty-gates.yml` و`scripts/ci-flows.sh all` على نفس الـ SHA. خُد الـ APK من تشغيلة الرحلات نفسها.
+3. شغّل `proof check` وسجّل حكمه. البوابات العامة وجولة الرحلات بتنشر أدلة على GitHub، وسجل المصنع له مسار تسجيل مستقل. كمان `proof check` بتطلب نتيجة لكل رحلة، وبتحسب `rotate-position` ضمن النواقص رغم إنها مؤجلة بقرار المنتج.
+4. تسليم الـ APK للمدير متوقف على نتائج الرحلات الحاجزة، مع تقرير RC2 (`.factory/qa/runs/2026-11-27-rc2-reverify-smoke.md`) وحكم `proof check` الفعلي.
 
 ## مستني سهيل
 - (مفيش — قرار `rotate-position` اختياري ومؤجل)
