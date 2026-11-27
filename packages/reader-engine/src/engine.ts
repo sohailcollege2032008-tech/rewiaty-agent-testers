@@ -316,7 +316,7 @@ export class ReaderEngine {
           // The click that follows this pointerup belongs to the same gesture: opening the
           // sheet must not also dismiss it. See footnoteOpenPointerId.
           this.footnoteOpenPointerId = e.pointerId;
-          this.openFootnote(fnId);
+          this.openFootnote(fnId, fnLink);
         }
         return;
       }
@@ -404,6 +404,14 @@ export class ReaderEngine {
       const fnLink = target?.closest<HTMLElement>('[data-fn]');
       if (fnLink) {
         e.preventDefault();
+        // Assistive tech (TalkBack's double-tap, Switch Access) activates a control with a
+        // plain `click` and no pointer gesture. The pointer path already opened the sheet, so
+        // only a click that finds it closed has to open it here.
+        if (this.footnoteBackdrop.hidden) {
+          const fnId = fnLink.getAttribute('data-fn');
+          if (fnId) this.openFootnote(fnId, fnLink);
+        }
+        return;
       }
     });
 
@@ -439,10 +447,32 @@ export class ReaderEngine {
         }
         return;
       }
-      if (!this.footnoteBackdrop.hidden && e.key === 'Escape') {
-        this.closeFootnote();
+
+      // Issue #50 (QA r1): a footnote reference is a `role="button"`; it has to answer the
+      // keyboard like one. Enter/Space open the sheet, and the opener is remembered so closing
+      // puts the caret back on that reference (also when the sheet was opened by touch).
+      const keyTarget = e.target as HTMLElement | null;
+      const keyFnRef = keyTarget?.closest?.<HTMLElement>('[data-fn]') ?? null;
+      if (keyFnRef && (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar')) {
+        e.preventDefault();
+        const fnId = keyFnRef.getAttribute('data-fn');
+        if (fnId && this.footnoteBackdrop.hidden) this.openFootnote(fnId, keyFnRef);
         return;
       }
+
+      if (!this.footnoteBackdrop.hidden) {
+        if (e.key === 'Escape') {
+          this.closeFootnote();
+          return;
+        }
+        if (e.key === 'Tab') {
+          this.trapFootnoteFocus(e);
+          return;
+        }
+        // A modal dialog owns the keyboard: no page shortcut may run behind it.
+        return;
+      }
+
       const dir = this.paginator.getDirection();
       if (e.key === 'ArrowLeft') {
         if (dir === 'rtl') this.goNext();
@@ -962,14 +992,18 @@ export class ReaderEngine {
    * Tell assistive tech which page the reader landed on.
    *
    * Called from `emitPosition`, which only fires on a *settled* move (a drag release, a
-   * keyboard turn, a goto) — never per pointermove — so a swipe announces once. The key
-   * dedupes the stream of identical positions the background paginator emits while it
-   * refines the page map, so TalkBack does not repeat the same page.
+   * keyboard turn, a goto). Two things keep TalkBack from chattering (Issue #50, QA r1):
+   * the page number is the only thing announced — a background pass that refines the
+   * *total* never re-announces the same page — and nothing is announced while the finger
+   * still owns the drag (the release reports, which is the settled state).
+   *
+   * The WebView is the single live source; the RN HUD counter must not also carry
+   * `accessibilityLiveRegion` or every turn is spoken twice.
    */
   private announcePosition(page: number, pageCount: number): void {
-    const key = `${page}/${pageCount}`;
-    if (key === this.lastAnnouncedPage) return;
-    this.lastAnnouncedPage = key;
+    if (this.paginator.isDragging()) return;
+    if (String(page) === this.lastAnnouncedPage) return;
+    this.lastAnnouncedPage = String(page);
     this.liveRegion.textContent = `صفحة ${page} من ${pageCount}`;
   }
 
@@ -1051,7 +1085,7 @@ export class ReaderEngine {
     void Promise.race([fontsReady, bounded]).then(attempt);
   }
 
-  private openFootnote(fnId: string): void {
+  private openFootnote(fnId: string, opener?: HTMLElement | null): void {
     const blocks: Block[] | undefined = this.book?.footnotes[fnId];
     if (!blocks || blocks.length === 0) return;
     const dir = this.paginator.getDirection();
@@ -1060,15 +1094,49 @@ export class ReaderEngine {
     this.footnoteBody.innerHTML = blocks.map((b) => `<p>${b.html}</p>`).join('');
     // A dialog is a focus context: remember where the reader was so closing it puts the
     // caret back exactly there (keyboard/Switch Access users otherwise lose their place).
+    // The opener is passed explicitly because a touch does not always leave it focused.
     const active = document.activeElement;
-    this.footnoteReturnFocus = active instanceof HTMLElement && active !== document.body ? active : null;
+    const candidate = opener ?? (active instanceof HTMLElement ? active : null);
+    this.footnoteReturnFocus =
+      candidate && candidate !== document.body && candidate.isConnected ? candidate : null;
+    // The page behind the sheet is not part of the dialog: inert keeps Tab, TalkBack and
+    // Switch Access inside `#footnote-popover` until it closes.
+    this.stageEl.setAttribute('inert', '');
     this.footnoteBackdrop.hidden = false;
     this.footnoteCloseBtn.focus();
+  }
+
+  /** Keep Tab / Shift+Tab cycling inside the open footnote dialog (Issue #50, QA r1). */
+  private trapFootnoteFocus(event: KeyboardEvent): void {
+    const selector =
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const focusable = Array.from(this.footnotePopover.querySelectorAll<HTMLElement>(selector)).filter(
+      (node) => node.getClientRects().length > 0,
+    );
+    if (focusable.length === 0) {
+      event.preventDefault();
+      this.footnotePopover.focus();
+      return;
+    }
+    const active = document.activeElement as HTMLElement | null;
+    const index = active ? focusable.indexOf(active) : -1;
+    if (event.shiftKey) {
+      if (index <= 0) {
+        event.preventDefault();
+        focusable[focusable.length - 1]!.focus();
+      }
+      return;
+    }
+    if (index === -1 || index === focusable.length - 1) {
+      event.preventDefault();
+      focusable[0]!.focus();
+    }
   }
 
   private closeFootnote(): void {
     if (this.footnoteBackdrop.hidden) return;
     this.footnoteBackdrop.hidden = true;
+    this.stageEl.removeAttribute('inert');
     const target = this.footnoteReturnFocus;
     this.footnoteReturnFocus = null;
     if (target && target.isConnected) {

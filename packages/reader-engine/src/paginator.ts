@@ -289,6 +289,93 @@ function renderBlockHtml(block: Block): string {
   }
 }
 
+/** The box of every fragment a node paints, so a multi-column split is not read as one box. */
+function paintedRects(node: Element): DOMRect[] {
+  const rects: DOMRect[] = [];
+  const list = (node as HTMLElement).getClientRects();
+  for (let i = 0; i < list.length; i++) {
+    const rect = list[i]!;
+    if (rect.width > 0.5 && rect.height > 0.5) rects.push(rect);
+  }
+  return rects;
+}
+
+type ColumnBand = { left: number; right: number };
+
+/** Two fragments belong to the same column when their horizontal bands overlap. */
+function sharesColumn(a: ColumnBand, b: ColumnBand): boolean {
+  const overlap = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+  return overlap > Math.min(a.right - a.left, b.right - b.left) * 0.5;
+}
+
+/**
+ * Keep a scene break out of a page of its own.
+ *
+ * `break-after: avoid` keeps the *following* block with the break, but it cannot help when the
+ * block before the break already fills the column (a figure capped to almost the full page
+ * height, for instance): the column box then has to start a new column for the break, and the
+ * reader turns to a page whose only ink is `✦ ✦ ✦`. CSS alone has no way out — there is no
+ * "do not break before this if it is alone" — so the geometry decides here instead:
+ *
+ * 1. Every painted fragment is grouped into its page column by its horizontal band.
+ * 2. A column that holds nothing but scene breaks is not a readable page.
+ * 3. Those breaks are taken out of the flow (`display: none`), which removes the column, and the
+ *    measurement pass that follows counts one page fewer.
+ *
+ * The collapse is redone from the untouched layout on every measurement (previous collapses are
+ * restored first), so a resize, a font change or newly mounted blocks can bring the break back.
+ *
+ * @returns how many breaks are currently collapsed.
+ */
+function syncOrphanSceneBreaks(el: HTMLElement): number {
+  const breaks = Array.from(el.querySelectorAll<HTMLElement>('.block-break'));
+  if (breaks.length === 0) return 0;
+
+  // Start from the real layout: an earlier pass may have hidden a break that fits again.
+  for (const node of breaks) {
+    if (node.dataset.orphanCollapsed !== '1') continue;
+    node.style.removeProperty('display');
+    delete node.dataset.orphanCollapsed;
+  }
+
+  let collapsed = 0;
+  // Each pass can free a column and shift the rest of the chapter, so re-group until stable.
+  for (let pass = 0; pass < 4; pass++) {
+    const columns: Array<ColumnBand & { hasContent: boolean }> = [];
+    const columnFor = (rect: DOMRect) => {
+      let column = columns.find((candidate) => sharesColumn(rect, candidate));
+      if (!column) {
+        column = { left: rect.left, right: rect.right, hasContent: false };
+        columns.push(column);
+      }
+      return column;
+    };
+
+    for (const node of el.querySelectorAll<HTMLElement>(
+      '[data-block-id], .chapter-title, .chapter-ornament',
+    )) {
+      if (node.classList.contains('block-break')) continue;
+      for (const rect of paintedRects(node)) columnFor(rect).hasContent = true;
+    }
+
+    let passCollapsed = 0;
+    for (const brk of breaks) {
+      if (brk.dataset.orphanCollapsed === '1') continue;
+      const rects = paintedRects(brk);
+      // A split break is not the single-line orphan this pass targets.
+      if (rects.length !== 1) continue;
+      const column = columnFor(rects[0]!);
+      if (column.hasContent) continue;
+      brk.style.display = 'none';
+      brk.dataset.orphanCollapsed = '1';
+      passCollapsed += 1;
+    }
+    collapsed += passCollapsed;
+    if (passCollapsed === 0) break;
+  }
+  return collapsed;
+}
+
 export class Paginator {
   private readonly rootEl: HTMLElement;
   private readonly stageEl: HTMLElement;
@@ -471,6 +558,11 @@ export class Paginator {
     return true;
   }
 
+  /** true while the reader's finger owns the page (see `beginDrag`/`endDrag`). */
+  isDragging(): boolean {
+    return this.dragging;
+  }
+
   /**
    * true when the chapters that precede the current one are measured, i.e. the page
    * number the reader sees is exact even if the total is still an estimate.
@@ -629,6 +721,9 @@ export class Paginator {
     syncScenePlaceholdersInRoot(el, this.scenePlaceholders, this.sceneRenderOptions());
     probe.appendChild(el);
     try {
+      // Issue #47/#58 (QA r1): a break pushed alone onto a column is not a page. Collapse it
+      // before reading the width, so the probe counts the same pages the reader will see.
+      syncOrphanSceneBreaks(el);
       this.pageCache.set(this.cacheKey(chapter), Math.max(1, this.measureChapterScrollPages(el)));
     } finally {
       el.remove();
@@ -2229,6 +2324,9 @@ export class Paginator {
     const existingPad = entry.el.querySelector<HTMLElement>(`.${CHAPTER_PAD_CLASS}`);
     if (existingPad) existingPad.remove();
 
+    // Issue #47/#58 (QA r1): see `syncOrphanSceneBreaks`. The mounted chapter is measured from
+    // its real paint, so this is the pass that decides what the reader can actually turn to.
+    syncOrphanSceneBreaks(entry.el);
     const pages = this.measureChapterScrollPages(entry.el);
     if (!this.metrics.spread || !entry.isComplete || pages % 2 === 0) {
       return { pages, padPages: 0 };

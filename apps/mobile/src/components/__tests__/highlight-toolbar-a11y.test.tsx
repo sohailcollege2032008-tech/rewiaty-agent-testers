@@ -1,21 +1,25 @@
-import { render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
 import { HighlightToolbar } from '@/components/highlight-toolbar';
 import { HIGHLIGHT_COLORS } from '@/types/reader';
 
 /**
- * P2 a11y (QA r1) — Issue #49.
+ * P2 a11y (QA r1) — Issues #49 and #59.
  *
- * The toolbar's controls were 40×40 with no `hitSlop` and only 2dp between swatches, so the
- * effective targets were 40dp (Android's minimum is 48dp) and adjacent swatch targets merged.
- * These tests pin the budget from the component's own styles: every interactive control must
- * expose at least 48×48dp of tappable area, neighbouring targets must not overlap, and the
- * pill must still fit a 360dp screen without spilling past the 12dp page gutter.
+ * #49: the toolbar's controls were 40×40 and the extra reach was a `hitSlop` halo, so the
+ * real boxes were below Android's 48dp minimum and neighbouring targets overlapped. Every
+ * control now owns a real 48×48dp box; these tests read the component's own styles and must
+ * NOT add `hitSlop` to pass.
+ *
+ * #59: the pill was positioned from a hard-coded width, so at 200% font scale (longer Arabic
+ * label) the fourth, gold swatch was pushed off the right edge. The width is now measured by
+ * `onLayout` and `left` is clamped against the measurement; the pill wraps instead of
+ * clipping. The layout event is fired here to simulate that measurement.
  */
 
 const VIEWPORT_WIDTH = 360;
-/** Page gutter the positioner keeps on both sides (`maxLeft = containerWidth - width - 12`). */
+/** Page gutter the positioner keeps on both sides. */
 const GUTTER = 12;
 
 type AnyProps = Record<string, unknown>;
@@ -24,36 +28,33 @@ function flatStyle(node: { props: AnyProps }): Record<string, unknown> {
   return StyleSheet.flatten(node.props.style as never) as Record<string, unknown>;
 }
 
-function hitSlopBox(value: unknown): { horizontal: number; vertical: number } {
-  if (typeof value === 'number') return { horizontal: value * 2, vertical: value * 2 };
-  if (value && typeof value === 'object') {
-    const slop = value as { left?: number; right?: number; top?: number; bottom?: number };
-    return {
-      horizontal: (slop.left ?? 0) + (slop.right ?? 0),
-      vertical: (slop.top ?? 0) + (slop.bottom ?? 0),
-    };
-  }
-  return { horizontal: 0, vertical: 0 };
-}
-
-function effectiveSize(node: { props: AnyProps }): { width: number; height: number } {
+/** The control's own box — deliberately no `hitSlop` allowance. */
+function actualSize(node: { props: AnyProps }): { width: number; height: number } {
   const style = flatStyle(node);
-  const slop = hitSlopBox(node.props.hitSlop);
   const width =
-    (typeof style.width === 'number' ? style.width : typeof style.minWidth === 'number' ? style.minWidth : 0) +
-    slop.horizontal;
+    typeof style.width === 'number' ? style.width : typeof style.minWidth === 'number' ? style.minWidth : 0;
   const height =
-    (typeof style.height === 'number' ? style.height : typeof style.minHeight === 'number' ? style.minHeight : 0) +
-    slop.vertical;
+    typeof style.height === 'number'
+      ? style.height
+      : typeof style.minHeight === 'number'
+        ? style.minHeight
+        : 0;
   return { width, height };
 }
 
-async function renderToolbar(isEditing: boolean) {
+async function renderToolbar(
+  options: {
+    isEditing?: boolean;
+    containerWidth?: number;
+    rect?: { left: number; top: number; right: number; bottom: number; width: number; height: number };
+  } = {},
+) {
+  const { isEditing = false, containerWidth = VIEWPORT_WIDTH, rect } = options;
   return render(
     <HighlightToolbar
       visible
-      rect={{ left: 100, top: 300, right: 220, bottom: 330, width: 120, height: 30 }}
-      containerWidth={VIEWPORT_WIDTH}
+      rect={rect ?? { left: 100, top: 300, right: 220, bottom: 330, width: 120, height: 30 }}
+      containerWidth={containerWidth}
       containerHeight={800}
       topInset={24}
       bottomInset={20}
@@ -68,50 +69,84 @@ async function renderToolbar(isEditing: boolean) {
   );
 }
 
+/** Right edge of the pill after a measured layout, using the same clamp the component uses. */
+function rightEdge(left: number, width: number): number {
+  return left + Math.min(width, VIEWPORT_WIDTH - GUTTER * 2);
+}
+
 describe('HighlightToolbar accessibility touch targets (Issue #49)', () => {
-  it('gives every colour swatch a ≥ 48×48dp target with no overlapping neighbours', async () => {
-    const { getByTestId } = await renderToolbar(false);
+  it('gives every colour swatch a real 48×48dp box (no hitSlop halo)', async () => {
+    const { getByTestId } = await renderToolbar();
     const colorsRow = flatStyle(getByTestId('highlight-toolbar-colors'));
 
-    // Distinct physical targets: 40dp visible + 4dp hitSlop on each side, 8dp apart.
     for (const item of HIGHLIGHT_COLORS) {
       const swatch = getByTestId(`highlight-color-${item.id}`);
-      const size = effectiveSize(swatch);
+      const size = actualSize(swatch);
       expect(size.width).toBeGreaterThanOrEqual(48);
       expect(size.height).toBeGreaterThanOrEqual(48);
+      // The target must be layout, not a padded reach over its neighbour.
+      expect(swatch.props.hitSlop).toBeUndefined();
+      // The coloured circle inside keeps its visual size and does not fill the target box.
+      const dot = flatStyle(getByTestId(`highlight-color-dot-${item.id}`));
+      expect(dot.width).toBeLessThanOrEqual(28);
+      expect(dot.width).toBeGreaterThanOrEqual(26);
     }
 
     const gold = flatStyle(getByTestId('highlight-color-gold'));
-    const sage = flatStyle(getByTestId('highlight-color-sage'));
-    const goldSlop = hitSlopBox(getByTestId('highlight-color-gold').props.hitSlop).horizontal;
     const gap = (colorsRow.gap as number | undefined) ?? 0;
+    // Neighbouring 48dp boxes must not touch or overlap: the row keeps a real gap.
     expect(gap).toBeGreaterThanOrEqual(4);
-    // Adjacent targets may touch exactly, never overlap: visual pitch ≥ effective width.
-    const pitch = (gold.width as number) + gap;
-    expect(pitch).toBeGreaterThanOrEqual((gold.width as number) + goldSlop);
-    expect(sage.width).toBe(gold.width);
+    expect((gold.width as number) + gap).toBeGreaterThan(gold.width as number);
   });
 
-  it('gives the note and delete buttons ≥ 48×48dp targets', async () => {
-    const { getByTestId } = await renderToolbar(true);
+  it('gives the note and delete buttons real 48×48dp boxes', async () => {
+    const { getByTestId } = await renderToolbar({ isEditing: true });
 
-    const note = effectiveSize(getByTestId('highlight-note-button'));
-    expect(note.width).toBeGreaterThanOrEqual(48);
-    expect(note.height).toBeGreaterThanOrEqual(48);
-
-    const del = effectiveSize(getByTestId('highlight-delete-button'));
-    expect(del.width).toBeGreaterThanOrEqual(48);
-    expect(del.height).toBeGreaterThanOrEqual(48);
+    for (const testID of ['highlight-note-button', 'highlight-delete-button']) {
+      const button = getByTestId(testID);
+      const size = actualSize(button);
+      expect(size.width).toBeGreaterThanOrEqual(48);
+      expect(size.height).toBeGreaterThanOrEqual(48);
+      expect(button.props.hitSlop).toBeUndefined();
+    }
   });
 
-  it('fits the edited toolbar inside the 360dp viewport without spilling past the gutter', async () => {
-    const { getByTestId } = await renderToolbar(true);
+  it('keeps the edited toolbar inside a 360dp screen without spilling past the gutter', async () => {
+    const { getByTestId } = await renderToolbar({ isEditing: true });
     const positioner = flatStyle(getByTestId('highlight-toolbar'));
     const left = positioner.left as number;
-    const width = positioner.width as number;
+    const maxWidth = positioner.maxWidth as number;
 
-    expect(width).toBeLessThanOrEqual(VIEWPORT_WIDTH - GUTTER * 2);
+    expect(maxWidth).toBe(VIEWPORT_WIDTH - GUTTER * 2);
     expect(left).toBeGreaterThanOrEqual(GUTTER);
-    expect(left + width).toBeLessThanOrEqual(VIEWPORT_WIDTH - GUTTER);
+    // The edit pill is wider than the viewport: it is bounded by maxWidth and wraps.
+    expect(left + Math.min(maxWidth, VIEWPORT_WIDTH - GUTTER * 2)).toBeLessThanOrEqual(
+      VIEWPORT_WIDTH - GUTTER,
+    );
+    const pill = flatStyle(getByTestId('highlight-toolbar-pill'));
+    expect(pill.flexWrap).toBe('wrap');
+    expect(pill.maxWidth).toBe(VIEWPORT_WIDTH - GUTTER * 2);
+  });
+
+  it('clamps `left` from the measured width so a 200% font-scale pill stays on screen (Issue #59)', async () => {
+    // The reader taps near the right edge of the page.
+    const { getByTestId } = await renderToolbar({
+      isEditing: true,
+      rect: { left: 300, top: 320, right: 350, bottom: 350, width: 50, height: 30 },
+    });
+
+    const toolbar = getByTestId('highlight-toolbar');
+    // `onLayout` reports the pill's real width: wider than the 372dp estimate and wrapping.
+    await fireEvent(toolbar, 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 336, height: 112 } },
+    });
+
+    const positioner = flatStyle(getByTestId('highlight-toolbar'));
+    const left = positioner.left as number;
+    expect(left).toBeGreaterThanOrEqual(GUTTER);
+    expect(rightEdge(left, 336)).toBeLessThanOrEqual(VIEWPORT_WIDTH - GUTTER);
+
+    const pill = flatStyle(getByTestId('highlight-toolbar-pill'));
+    expect(pill.flexWrap).toBe('wrap');
   });
 });

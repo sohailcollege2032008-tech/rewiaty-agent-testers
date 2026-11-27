@@ -402,7 +402,10 @@ body {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding: 16px;
+  /* Issue #58 (QA r1): the sheet must sit above the running footer / system insets, not under
+     them. The reader exposes those insets as --padding-top / --padding-bottom, so the sheet
+     inherits the same safe area instead of a fixed 16px that a tall footer covers. */
+  padding: calc(var(--padding-top) + 8px) 16px calc(var(--padding-bottom) + 16px) 16px;
 }
 
 .footnote-backdrop[hidden] {
@@ -411,8 +414,13 @@ body {
 
 .footnote-popover {
   width: min(100%, 540px);
-  max-height: 45vh;
+  /* Issue #58 (QA r1): a long footnote must stop above the bottom safe area and scroll inside
+     itself, so its last line is never hidden behind the footer. */
+  max-height: calc(100vh - var(--padding-top) - var(--padding-bottom) - 48px);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
   background: var(--popover-bg);
   color: var(--text-color);
   border: 1px solid var(--popover-border);
