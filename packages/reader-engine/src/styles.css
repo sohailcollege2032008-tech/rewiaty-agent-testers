@@ -87,6 +87,33 @@ body {
   border: 0;
 }
 
+/*
+ * F27 — ملمس الورق (subtle paper grain).
+ *
+ * A static 128×128 PNG tiled at 3% opacity over the paper. No `filter`, no `backdrop-filter`, no
+ * `feTurbulence`: those are re-evaluated every frame, and a page turn on a phone should not pay for
+ * texture. Hidden by default so every theme — dark, encyclopaedia, custom — costs nothing; only
+ * the two warm paper presets switch it on. `pointer-events: none` keeps taps, selection and the
+ * drag-to-turn gesture on the text underneath.
+ */
+.paper-grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  display: none;
+  opacity: 0;
+}
+
+:root[data-theme='warraq'] .paper-grain,
+:root[data-theme='sepia'] .paper-grain {
+  display: block;
+  opacity: 0.03;
+  background-repeat: repeat;
+  background-size: 128px 128px;
+  background-image: var(--paper-grain-image);
+}
+
 .reader-stage {
   position: relative;
   width: var(--stage-width, min(100%, var(--max-width)));

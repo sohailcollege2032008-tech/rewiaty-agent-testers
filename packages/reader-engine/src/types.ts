@@ -579,6 +579,16 @@ export type WebToRNMessage =
       height: number;
     }
   | {
+      /**
+       * F27 — ملمس الورق: what the page is actually painting, read from `getComputedStyle` rather
+       * than from settings, so the host can prove the texture is (or is not) on screen at the
+       * spec's 3%, tiled, and without a live filter.
+       */
+      type: 'paper-grain-status';
+      theme: string;
+      state: 'painted' | 'hidden' | 'invalid';
+    }
+  | {
       type: 'selection';
       selection: SelectionInfo | null;
     }

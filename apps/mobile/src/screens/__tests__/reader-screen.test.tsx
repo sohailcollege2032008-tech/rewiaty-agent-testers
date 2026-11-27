@@ -419,6 +419,24 @@ describe('ReaderScreen', () => {
     expect(utils.getByTestId('reader-image-error')).toBeTruthy();
   });
 
+  it('exposes the painted theme and distinguishes hidden and invalid grain', async () => {
+    const utils = await renderLoadedReader();
+    const cases = [
+      ['warraq', 'painted', 'مفعّل ٣٪'],
+      ['sepia', 'painted', 'مفعّل ٣٪'],
+      ['burnt-paper', 'invalid', 'إعداد غير صالح'],
+      ['burnt-paper', 'hidden', 'متوقّف'],
+    ] as const;
+
+    for (const [theme, state, label] of cases) {
+      await act(async () => {
+        emitWebMessage({ type: 'paper-grain-status', theme, state });
+      });
+      expect(utils.getByTestId('reader-paper-grain-proof').props.children)
+        .toBe(`ملمس الورق (${theme}): ${label}`);
+    }
+  });
+
   it('automatically uses burnt-paper when system colorScheme is dark and no manual theme is set', async () => {
     colorSchemeSpy.mockReturnValue('dark');
     await renderLoadedReader();
