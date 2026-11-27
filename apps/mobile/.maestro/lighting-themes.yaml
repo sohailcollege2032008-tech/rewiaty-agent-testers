@@ -62,6 +62,10 @@ appId: com.rewiaty.app
       id: "settings-dimmer-inc"
     direction: DOWN
     timeout: 10000
+    # Android 3-button nav overlays the edge-to-edge window: a row that is merely on
+    # screen can still sit under the nav bar, where taps never reach the app.
+    visibilityPercentage: 100
+    centerElement: true
 - tapOn:
     id: "settings-dimmer-inc"
 - tapOn:
@@ -76,6 +80,10 @@ appId: com.rewiaty.app
       id: "settings-warmth-inc"
     direction: DOWN
     timeout: 10000
+    # Android 3-button nav overlays the edge-to-edge window: a row that is merely on
+    # screen can still sit under the nav bar, where taps never reach the app.
+    visibilityPercentage: 100
+    centerElement: true
 - tapOn:
     id: "settings-warmth-inc"
 - assertVisible:
@@ -86,6 +94,10 @@ appId: com.rewiaty.app
       id: "settings-brightness-inc"
     direction: DOWN
     timeout: 10000
+    # Android 3-button nav overlays the edge-to-edge window: a row that is merely on
+    # screen can still sit under the nav bar, where taps never reach the app.
+    visibilityPercentage: 100
+    centerElement: true
 - tapOn:
     id: "settings-brightness-inc"
 - assertVisible:
@@ -99,6 +111,10 @@ appId: com.rewiaty.app
       id: "settings-auto-theme-schedule"
     direction: UP
     timeout: 10000
+    # Android 3-button nav overlays the edge-to-edge window: a row that is merely on
+    # screen can still sit under the nav bar, where taps never reach the app.
+    visibilityPercentage: 100
+    centerElement: true
 - tapOn:
     id: "settings-auto-theme-schedule"
 - assertVisible:
@@ -113,6 +129,10 @@ appId: com.rewiaty.app
       id: "settings-eye-rest-switch"
     direction: DOWN
     timeout: 10000
+    # Android 3-button nav overlays the edge-to-edge window: a row that is merely on
+    # screen can still sit under the nav bar, where taps never reach the app.
+    visibilityPercentage: 100
+    centerElement: true
 - tapOn:
     id: "settings-eye-rest-switch"
 - tapOn:

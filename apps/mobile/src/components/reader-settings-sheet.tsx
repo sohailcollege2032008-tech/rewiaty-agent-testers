@@ -39,6 +39,13 @@ export type ReaderSettingsSheetProps = {
   onClose: () => void;
 };
 
+/**
+ * Breathing room under the last settings row: 28px on top of the bottom safe-area inset.
+ * The sheet container is also raised by `bottomInset`, so on a phone the last row («السطوع»)
+ * ends clear of both the navigation bar and the sheet's own bottom edge.
+ */
+const SETTINGS_SCROLL_BOTTOM_SPACING = 28;
+
 const FONT_WEIGHT_OPTIONS: ReadonlyArray<{ value: number; label: string }> = [
   { value: 300, label: 'خفيف' },
   { value: 400, label: 'عادي' },
@@ -253,9 +260,13 @@ function SettingsContent({
           };
         }
       }}
+      testID="settings-scroll"
       stickyHeaderIndices={[0]}
       contentContainerStyle={{
-        paddingBottom: (isSidePanel ? 24 : Math.max(insets.bottom, 20)) + 28,
+        // The bottom sheet is raised above the nav bar by `bottomInset` (see ReaderSettingsSheet),
+        // and the padding is still inset-derived on purpose: on a device that cannot raise the
+        // container the last row must stay scrollable above the bar instead of dying under it.
+        paddingBottom: SETTINGS_SCROLL_BOTTOM_SPACING + Math.max(insets.bottom, 20),
       }}
       showsVerticalScrollIndicator
       persistentScrollbar
@@ -1255,7 +1266,12 @@ export function ReaderSettingsSheet({
               top: Math.max(insets.top, 16) + 64,
               left: 28,
               width: layout.settingsPanelWidth,
-              maxHeight: Math.max(320, layout.height - 120),
+              // Clear the navigation bar as well: the panel hangs from the top and can grow to
+              // almost the full window height on tablets.
+              maxHeight: Math.max(
+                320,
+                layout.height - (Math.max(insets.top, 16) + 64) - Math.max(insets.bottom, 16) - 12,
+              ),
               backgroundColor: palette.sheetBg,
               borderColor: palette.border,
             },
@@ -1285,6 +1301,12 @@ export function ReaderSettingsSheet({
       <BottomSheet
         ref={sheetRef}
         index={0}
+        // Android 3-button navigation sits on top of an edge-to-edge window: without this the
+        // sheet's scroll viewport reaches the screen bottom, so the last rows (دفء الشاشة،
+        // السطوع) render under the nav bar and a tap at their centre hits the system buttons.
+        // `bottomInset` shortens the sheet's hosting container by exactly the safe-area inset,
+        // so the whole scroll area ends above the bar.
+        bottomInset={Math.max(insets.bottom, 0)}
         enableDynamicSizing
         maxDynamicContentSize={maxSheetHeight}
         enablePanDownToClose
