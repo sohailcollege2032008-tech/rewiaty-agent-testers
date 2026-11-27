@@ -25,6 +25,12 @@ export type Chapter = {
   blocks: Block[];
   wordCount: number;
   hash: string;
+  /**
+   * Deterministic hash of the chapter's raw source slice (plus its title and the parse
+   * options that change the result), computable BEFORE blocks are parsed. Two chapters with
+   * the same `rawHash` parse to the same blocks, so delta re-parse can reuse one verbatim.
+   */
+  rawHash?: string;
 };
 
 export type Book = {

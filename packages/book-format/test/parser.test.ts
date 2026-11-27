@@ -176,6 +176,87 @@ describe('parseBook', () => {
     expect(a.chapters[0]!.hash).toBe(b.chapters[0]!.hash);
     expect(a.chapters[0]!.hash).not.toBe(c.chapters[0]!.hash);
   });
+
+  describe('chapter splitting parity (F21 delta re-parse splitter)', () => {
+    it('titles the preamble chapter with the frontmatter title, not the file name', () => {
+      const md = [
+        '---',
+        'title: "كِتَابُ الرِّمَالِ"',
+        'lang: ar',
+        'dir: rtl',
+        '---',
+        '',
+        'مُقَدِّمَةٌ تَأْتِي قَبْلَ أَوَّلِ فَصْلٍ.',
+        '',
+        '# الْفَصْلُ الْأَوَّلُ',
+        '',
+        'نَصُّ الْفَصْلِ الْأَوَّلِ.',
+      ].join('\n');
+
+      const book = parseBook(md, 'file-name-forced.md');
+
+      expect(book.meta.title).toBe('كِتَابُ الرِّمَالِ');
+      expect(book.chapters).toHaveLength(2);
+      expect(book.chapters[0]!.title).toBe('كِتَابُ الرِّمَالِ');
+      expect(book.chapters[0]!.blocks[0]!.html).toContain('مُقَدِّمَةٌ');
+      expect(book.chapters[1]!.id).toBe('ch02');
+    });
+
+    it('titles a heading whose text is empty after stripping with the resolved title', () => {
+      const md = [
+        '---',
+        'title: "عُنْوَانٌ مُسْتَعَارٌ"',
+        'lang: ar',
+        'dir: rtl',
+        '---',
+        '',
+        '# [^n1]',
+        '',
+        'نَصُّ الْفَصْلِ الْأَوَّلِ.',
+      ].join('\n');
+
+      const book = parseBook(md, 'ignored-name.md');
+
+      expect(book.chapters).toHaveLength(1);
+      expect(book.chapters[0]!.title).toBe('عُنْوَانٌ مُسْتَعَارٌ');
+      expect(book.chapters[0]!.blocks[0]!.html).toContain('نَصُّ الْفَصْلِ');
+    });
+
+    it('does not create a ghost chapter for a lone empty quote line before the first heading', () => {
+      const md = ['>', '', '# الْفَصْلُ الْأَوَّلُ', '', 'نَصُّ الْفَصْلِ الْأَوَّلِ.'].join('\n');
+
+      const book = parseBook(md, 'ghost.md');
+
+      expect(book.chapters).toHaveLength(1);
+      // The chapter ids must not shift: the first real chapter is ch01, never ch02.
+      expect(book.chapters[0]!.id).toBe('ch01');
+      expect(book.chapters[0]!.title).toBe('الْفَصْلُ الْأَوَّلُ');
+      expect(book.chapters[0]!.blocks).toHaveLength(1);
+    });
+
+    it('keeps an explicit empty ">" preamble chapter when it is followed by real content', () => {
+      const md = ['>', '', 'مُقَدِّمَةٌ بَعْدَ اقْتِبَاسٍ فَارِغٍ.', '', '# الْفَصْلُ الْأَوَّلُ', '', 'نَصٌّ.'].join(
+        '\n',
+      );
+
+      const book = parseBook(md, 'preamble.md');
+
+      expect(book.chapters).toHaveLength(2);
+      expect(book.chapters[0]!.blocks).toHaveLength(1);
+      expect(book.chapters[0]!.blocks[0]!.html).toContain('مُقَدِّمَةٌ');
+      expect(book.chapters[1]!.id).toBe('ch02');
+    });
+
+    it('preserves an explicit empty "#" chapter even though it has no blocks', () => {
+      const md = ['# الْفَصْلُ الْأَوَّلُ', '', '# الْفَصْلُ الثَّانِي', '', 'نَصُّ الثَّانِي.'].join('\n');
+
+      const book = parseBook(md, 'empty-chapter.md');
+
+      expect(book.chapters.map((chapter) => chapter.id)).toEqual(['ch01', 'ch02']);
+      expect(book.chapters[0]!.blocks).toEqual([]);
+      expect(book.chapters[1]!.blocks[0]!.html).toContain('نَصُّ الثَّانِي');
+    });
+  });
 });
 
 describe('parseTxt', () => {

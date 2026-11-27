@@ -1,6 +1,23 @@
 export type { Anchor, Block, BlockKind, Book, BookMeta, Chapter } from './types.js';
-export { parseBook, parseTxt } from './parser.js';
-export type { ParseOptions } from './parser.js';
+export {
+  buildChapterBlocks,
+  chapterIdForIndex,
+  computeChapterRawHash,
+  finalizeChapter,
+  parseBook,
+  parseTxt,
+  prepareMarkdownBook,
+  prepareTxtBook,
+  RAW_HASH_VERSION,
+} from './parser.js';
+export type {
+  BookSourceFormat,
+  ChapterSourceSlice,
+  ParseOptions,
+  PreparedBookSource,
+} from './parser.js';
+export { deltaReparseBook, deltaReparseTxt } from './delta.js';
+export type { DeltaReparseResult } from './delta.js';
 export { cleanArabicText } from './cleaner.js';
 export type { CleanArabicOptions } from './cleaner.js';
 export { detectTxtChapterHeading } from './txt-chapters.js';

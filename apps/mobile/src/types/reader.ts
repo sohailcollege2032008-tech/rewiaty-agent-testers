@@ -89,6 +89,8 @@ export type BookManifest = {
     title: string;
     wordCount: number;
     hash: string;
+    /** Hash of the chapter's raw source slice (F21), used by delta re-parse. */
+    rawHash?: string;
   }>;
   wordCount: number;
   parserVersion: number;

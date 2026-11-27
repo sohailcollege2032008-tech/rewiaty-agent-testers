@@ -1,11 +1,15 @@
+import { parseBook } from '@rewiaty/book-format';
 import { Directory, Paths } from 'expo-file-system';
 
-import { deleteBookBundle, importBookContent } from '@/storage/bundle';
+import { deleteBookBundle, importBookContent, readBookBundle } from '@/storage/bundle';
 import { initDatabase, upsertBook, type DatabaseAdapter } from '@/storage/database';
 import {
   buildFtsQuery,
+  computeSearchContentHash,
   ensureLibrarySearchIndexed,
+  indexBookChaptersDelta,
   indexBookForSearch,
+  readSearchIndexHash,
   removeBookFromSearch,
   searchLibrary,
 } from '@/storage/search-index';
@@ -329,5 +333,71 @@ describe('search-normalize & real SQLite FTS5 search-index', () => {
     const avgMs = elapsedMs / iterations;
 
     expect(avgMs).toBeLessThan(15);
+  });
+
+  const EDITED_NOVEL_ONE_MD = NOVEL_ONE_MD.replace(
+    'ذَهَبَ مُوسَى إِلَى الْمِينَاءِ عِنْدَ الْفَجْرِ لِيَبْحَثَ عَنْ صَدِيقِهِ.',
+    'عَادَ مُوسَى مِنَ الْمِينَاءِ بَعْدَ الْفَجْرِ بَعْدَ أَنْ وَجَدَ صَدِيقَهُ الْقَدِيمَ.',
+  );
+
+  function failOnFtsInsert(base: DatabaseAdapter, failAt: number): DatabaseAdapter {
+    let inserts = 0;
+    return {
+      ...base,
+      async runAsync(source, ...params) {
+        if (source.includes('INSERT INTO book_search_fts')) {
+          inserts += 1;
+          if (inserts === failAt) throw new Error('injected FTS5 insert failure');
+        }
+        return base.runAsync(source, ...params);
+      },
+    };
+  }
+
+  it('rolls back a partial delta re-index when a later insert batch fails, then retries cleanly', async () => {
+    const rec = await importBookContent(NOVEL_ONE_MD, 'novel1.md', db);
+    const previousBook = (await readBookBundle(rec.id, db)).book;
+    const previousHash = computeSearchContentHash(previousBook);
+    const editedBook = { ...parseBook(EDITED_NOVEL_ONE_MD, 'novel1.md'), id: rec.id };
+
+    // Two chapters, batch size 1: ch01's second row is the failure point, after its first
+    // row and the deletes already ran — exactly the torn state a transaction must undo.
+    await expect(
+      indexBookChaptersDelta(editedBook, ['ch01', 'ch02'], [], failOnFtsInsert(db, 2), {
+        insertBatchSize: 1,
+      }),
+    ).rejects.toThrow('injected FTS5 insert failure');
+
+    // Old text is still fully searchable, new text is absent, and the marker never moved.
+    expect(await searchLibrary('عند الفجر', undefined, db)).toHaveLength(1);
+    expect(await searchLibrary('بعد أن وجد', undefined, db)).toEqual([]);
+    expect(await readSearchIndexHash(rec.id, db)).toBe(previousHash);
+
+    await indexBookChaptersDelta(editedBook, ['ch01', 'ch02'], [], db, { insertBatchSize: 1 });
+
+    expect(await searchLibrary('بعد أن وجد', undefined, db)).toHaveLength(1);
+    expect(await searchLibrary('عند الفجر', undefined, db)).toEqual([]);
+    expect(await readSearchIndexHash(rec.id, db)).toBe(computeSearchContentHash(editedBook));
+  });
+
+  it('rolls back a full re-index when the insert fails and keeps the previous rows', async () => {
+    const rec = await importBookContent(NOVEL_ONE_MD, 'novel1.md', db);
+    const previousBook = (await readBookBundle(rec.id, db)).book;
+    const previousHash = computeSearchContentHash(previousBook);
+    const editedBook = { ...parseBook(EDITED_NOVEL_ONE_MD, 'novel1.md'), id: rec.id };
+
+    await expect(indexBookForSearch(editedBook, failOnFtsInsert(db, 1))).rejects.toThrow(
+      'injected FTS5 insert failure',
+    );
+
+    expect(await searchLibrary('عند الفجر', undefined, db)).toHaveLength(1);
+    expect(await searchLibrary('بعد أن وجد', undefined, db)).toEqual([]);
+    expect(await readSearchIndexHash(rec.id, db)).toBe(previousHash);
+
+    await indexBookForSearch(editedBook, db);
+
+    expect(await searchLibrary('بعد أن وجد', undefined, db)).toHaveLength(1);
+    expect(await searchLibrary('عند الفجر', undefined, db)).toEqual([]);
+    expect(await readSearchIndexHash(rec.id, db)).toBe(computeSearchContentHash(editedBook));
   });
 });

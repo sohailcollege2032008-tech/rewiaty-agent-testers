@@ -1,4 +1,11 @@
-import { parseBook, parseTxt, type Book } from '@rewiaty/book-format';
+import {
+  deltaReparseBook,
+  deltaReparseTxt,
+  parseBook,
+  parseTxt,
+  type Book,
+  type DeltaReparseResult,
+} from '@rewiaty/book-format';
 import { Asset } from 'expo-asset';
 import { Directory, File, Paths } from 'expo-file-system';
 
@@ -12,7 +19,24 @@ import {
   upsertBook,
   type DatabaseAdapter,
 } from './database';
-import { indexBookForSearch, removeBookFromSearch } from './search-index';
+import {
+  BOOK_FILE,
+  MANIFEST_FILE,
+  READER_STATE_FILE,
+  buildStoredManifest,
+  rawTextHash,
+  readParsedCache,
+  reanchorReaderItems,
+  writeParsedCache,
+  type ParsedBookCache,
+} from './delta-reparse';
+import {
+  indexBookChaptersDelta,
+  indexBookForSearch,
+  computeSearchContentHash,
+  readSearchIndexHash,
+  removeBookFromSearch,
+} from './search-index';
 import type { BookLibraryRecord, BookManifest, BookReaderState } from '@/types/reader';
 
 /**
@@ -23,7 +47,7 @@ import type { BookLibraryRecord, BookManifest, BookReaderState } from '@/types/r
  * until the read settles, so the object cannot be collected mid-call.
  */
 const filesInFlight = new Set<File>();
-async function readFileText(file: File): Promise<string> {
+export async function readFileText(file: File): Promise<string> {
   filesInFlight.add(file);
   try {
     return await file.text();
@@ -35,9 +59,9 @@ async function readFileText(file: File): Promise<string> {
 
 /**
  * Why (versioning, Codex P2): `2` means the bundle's `manifest.json` carries an explicit
- * `cleanArabic` flag. Books imported before cleaning existed are still `1` with no flag, and they
- * keep being read *without* cleaning so their FTS5 rows, anchors, bookmarks and highlights (all
- * saved against the old parse) stay valid.
+ * `cleanArabic` flag (F19) and per-chapter `rawHash` (F21). Books imported before cleaning existed
+ * are still `1` with no flag, and they keep being read *without* cleaning so their FTS5 rows,
+ * anchors, bookmarks and highlights (all saved against the old parse) stay valid.
  */
 export const PARSER_VERSION = 2;
 
@@ -58,16 +82,6 @@ export type StoredManifest = BookManifest & {
   /** `true` when the stored book was parsed with the Arabic cleaner (parserVersion >= 2). */
   cleanArabic?: boolean;
 };
-
-async function readStoredManifest(bookDir: Directory): Promise<StoredManifest | null> {
-  const manifestFile = new File(bookDir, 'manifest.json');
-  if (!manifestFile.exists) return null;
-  try {
-    return JSON.parse(await readFileText(manifestFile)) as StoredManifest;
-  } catch {
-    return null;
-  }
-}
 
 export function getBooksRootDir(): Directory {
   return new Directory(Paths.document, 'books');
@@ -92,6 +106,67 @@ export type ImportBookContentOptions = {
    */
   isBundled?: boolean;
 };
+
+export async function readStoredManifest(bookDir: Directory): Promise<StoredManifest | null> {
+  const manifestFile = new File(bookDir, MANIFEST_FILE);
+  if (!manifestFile.exists) return null;
+  try {
+    return JSON.parse(await readFileText(manifestFile)) as StoredManifest;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read `<bookDir>/.reader-state.json`, normalizing every field and never throwing: a corrupt or
+ * missing state file degrades to the default state instead of failing the open.
+ */
+export async function readReaderState(bookId: string): Promise<BookReaderState> {
+  const stateFile = new File(getBookDir(bookId), READER_STATE_FILE);
+  let state: BookReaderState = {
+    anchor: null,
+    progress: 0,
+    updatedAt: Date.now(),
+  };
+
+  if (!stateFile.exists) return state;
+
+  try {
+    const parsedState = JSON.parse(await readFileText(stateFile)) as Partial<BookReaderState>;
+    state = {
+      anchor: parsedState.anchor ?? null,
+      progress:
+        typeof parsedState.progress === 'number' && Number.isFinite(parsedState.progress)
+          ? Math.max(0, Math.min(1, parsedState.progress))
+          : 0,
+      chapterId: parsedState.chapterId,
+      page: parsedState.page,
+      pageCount: parsedState.pageCount,
+      bookmarks: Array.isArray(parsedState.bookmarks)
+        ? parsedState.bookmarks.filter((n): n is number => typeof n === 'number' && Number.isFinite(n))
+        : undefined,
+      // Text-anchored bookmarks (F16); normalized later where the parsed book is available.
+      bookmarkItems: Array.isArray(parsedState.bookmarkItems)
+        ? (parsedState.bookmarkItems as BookReaderState['bookmarkItems'])
+        : undefined,
+      highlights: Array.isArray(parsedState.highlights)
+        ? (parsedState.highlights as BookReaderState['highlights'])
+        : undefined,
+      // F46: scene placeholders are part of the saved state. Dropping them here made every
+      // reopen start from a scene-less state, so the reader's edited prompts/status vanished.
+      // Optional and `undefined` for `.reader-state.json` files written before F46.
+      scenes: Array.isArray(parsedState.scenes)
+        ? (parsedState.scenes as BookReaderState['scenes'])
+        : undefined,
+      settings: parsedState.settings,
+      updatedAt: typeof parsedState.updatedAt === 'number' ? parsedState.updatedAt : Date.now(),
+    };
+  } catch {
+    // Fallback to default state if corrupted
+  }
+
+  return state;
+}
 
 export async function importBookContent(
   rawText: string,
@@ -133,28 +208,24 @@ export async function importBookContent(
   const assetsDir = new Directory(bookDir, 'assets');
   assetsDir.create({ intermediates: true, idempotent: true });
 
-  const bookFile = new File(bookDir, 'book.md');
+  const bookFile = new File(bookDir, BOOK_FILE);
   await bookFile.write(rawText);
 
-  const manifest: StoredManifest = {
-    id,
-    meta: book.meta,
-    chapters: book.chapters.map((ch) => ({
-      id: ch.id,
-      title: ch.title,
-      wordCount: ch.wordCount,
-      hash: ch.hash,
-    })),
-    wordCount: book.wordCount,
+  const manifest: StoredManifest = buildStoredManifest(book, sourceFormat, cleanArabic);
+  const manifestFile = new File(bookDir, MANIFEST_FILE);
+  await manifestFile.write(JSON.stringify(manifest, null, 2));
+
+  // Seed the parsed cache so the very first content update can already be a delta re-parse.
+  await persistParsedCache(bookDir, {
     parserVersion: PARSER_VERSION,
     sourceFormat,
     cleanArabic,
-  };
-  const manifestFile = new File(bookDir, 'manifest.json');
-  await manifestFile.write(JSON.stringify(manifest, null, 2));
+    rawTextHash: rawTextHash(rawText),
+    book,
+  });
 
   const now = Date.now();
-  const stateFile = new File(bookDir, '.reader-state.json');
+  const stateFile = new File(bookDir, READER_STATE_FILE);
   let initialProgress = 0;
   if (stateFile.exists) {
     try {
@@ -192,92 +263,182 @@ export async function importBookContent(
   return savedRecord;
 }
 
-export async function readBookBundle(bookId: string): Promise<{
+/**
+ * Load a book bundle, using the parsed-chapter cache (F21) instead of re-parsing every open.
+ *
+ * - Cache hit (same parser version, same format, same `book.md` hash): the cached `Book` is
+ *   returned immediately, but the FTS5 index is reconciled first — a cache hit says nothing about
+ *   whether indexing succeeded last time.
+ * - `book.md` changed on disk: only the chapters whose raw hash moved are re-parsed, then the
+ *   manifest and cache are refreshed, FTS5 is updated for those chapters, and highlights/bookmarks
+ *   are re-anchored against the new structure.
+ * - No usable cache: a full parse seeds the cache for the next open and rebuilds the whole index.
+ */
+export async function readBookBundle(
+  bookId: string,
+  db?: DatabaseAdapter,
+): Promise<{
   book: Book;
   manifest: StoredManifest;
   state: BookReaderState;
 }> {
   const bookDir = getBookDir(bookId);
-  const bookFile = new File(bookDir, 'book.md');
+  const bookFile = new File(bookDir, BOOK_FILE);
   if (!bookFile.exists) {
     throw new Error('تعذّر العثور على ملف الكتاب.');
   }
 
   const rawText = await readFileText(bookFile);
-  const manifest = await readStoredManifest(bookDir);
-
-  const sourceFormat = manifest?.sourceFormat ?? 'md';
-  const fileName = `${manifest?.meta?.title ?? bookId}.${sourceFormat}`;
+  const storedManifest = await readStoredManifest(bookDir);
+  const sourceFormat = storedManifest?.sourceFormat ?? 'md';
+  const fileName = `${storedManifest?.meta?.title ?? bookId}.${sourceFormat}`;
   // Why (compat, Codex P2): read a book exactly the way it was stored. Legacy books (parserVersion
   // 1, no `cleanArabic`) were parsed without cleaning, so their block ids, FTS5 rows, anchors,
   // bookmarks and highlights all line up with the raw text. Cleaning them here on the fly would move
   // every offset (`"مرحبا"` → `«مرحبا»`) and break all of them.
-  const cleanArabic = manifest?.cleanArabic === true;
-  const parsed =
-    sourceFormat === 'txt'
-      ? parseTxt(rawText, fileName, parseOptionsFor(cleanArabic))
-      : parseBook(rawText, fileName, parseOptionsFor(cleanArabic));
-  const book: Book = { ...parsed, id: bookId };
+  const cleanArabic = storedManifest?.cleanArabic === true;
+  const textHash = rawTextHash(rawText);
 
-  const fallbackManifest: StoredManifest = manifest ?? {
-    id: bookId,
-    meta: book.meta,
-    chapters: book.chapters.map((ch) => ({
-      id: ch.id,
-      title: ch.title,
-      wordCount: ch.wordCount,
-      hash: ch.hash,
-    })),
-    wordCount: book.wordCount,
+  const cache = await readParsedCache(bookDir);
+  const cacheMatchesFormat =
+    cache !== null &&
+    cache.parserVersion === PARSER_VERSION &&
+    cache.sourceFormat === sourceFormat &&
+    (cache.cleanArabic === true) === cleanArabic;
+
+  if (cacheMatchesFormat && cache && cache.rawTextHash === textHash) {
+    const cachedBook: Book = { ...cache.book, id: bookId };
+    // Why (tech): a cache hit only proves the parse is current, not that FTS5 was ever written
+    // for this content (a failed index, a rebuilt cache, an older app version). Reconcile so a
+    // search can never miss a book that opens fine.
+    await reconcileSearchIndex(cachedBook, db);
+    return {
+      book: cachedBook,
+      manifest: storedManifest ?? buildStoredManifest(cachedBook, sourceFormat, cleanArabic),
+      state: await readReaderState(bookId),
+    };
+  }
+
+  // A cache from the same parser + format + cleanArabic flag is the delta baseline even when `book.md` moved.
+  const previousBook: Book | null = cacheMatchesFormat && cache ? { ...cache.book, id: bookId } : null;
+
+  let book: Book;
+  let delta: DeltaReparseResult | null = null;
+  if (previousBook) {
+    delta = sourceFormat === 'txt'
+      ? deltaReparseTxt(rawText, fileName, previousBook, parseOptionsFor(cleanArabic))
+      : deltaReparseBook(rawText, fileName, previousBook, parseOptionsFor(cleanArabic));
+    book = { ...delta.book, id: bookId };
+  } else {
+    const parsed =
+      sourceFormat === 'txt'
+        ? parseTxt(rawText, fileName, parseOptionsFor(cleanArabic))
+        : parseBook(rawText, fileName, parseOptionsFor(cleanArabic));
+    book = { ...parsed, id: bookId };
+  }
+
+  // Why (compat, F19): a legacy (parserVersion < 2) bundle opened without a content delta keeps
+  // its original manifest intact (`parserVersion: 1`, `cleanArabic: undefined`) while seeding the
+  // parsed cache; only a delta update or a v2+ bundle rewrites `manifest.json`.
+  const preserveLegacyManifest =
+    !delta && storedManifest !== null && storedManifest.parserVersion < PARSER_VERSION;
+  const manifest: StoredManifest = preserveLegacyManifest
+    ? storedManifest
+    : buildStoredManifest(book, sourceFormat, cleanArabic);
+  if (!preserveLegacyManifest) {
+    await new File(bookDir, MANIFEST_FILE).write(JSON.stringify(manifest, null, 2));
+  }
+  await persistParsedCache(bookDir, {
     parserVersion: PARSER_VERSION,
     sourceFormat,
     cleanArabic,
-  };
+    rawTextHash: textHash,
+    book,
+  });
 
-  const stateFile = new File(bookDir, '.reader-state.json');
-  let state: BookReaderState = {
-    anchor: null,
-    progress: 0,
-    updatedAt: Date.now(),
-  };
+  if (!delta) {
+    // First sight of this bundle (or the cache was unusable): the parse is fresh, so the whole
+    // index is rewritten. A stale index left by the previous content would otherwise keep serving
+    // search hits for text that is no longer in the book (Codex P2).
+    await indexAfterFullParse(book, db);
+    return { book, manifest, state: await readReaderState(bookId) };
+  }
 
-  if (stateFile.exists) {
+  await indexAfterDeltaParse(book, delta, previousBook, db);
+
+  let state = await readReaderState(bookId);
+  const reanchored = reanchorReaderItems(book, state, {
+    reusedChapterIdMap: delta.reusedChapterIdMap,
+    removedChapterIds: delta.removedChapterIds,
+  });
+  if (reanchored.reanchoredHighlights > 0 || reanchored.reanchoredBookmarks > 0) {
+    state = { ...reanchored.state, updatedAt: Date.now() };
     try {
-      const parsedState = JSON.parse(await readFileText(stateFile)) as Partial<BookReaderState>;
-      state = {
-        anchor: parsedState.anchor ?? null,
-        progress:
-          typeof parsedState.progress === 'number' && Number.isFinite(parsedState.progress)
-            ? Math.max(0, Math.min(1, parsedState.progress))
-            : 0,
-        chapterId: parsedState.chapterId,
-        page: parsedState.page,
-        pageCount: parsedState.pageCount,
-        bookmarks: Array.isArray(parsedState.bookmarks)
-          ? parsedState.bookmarks.filter((n): n is number => typeof n === 'number' && Number.isFinite(n))
-          : undefined,
-        // Text-anchored bookmarks (F16); normalized later where the parsed book is available.
-        bookmarkItems: Array.isArray(parsedState.bookmarkItems)
-          ? (parsedState.bookmarkItems as BookReaderState['bookmarkItems'])
-          : undefined,
-        highlights: Array.isArray(parsedState.highlights)
-          ? (parsedState.highlights as BookReaderState['highlights'])
-          : undefined,
-        // F46: scene placeholders are part of the saved state. Dropping them here made every
-        // reopen start from a scene-less state, so the reader's edited prompts/status vanished.
-        // Optional and `undefined` for `.reader-state.json` files written before F46.
-        scenes: Array.isArray(parsedState.scenes)
-          ? (parsedState.scenes as BookReaderState['scenes'])
-          : undefined,
-        settings: parsedState.settings,
-        updatedAt: typeof parsedState.updatedAt === 'number' ? parsedState.updatedAt : Date.now(),
-      };
+      await saveBookReaderState(bookId, state, db);
     } catch {
-      // Fallback to default state if corrupted
+      // Why: the state file is written before the library progress update, so a DB hiccup leaves
+      // the re-anchored state on disk and must not fail the open.
     }
   }
 
-  return { book, manifest: fallbackManifest, state };
+  return { book, manifest, state };
+}
+
+/**
+ * Persist the parsed cache without ever failing the open: it is a speed-up, and a full parse can
+ * rebuild it on the next call.
+ */
+async function persistParsedCache(bookDir: Directory, cache: ParsedBookCache): Promise<void> {
+  try {
+    await writeParsedCache(bookDir, cache);
+  } catch {
+    // A read-only or full filesystem must not stop the reader from opening a valid book.
+  }
+}
+
+/** Index a book whose whole structure was just parsed, then verify/mark the index. */
+async function indexAfterFullParse(book: Book, db?: DatabaseAdapter): Promise<void> {
+  try {
+    await indexBookForSearch(book, db);
+  } catch {
+    // The search index is a cache; `ensureLibrarySearchIndexed` backfills anything missed.
+  }
+}
+
+/**
+ * Update FTS5 after a delta re-parse. A delta only rewrites the chapters it names, which is
+ * correct only when the untouched chapters are already indexed: when the stored index hash does
+ * not match the previous book, the baseline is not trustworthy and the whole book is re-indexed.
+ */
+async function indexAfterDeltaParse(
+  book: Book,
+  delta: DeltaReparseResult,
+  previousBook: Book | null,
+  db?: DatabaseAdapter,
+): Promise<void> {
+  try {
+    const previousHash = previousBook ? computeSearchContentHash(previousBook) : null;
+    const indexedHash = previousHash ? await readSearchIndexHash(book.id, db) : null;
+    if (previousHash === null || indexedHash !== previousHash) {
+      await indexBookForSearch(book, db);
+      return;
+    }
+    await indexBookChaptersDelta(book, delta.changedChapterIds, delta.removedChapterIds, db);
+  } catch {
+    // The search index is a cache; `ensureLibrarySearchIndexed` backfills anything missed.
+  }
+}
+
+/** Make sure FTS5 holds exactly this book's content, whatever state the marker is in. */
+async function reconcileSearchIndex(book: Book, db?: DatabaseAdapter): Promise<void> {
+  try {
+    const contentHash = computeSearchContentHash(book);
+    const indexedHash = await readSearchIndexHash(book.id, db);
+    if (indexedHash === contentHash) return;
+    await indexBookForSearch(book, db);
+  } catch {
+    // Same reasoning as above — search must never block reading.
+  }
 }
 
 // Why: page saves, bookmarks and highlights all write the same `.reader-state.json`. Two
@@ -310,7 +471,7 @@ async function writeBookReaderState(
   if (!bookDir.exists) {
     bookDir.create({ intermediates: true, idempotent: true });
   }
-  const stateFile = new File(bookDir, '.reader-state.json');
+  const stateFile = new File(bookDir, READER_STATE_FILE);
   await stateFile.write(JSON.stringify(state, null, 2));
   await updateBookProgress(bookId, state.progress, state.updatedAt, db);
 }
