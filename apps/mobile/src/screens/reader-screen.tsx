@@ -2579,7 +2579,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   edgeOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     // Keep edge positions physical even when the app shell forces RTL.
     direction: 'ltr',
     zIndex: 4,
