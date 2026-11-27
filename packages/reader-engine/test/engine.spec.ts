@@ -774,4 +774,88 @@ test.describe('Rewiaty Reader Engine', () => {
     expect(styles.heading).toBe('#FAF5EE');
     expect(styles.titleColor).toBe('rgb(250, 245, 238)');
   });
+
+  test('(l) P1 #57: cold-open anchor restore with animations enabled never freezes at a half-turned offset', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 411, height: 915 });
+    await mountEngine(page);
+    const arBook = parseBook(sampleArText, 'sample-ar.md');
+    const targetChapter = arBook.chapters[1] ?? arBook.chapters[0]!;
+    const midBlock = targetChapter.blocks[Math.min(targetChapter.blocks.length - 1, 6)]!;
+
+    // Cold open directly to a saved anchor in chapter 2 with animations ON (real app default)
+    // and large font size (simulating Android 200% font scale).
+    await sendBridge(page, {
+      type: 'load',
+      book: arBook,
+      anchor: { blockId: midBlock.id, charOffset: 0 },
+      settings: { disableAnimation: false, fontSize: 30, lineHeight: 1.95 },
+      insets: { top: 44, bottom: 52 },
+    });
+
+    // Sample the very first 12 animation frames right after cold open: the track must SNAP
+    // immediately to the exact anchor page offset with zero mid-transition drift.
+    const samples = await page.evaluate(async () => {
+      const results: Array<{ translateX: number; pageWidth: number; transitionDuration: string; scrollLeft: number }> = [];
+      const stage = document.getElementById('reader-stage')!;
+      const track = document.getElementById('reader-track')!;
+      for (let i = 0; i < 12; i++) {
+        await new Promise((r) => requestAnimationFrame(r));
+        const pageWidth = Math.round(
+          Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--page-width')),
+        );
+        const transform = getComputedStyle(track).transform;
+        const translateX =
+          transform && transform !== 'none' ? new DOMMatrixReadOnly(transform).m41 : 0;
+        results.push({
+          translateX,
+          pageWidth,
+          transitionDuration: getComputedStyle(track).transitionDuration,
+          scrollLeft: stage.scrollLeft,
+        });
+      }
+      return results;
+    });
+
+    await expect.poll(async () => (await getLatestPosition(page))?.chapterId).toBe(targetChapter.id);
+    const settledPos = (await getLatestPosition(page))!;
+    expect(settledPos.chapterPage).toBeGreaterThanOrEqual(2);
+
+    const expectedOffset = (settledPos.chapterPage - 1) * samples[0]!.pageWidth;
+    for (const sample of samples) {
+      expect(sample.pageWidth).toBeGreaterThan(0);
+      expect(sample.translateX).toBe(expectedOffset);
+      expect(sample.transitionDuration).toBe('0s');
+      expect(sample.scrollLeft).toBe(0);
+    }
+
+    // Trigger an inset/settings reflow right after cold open — must also snap to the resolved
+    // anchor page with 0s transition.
+    await sendBridge(page, {
+      type: 'settings',
+      partial: {},
+      insets: { top: 48, bottom: 56 },
+    });
+    const afterInsets = await page.evaluate(async () => {
+      await new Promise((r) => requestAnimationFrame(r));
+      const track = document.getElementById('reader-track')!;
+      const pageWidth = Math.round(
+        Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--page-width')),
+      );
+      const transform = getComputedStyle(track).transform;
+      const translateX =
+        transform && transform !== 'none' ? new DOMMatrixReadOnly(transform).m41 : 0;
+      return {
+        translateX,
+        pageWidth,
+        transitionDuration: getComputedStyle(track).transitionDuration,
+      };
+    });
+    const postInsetsPos = (await getLatestPosition(page))!;
+    expect(postInsetsPos.chapterId).toBe(targetChapter.id);
+    expect(postInsetsPos.chapterPage).toBeGreaterThanOrEqual(2);
+    expect(afterInsets.translateX).toBe((postInsetsPos.chapterPage - 1) * afterInsets.pageWidth);
+    expect(afterInsets.transitionDuration).toBe('0s');
+  });
 });
