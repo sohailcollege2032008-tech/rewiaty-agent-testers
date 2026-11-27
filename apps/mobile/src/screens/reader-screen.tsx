@@ -132,6 +132,7 @@ import {
   type JumpOrigin,
   type JumpTarget,
 } from '@/utils/jump-back';
+import { formatPageEdgeLabel, pageEdgeLayout } from '@/utils/page-edges';
 import { progressToPercent } from '@/utils/progress';
 import { showToast } from '@/utils/toast';
 import { buildWelcomeBackRecap, type WelcomeBackRecap } from '@/utils/welcome-back';
@@ -1941,6 +1942,9 @@ export function ReaderScreen() {
     isPositionBookmarked(bookmarkItems, currentAnchorRef.current, pageInfo.page);
   const progressRatio =
     pageInfo.pageCount > 1 ? Math.max(0, Math.min(1, (pageInfo.page - 1) / (pageInfo.pageCount - 1))) : 0;
+  // F25 — what is read vs what is left, as two physical paper stacks. Hidden until the engine has
+  // measured the book: a saved page number is not progress yet.
+  const pageEdges = pageEdgeLayout(progressRatio, engineReady ? pageInfo.pageCount : 0, effectiveDir);
   const pctRead = progressToPercent(pageInfo.bookProgress);
 
   if (loadError) {
@@ -2038,31 +2042,49 @@ export function ReaderScreen() {
         {/* F31 — dimmer + warmth sit above the page and below every control. */}
         <LightingOverlay dimmer={dimmer} warmth={warmth} />
 
-        {/* Living page-edge thickness indicators */}
-        <View
-          pointerEvents="none"
-          style={[
-            styles.edgeStack,
-            styles.edgeRight,
-            {
-              width: 2 + progressRatio * (layout.isTabletLandscape ? 8 : 4),
-              backgroundColor: themeTokens.pageEdgeBg,
-              borderLeftColor: themeTokens.pageEdge,
-            },
-          ]}
-        />
-        <View
-          pointerEvents="none"
-          style={[
-            styles.edgeStack,
-            styles.edgeLeft,
-            {
-              width: (layout.isTabletLandscape ? 10 : 6) - progressRatio * (layout.isTabletLandscape ? 7 : 4),
-              backgroundColor: themeTokens.pageEdgeBg,
-              borderRightColor: themeTokens.pageEdge,
-            },
-          ]}
-        />
+        {/* F25 — living page-edge thickness: what is read grows to 6 px, what is left thins to 2 px.
+            Both sit under every gesture surface (pointerEvents none) so a page swipe never hits them,
+            and both carry the measured width in their label for the device journey. */}
+        {pageEdges ? (
+          <>
+            <View
+              pointerEvents="none"
+              accessible
+              accessibilityRole="text"
+              accessibilityLabel={formatPageEdgeLabel('read', pageEdges.readWidth)}
+              testID="reader-page-edge-read"
+              style={[
+                styles.edgeStack,
+                pageEdges.readSide === 'right' ? styles.edgeRight : styles.edgeLeft,
+                {
+                  width: pageEdges.readWidth,
+                  backgroundColor: themeTokens.pageEdgeBg,
+                },
+                pageEdges.readSide === 'right'
+                  ? { borderLeftColor: themeTokens.pageEdge }
+                  : { borderRightColor: themeTokens.pageEdge },
+              ]}
+            />
+            <View
+              pointerEvents="none"
+              accessible
+              accessibilityRole="text"
+              accessibilityLabel={formatPageEdgeLabel('remaining', pageEdges.remainingWidth)}
+              testID="reader-page-edge-remaining"
+              style={[
+                styles.edgeStack,
+                pageEdges.remainingSide === 'right' ? styles.edgeRight : styles.edgeLeft,
+                {
+                  width: pageEdges.remainingWidth,
+                  backgroundColor: themeTokens.pageEdgeBg,
+                },
+                pageEdges.remainingSide === 'right'
+                  ? { borderLeftColor: themeTokens.pageEdge }
+                  : { borderRightColor: themeTokens.pageEdge },
+              ]}
+            />
+          </>
+        ) : null}
 
         {/* Center book spine crease in tablet landscape open-book spread */}
         {layout.isTabletLandscape ? (

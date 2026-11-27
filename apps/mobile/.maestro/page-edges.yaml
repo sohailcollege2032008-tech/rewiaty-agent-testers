@@ -1,0 +1,81 @@
+appId: com.rewiaty.app
+---
+# F25 — سُمك حواف الصفحات: المقروء على اليمين في الكتاب العربي وبيتخن مع التقدم، والمتبقي على
+# الشمال وبيضعف. Maestro مابيقيسش عرض الـ View، فكل حافة بتحمل عرضها الحقيقي (px) في نصها،
+# والرحلة بتقارن نفس النص قبل وبعد قفزة بالـ scrubber — مع رقم الصفحة كدليل إن التقدم نفسه اتغيّر.
+- launchApp
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 20000
+- waitForAnimationToEnd
+# أول الكتاب: مفيش مقروء لسه (الحافة اليمين عند حدها الأدنى 2px) وكل الكتاب متبقي (الشمال 6px).
+- assertVisible:
+    id: "reader-page-edge-read"
+    text: "سمك المقروء 2\\.0 بيكسل"
+- assertVisible:
+    id: "reader-page-edge-remaining"
+    text: "سمك المتبقي 6\\.0 بيكسل"
+- takeScreenshot: "01-edges-at-start"
+# افتح الـ HUD عشان الشريط (لو مقفول).
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-scrubber-track"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-scrubber-track"
+    timeout: 5000
+# في الكتاب العربي آخر الكتاب ناحية الشمال: السحب لليسار بيقدّم القراءة.
+- swipe:
+    from:
+      id: "reader-scrubber-track"
+    direction: LEFT
+    duration: 800
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-page-counter"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+# التقدم اتغيّر فعلاً: مش صفحة 1، ورقم الصفحة ظاهر.
+- assertNotVisible:
+    id: "reader-page-counter"
+    text: "صفحة 1 من .*"
+- assertVisible:
+    id: "reader-page-counter"
+    text: "صفحة [0-9]+ من.*"
+# الحافة المقروءة خرجت من 2px وبقت في نص المدى، والمتبقية بقت أرفع من 6px.
+- assertNotVisible:
+    id: "reader-page-edge-read"
+    text: "سمك المقروء 2\\.0 بيكسل"
+- assertVisible:
+    id: "reader-page-edge-read"
+    text: "سمك المقروء [4-6]\\.[0-9] بيكسل"
+- assertVisible:
+    id: "reader-page-edge-remaining"
+    text: "سمك المتبقي [2-3]\\.[0-9] بيكسل"
+- takeScreenshot: "02-read-edge-grown"
+# رجوع لأول الكتاب: سحب لليمين، والحواف بترجع بالظبط لقيم البداية.
+- swipe:
+    from:
+      id: "reader-scrubber-track"
+    direction: RIGHT
+    duration: 800
+- waitForAnimationToEnd
+- assertVisible:
+    id: "reader-page-edge-read"
+    text: "سمك المقروء 2\\.0 بيكسل"
+- assertVisible:
+    id: "reader-page-edge-remaining"
+    text: "سمك المتبقي 6\\.0 بيكسل"
+- takeScreenshot: "03-edges-reset"
