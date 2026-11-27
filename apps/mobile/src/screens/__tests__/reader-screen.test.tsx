@@ -715,8 +715,8 @@ describe('ReaderScreen', () => {
       });
     });
 
-    // P3-3: 7/12 = 58.33% -> 58%, matching LibraryScreen (not page/pageCount = 62%)
-    const runningNumbers = getByText('8 / 13 · 58%');
+    // P3-3 + P2 #60: 7/12 = 58.33% -> 58%, with LRI isolates so RTL BiDi never flips % or ~
+    const runningNumbers = getByText('صفحة 8 من 13 · \u206658%\u2069');
     expect(runningNumbers.props.numberOfLines).toBe(1);
     const runningNumbersStyle = ReactNative.StyleSheet.flatten(runningNumbers.props.style) as Record<
       string,
@@ -846,5 +846,13 @@ describe('ReaderScreen', () => {
     expect(readerErrorMessage(new Error("Call to function 'FileSystemFile.text' has been rejected"))).toBe(READER_OPEN_FAILED_MESSAGE);
     expect(readerErrorMessage(new Error('تعذّر العثور على ملف الكتاب.'))).toBe('تعذّر العثور على ملف الكتاب.');
     expect(readerErrorMessage(undefined)).toBe(READER_OPEN_FAILED_MESSAGE);
+  });
+
+  it('P2 #60 (Codex P2): isolates ~total and % with LRI..PDI and matches swipe hint to effectiveDir', () => {
+    const { formatRunningFooterCounter, getHudHintText } = jest.requireActual('@/screens/reader-screen');
+    expect(formatRunningFooterCounter(8, 13, false, 58)).toBe('صفحة 8 من 13 · \u206658%\u2069');
+    expect(formatRunningFooterCounter(8, 13, true, 58)).toBe('صفحة 8 من \u2066~13\u2069 · \u206658%\u2069');
+    expect(getHudHintText('rtl')).toContain('اسحب لليمين للصفحة الجاية');
+    expect(getHudHintText('ltr')).toContain('اسحب لليسار للصفحة الجاية');
   });
 });

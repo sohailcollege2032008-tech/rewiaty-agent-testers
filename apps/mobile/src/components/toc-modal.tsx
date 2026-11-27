@@ -504,7 +504,7 @@ export function TocModal({
                         { color: palette.accent, fontFamily: TYPOGRAPHY.uiFont },
                       ]}
                     >
-                      تصدير Markdown
+                      تصدير الملاحظات
                     </Text>
                   </Pressable>
                 </View>
