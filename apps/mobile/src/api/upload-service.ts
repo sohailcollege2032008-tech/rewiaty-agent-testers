@@ -1,0 +1,378 @@
+/**
+ * Live `PdfUploadService` over the v0 `RewiatyApiClient`.
+ *
+ * Why (architecture): screens never talk to the network directly. The PDF-upload screen depends
+ * on the injectable `PdfUploadService` seam, and this file is the one place that turns that seam
+ * into real calls: presign → PUT → complete → estimate, then the F42 onboarding sample, the
+ * art-direction persist, the job create and the SSE subscription.
+ *
+ * Two product rules are encoded here, not in the screen:
+ *
+ * 1. **Re-estimating an AI level never re-uploads the PDF.** Presign/complete are keyed by the
+ *    picked file, so changing `ai_level` on the preflight card only calls `POST /v1/jobs/estimate`
+ *    against the already-completed `upload_id`.
+ * 2. **The reader never opens on an empty bundle.** `ensureChapterImported` runs the
+ *    `ProgressiveBookImporter` for the first ready chapter *before* navigation, so the local
+ *    canonical `book.md` already holds the chapter.
+ *
+ * BYOK material is resolved from F40 storage (`loadByokConfig` + `readByokSecret`) and attached to
+ * the request body only; nothing here logs or persists a key.
+ */
+
+import * as DocumentPicker from 'expo-document-picker';
+import { File } from 'expo-file-system';
+
+import {
+  loadByokConfig,
+  readByokSecret,
+  type ByokProvider,
+} from '@/storage/byok-store';
+import type { DatabaseAdapter } from '@/storage/database';
+import type {
+  AiLevel,
+  BookArtDirection,
+  BookArtDirectionInput,
+  ByokInput,
+  CostEstimateResponse,
+  OnboardingSampleResponse,
+  PdfUploadService,
+  PickedPdf,
+  StartConversionInput,
+  StartConversionResult,
+  UploadAndEstimateResult,
+} from '@/types/upload-contract';
+
+import type { RewiatyApiClient } from './client';
+import { ProgressiveBookImporter } from './progressive-import';
+import { subscribeToJobEvents } from './sse';
+import type { JobCreateRequest, JobSseEvent, JobStatus, OnboardingSampleRequest } from './types';
+
+/** The picked PDF, named as the brief calls it. Same shape as the contract's `PickedPdf`. */
+export type PickedPdfFile = PickedPdf;
+
+/**
+ * `GenerateSampleRequest` plus the upload id the current preflight already holds.
+ *
+ * The contract's request body carries `upload_id` optionally; the screen only knows `book_id`,
+ * so the service remembers the last upload for the book and fills it in.
+ */
+export type OnboardingSampleServiceInput = {
+  book_id?: string;
+  uploadId?: string;
+  upload_id?: string;
+  byok?: ByokInput;
+};
+
+export type StartConversionServiceInput = StartConversionInput & {
+  /** Contract spelling (`budget_cap_usd`). */
+  budget_cap_usd?: number;
+  /** Camel-case convenience used by newer call sites. */
+  budgetCapUsd?: number;
+};
+
+export type StartConversionServiceResult = StartConversionResult & {
+  status?: JobStatus;
+};
+
+export type RewiatyApiUploadService = Omit<
+  PdfUploadService,
+  'uploadAndEstimate' | 'generateOnboardingSample' | 'startConversion' | 'subscribeProgress'
+> & {
+  /** Positional form (what the screen calls) and object form (used by newer code). */
+  uploadAndEstimate(
+    pdf: PickedPdf,
+    options: { ai_level: AiLevel },
+  ): Promise<UploadAndEstimateResult>;
+  uploadAndEstimate(input: { file: PickedPdf; aiLevel: AiLevel }): Promise<UploadAndEstimateResult>;
+  generateOnboardingSample(input?: OnboardingSampleServiceInput): Promise<OnboardingSampleResponse>;
+  startConversion(input: StartConversionServiceInput): Promise<StartConversionServiceResult>;
+  subscribeProgress(
+    jobId: string,
+    onEvent: (event: import('@/types/upload-contract').ConversionProgressEvent) => void,
+    onError?: (error: Error) => void,
+  ): () => void;
+};
+
+export type CreateRewiatyApiUploadServiceOptions = {
+  client: RewiatyApiClient;
+  /** Where the progressive importer writes the local canonical bundle. */
+  db?: DatabaseAdapter;
+  /** Injectable for tests; defaults to `expo-document-picker` limited to PDFs. */
+  pickPdf?: () => Promise<PickedPdfFile | null>;
+  /** Injectable for tests; defaults to reading the picked file with `expo-file-system`. */
+  readPdfBytes?: (uri: string) => Promise<Uint8Array>;
+  /** Injectable for tests; defaults to F40 storage (secure-store key + kv config). */
+  resolveByok?: () => Promise<ByokInput | undefined>;
+};
+
+/** Shown when the user asks for an AI sample before saving a key. */
+export const SAMPLE_NEEDS_BYOK_AR = 'محتاج تحفظ مفتاح الموديل الأول عشان نجهّز العيّنة.';
+
+/** Strong references to files mid-read (Hermes can collect a `File` during `await`). */
+const filesInFlight = new Set<File>();
+
+async function readFileBytes(uri: string): Promise<Uint8Array> {
+  const file = new File(uri);
+  filesInFlight.add(file);
+  try {
+    return await file.bytes();
+  } finally {
+    filesInFlight.delete(file);
+  }
+}
+
+async function pickPdfWithDocumentPicker(): Promise<PickedPdfFile | null> {
+  const result = await DocumentPicker.getDocumentAsync({
+    type: 'application/pdf',
+    copyToCacheDirectory: true,
+    multiple: false,
+  });
+  if (result.canceled || !result.assets || result.assets.length === 0) return null;
+  const asset = result.assets[0]!;
+  return {
+    uri: asset.uri,
+    name: asset.name,
+    sizeBytes: typeof asset.size === 'number' && asset.size > 0 ? asset.size : 0,
+    mimeType: asset.mimeType ?? 'application/pdf',
+  };
+}
+
+async function resolveByokFromStorage(db?: DatabaseAdapter): Promise<ByokInput | undefined> {
+  const config = await loadByokConfig(db);
+  if (!config.hasKey) return undefined;
+  const apiKey = await readByokSecret(config.provider as ByokProvider);
+  if (!apiKey) return undefined;
+  return {
+    mode: 'ephemeral',
+    provider: config.provider,
+    api_key: apiKey,
+    model: config.modelId,
+  };
+}
+
+/** Flatten one wire SSE frame into the discriminated event the screen's reducer expects. */
+export function toProgressEvent(
+  event: JobSseEvent,
+): import('@/types/upload-contract').ConversionProgressEvent | null {
+  switch (event.event) {
+    case 'job.status':
+      return { type: 'job.status', job_id: event.data.job_id, status: event.data.status };
+    case 'job.stage':
+      return { type: 'job.stage', job_id: event.data.job_id, stage: event.data.stage };
+    case 'page.progress':
+      return {
+        type: 'page.progress',
+        job_id: event.data.job_id,
+        current_page: event.data.current_page,
+        total_pages: event.data.total_pages,
+        percent: event.data.percent,
+        stage: event.data.stage,
+      };
+    case 'chapter.ready':
+      return {
+        type: 'chapter.ready',
+        chapter_id: event.data.chapter_id,
+        chapter_index: event.data.chapter_index,
+        title: event.data.title,
+        message_ar: event.data.message_ar,
+        chapter_url: event.data.chapter_url,
+        manifest_url: event.data.manifest_url,
+        word_count: event.data.word_count,
+      };
+    case 'budget.mode_changed':
+      return {
+        type: 'budget.mode_changed',
+        mode: event.data.mode,
+        reason: event.data.reason,
+        spent_usd: event.data.spent_usd,
+        cap_usd: event.data.cap_usd,
+      };
+    case 'job.queued':
+      return {
+        type: 'job.queued',
+        position: event.data.position,
+        reason: event.data.reason,
+        display_message_ar: event.data.display_message_ar,
+        retry_after_sec: event.data.retry_after_sec,
+      };
+    case 'job.completed':
+      return {
+        type: 'job.completed',
+        job_id: event.data.job_id,
+        book_id: event.data.book_id,
+        manifest_url: event.data.manifest_url,
+        book_md_url: event.data.book_md_url,
+        chapters_count: event.data.chapters_count,
+        pages_processed: event.data.pages_processed,
+      };
+    case 'job.failed':
+      return { type: 'job.failed', job_id: event.data.job_id, error: event.data.error };
+    default:
+      // `heartbeat` is transport liveness, not progress.
+      return null;
+  }
+}
+
+function fileCacheKey(pdf: PickedPdfFile): string {
+  return `${pdf.uri}|${pdf.sizeBytes}|${pdf.name}`;
+}
+
+/**
+ * Build the live upload service.
+ *
+ * Every dependency that touches the network, the filesystem or secure storage is injectable so a
+ * Jest test (and an offline demo build) never needs a real backend.
+ */
+export function createRewiatyApiUploadService(
+  options: CreateRewiatyApiUploadServiceOptions,
+): RewiatyApiUploadService {
+  const { client, db } = options;
+  const pick = options.pickPdf ?? pickPdfWithDocumentPicker;
+  const readBytes = options.readPdfBytes ?? readFileBytes;
+  const resolveByok = options.resolveByok ?? (() => resolveByokFromStorage(db));
+
+  /** `book_id` since the last estimate, used when a caller omits it. */
+  let lastBookId: string | undefined;
+  let lastUploadId: string | undefined;
+
+  /**
+   * Per-picked-file upload cache. The key is the file identity, so changing only `ai_level`
+   * never presigns or uploads again — it just re-estimates against the stored `upload_id`.
+   */
+  const uploads = new Map<string, { upload_id: string; book_id: string }>();
+
+  async function ensureUploaded(pdf: PickedPdfFile): Promise<{ upload_id: string; book_id: string }> {
+    const key = fileCacheKey(pdf);
+    const cached = uploads.get(key);
+    if (cached) return cached;
+
+    const presign = await client.presignUpload({
+      filename: pdf.name,
+      content_type: 'application/pdf',
+      size_bytes: pdf.sizeBytes,
+    });
+    const bytes = await readBytes(pdf.uri);
+    await client.uploadPdfBytes(presign, bytes);
+    const completed = await client.completeUpload(presign.upload_id);
+
+    // Cache before estimating: a failed estimate must not force a second upload.
+    const entry = {
+      upload_id: completed.upload_id || presign.upload_id,
+      book_id: completed.book_id || presign.book_id,
+    };
+    uploads.set(key, entry);
+    lastBookId = entry.book_id;
+    lastUploadId = entry.upload_id;
+    return entry;
+  }
+
+  async function estimateFor(pdf: PickedPdfFile, aiLevel: AiLevel): Promise<UploadAndEstimateResult> {
+    const ids = await ensureUploaded(pdf);
+    const estimate: CostEstimateResponse = await client.estimateJob({
+      upload_id: ids.upload_id,
+      ai_level: aiLevel,
+    });
+    const resolved = {
+      upload_id: estimate.upload_id || ids.upload_id,
+      book_id: estimate.book_id || ids.book_id,
+    };
+    lastBookId = resolved.book_id;
+    lastUploadId = resolved.upload_id;
+    // Refresh the cache with whatever the estimate echoed, so the ids always agree.
+    uploads.set(fileCacheKey(pdf), resolved);
+    return { upload_id: resolved.upload_id, book_id: resolved.book_id, estimate };
+  }
+
+  const uploadAndEstimate = (async (
+    pdfOrInput: PickedPdfFile | { file: PickedPdfFile; aiLevel: AiLevel },
+    callOptions?: { ai_level: AiLevel },
+  ): Promise<UploadAndEstimateResult> => {
+    if ('file' in pdfOrInput) {
+      return estimateFor(pdfOrInput.file, pdfOrInput.aiLevel);
+    }
+    return estimateFor(pdfOrInput, callOptions?.ai_level ?? 'essential');
+  }) as RewiatyApiUploadService['uploadAndEstimate'];
+
+  const service: RewiatyApiUploadService = {
+    pickPdf: async () => pick(),
+
+    uploadAndEstimate,
+
+    generateOnboardingSample: async (input?: OnboardingSampleServiceInput) => {
+      const bookId = input?.book_id ?? lastBookId;
+      if (!bookId) {
+        throw new Error('مفيش كتاب محدد نجهّز له عيّنة.');
+      }
+      const uploadId = input?.uploadId ?? input?.upload_id ?? lastUploadId;
+      const byok = input?.byok ?? (await resolveByok());
+      if (!byok) {
+        throw new Error(SAMPLE_NEEDS_BYOK_AR);
+      }
+      const body: OnboardingSampleRequest = {
+        ...(uploadId ? { upload_id: uploadId } : {}),
+        byok,
+        include_style_previews: true,
+      };
+      return client.generateOnboardingSample(bookId, body);
+    },
+
+    saveArtDirection: (bookId: string, input: BookArtDirectionInput): Promise<BookArtDirection> =>
+      client.saveArtDirection(bookId, input),
+
+    startConversion: async (input: StartConversionServiceInput): Promise<StartConversionServiceResult> => {
+      const byok = input.byok ?? (await resolveByok());
+      const budgetCapUsd = input.budget_cap_usd ?? input.budgetCapUsd;
+      // Why (OpenAPI v0): art direction is persisted on its own endpoint first; the job body only
+      // references the book. `byok` is omitted rather than sent as `undefined` when no key exists,
+      // and the server's own error then reaches the screen as the calm «تعذّر بدء التحويل».
+      const body = {
+        book_id: input.book_id,
+        upload_id: input.upload_id,
+        ai_level: input.ai_level,
+        ...(byok ? { byok } : {}),
+        ...(budgetCapUsd === undefined ? {} : { budget_cap_usd: budgetCapUsd }),
+      } as JobCreateRequest;
+      const job = await client.createJob(body);
+      return {
+        job_id: job.job_id,
+        book_id: job.book_id || input.book_id,
+        status: job.status,
+        ...(job.queue_state ? { queue_state: job.queue_state } : {}),
+      };
+    },
+
+    subscribeProgress: (jobId, onEvent, onError) => {
+      const controller = new AbortController();
+      void subscribeToJobEvents({
+        baseUrl: client.getBaseUrl(),
+        jobId,
+        getAccessToken: () => client.getAuthToken(),
+        signal: controller.signal,
+        onEvent: (event) => {
+          const mapped = toProgressEvent(event);
+          if (mapped) onEvent(mapped);
+        },
+        ...(onError
+          ? {
+              onError: (error: Error) => {
+                if (!controller.signal.aborted) onError(error);
+              },
+            }
+          : {}),
+      }).catch((error: unknown) => {
+        if (controller.signal.aborted || !onError) return;
+        onError(error instanceof Error ? error : new Error(String(error)));
+      });
+      // The synchronous unsubscribe is what the screen stores in its ref; aborting closes the
+      // stream and stops the reconnect loop.
+      return () => controller.abort();
+    },
+
+    ensureChapterImported: async (bookId: string, chapterId: string): Promise<void> => {
+      const importer = new ProgressiveBookImporter(client, bookId, db);
+      await importer.importReadyChapters([chapterId]);
+    },
+  };
+
+  return service;
+}

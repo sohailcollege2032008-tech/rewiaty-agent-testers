@@ -24,9 +24,17 @@ import WebView, { type WebViewMessageEvent, type WebViewNavigation } from 'react
 
 import { HighlightNoteModal } from '@/components/highlight-note-modal';
 import { HighlightToolbar } from '@/components/highlight-toolbar';
+import { DictionarySheet } from '@/components/dictionary-sheet';
 import { ReaderHud } from '@/components/reader-hud';
 import { ReaderSettingsSheet } from '@/components/reader-settings-sheet';
 import { TocModal } from '@/components/toc-modal';
+import {
+  DICTIONARY_ATTRIBUTION,
+  DICTIONARY_UNAVAILABLE_REASON,
+  lookupDictionaryWord,
+  openBundledDictionaryDb,
+  type DictionaryLookupResult,
+} from '@/storage/dictionary';
 import {
   extractBookmarkContext,
   isPositionBookmarked,
@@ -107,6 +115,24 @@ export function readerErrorMessage(err: unknown): string {
   if (message && ARABIC_RE.test(message)) return message;
   if (message) console.warn('[reader] open failed:', message);
   return READER_OPEN_FAILED_MESSAGE;
+}
+
+/** Arabic diacritics + tatweel, stripped before a dictionary lookup. */
+const ARABIC_DIACRITICS_RE = /[\u064B-\u0652\u0670\u0640]/g;
+/** Arabic letters/digits only: the text around a selection (quotes, punctuation) is dropped. */
+const ARABIC_LOOKUP_TOKEN_RE = /[\u0621-\u064A\u0660-\u0669]+/g;
+
+/**
+ * F49: pick the word to look up out of a reader selection.
+ *
+ * A long-press may select a whole phrase, so the first Arabic token of at least
+ * two letters is used; diacritics are stripped because the dictionary index is
+ * stored without them.
+ */
+export function extractLookupWord(quote: string): string {
+  const cleaned = typeof quote === 'string' ? quote.replace(ARABIC_DIACRITICS_RE, '') : '';
+  const tokens = cleaned.match(ARABIC_LOOKUP_TOKEN_RE) ?? [];
+  return tokens.find((token) => token.length >= 2) ?? '';
 }
 
 export const HUD_HINT_KV_KEY = 'reader_hud_hint_seen_v1';
@@ -190,6 +216,16 @@ export function ReaderScreen() {
     | { mode: 'edit'; highlight: HighlightItem }
     | null
   >(null);
+  /**
+   * F49 long-press dictionary. The sheet is driven by four flat pieces of state so it can render
+   * its loading/unavailable states without a second component owning the lookup.
+   */
+  const [dictVisible, setDictVisible] = useState(false);
+  const [dictWord, setDictWord] = useState('');
+  const [dictLoading, setDictLoading] = useState(false);
+  const [dictResult, setDictResult] = useState<DictionaryLookupResult | null>(null);
+  /** Monotonic token: a lookup that resolves after a newer one (or after unmount) is discarded. */
+  const dictRequestRef = useRef(0);
   const noteModalOpenRef = useRef(false);
   noteModalOpenRef.current = noteModalTarget !== null;
   const [vesselSize, setVesselSize] = useState<{ width: number; height: number }>(() => {
@@ -319,6 +355,14 @@ export function ReaderScreen() {
       flushReadingStats();
     };
   }, [debouncedSave, flushReadingStats]);
+
+  // A lookup that is still in flight when the reader closes must not set state afterwards.
+  useEffect(
+    () => () => {
+      dictRequestRef.current += 1;
+    },
+    [],
+  );
 
   const colorSchemeRef = useRef(colorScheme);
   colorSchemeRef.current = colorScheme;
@@ -920,6 +964,55 @@ export function ReaderScreen() {
     }
   }, [activeSelection, editingHighlight, postToEngine]);
 
+  /**
+   * F49: look up the selected word (or the quoted text of the highlight being edited)
+   * in the bundled offline dictionary. The sheet opens immediately and fills in.
+   */
+  const handlePressToolbarDictionary = useCallback(() => {
+    const sourceQuote = activeSelection?.quote ?? editingHighlight?.quote ?? '';
+    const word = extractLookupWord(sourceQuote);
+    const requestId = dictRequestRef.current + 1;
+    dictRequestRef.current = requestId;
+
+    setActiveSelection(null);
+    setEditingHighlightState(null);
+    postToEngine({ type: 'clear-selection' });
+    setDictWord(word);
+    setDictResult(null);
+    setDictVisible(true);
+
+    if (!word) {
+      // Nothing Arabic to look up: say so instead of showing a "looking…" state forever.
+      setDictLoading(false);
+      setDictResult({
+        status: 'not_found',
+        query: sourceQuote.trim(),
+        normalized: '',
+        attribution: DICTIONARY_ATTRIBUTION,
+      });
+      return;
+    }
+
+    setDictLoading(true);
+    void (async () => {
+      let result: DictionaryLookupResult;
+      try {
+        const db = await openBundledDictionaryDb();
+        result = await lookupDictionaryWord(word, db);
+      } catch {
+        result = {
+          status: 'unavailable',
+          query: word,
+          reasonAr: DICTIONARY_UNAVAILABLE_REASON,
+          attribution: DICTIONARY_ATTRIBUTION,
+        };
+      }
+      if (dictRequestRef.current !== requestId) return;
+      setDictResult(result);
+      setDictLoading(false);
+    })();
+  }, [activeSelection, editingHighlight, postToEngine]);
+
   const handlePressToolbarDelete = useCallback(() => {
     if (!editingHighlightState) return;
     persistHighlights(removeHighlightById(highlightsRef.current, editingHighlightState.id));
@@ -1383,6 +1476,7 @@ export function ReaderScreen() {
               theme={settings.theme}
               onSelectColor={handleSelectHighlightColor}
               onPressNote={handlePressToolbarNote}
+              onPressDictionary={handlePressToolbarDictionary}
               onPressDelete={editingHighlight ? handlePressToolbarDelete : undefined}
             />
 
@@ -1400,6 +1494,15 @@ export function ReaderScreen() {
               dir={effectiveDir}
               onSave={handleSaveNoteModal}
               onCancel={() => setNoteModalTarget(null)}
+            />
+
+            <DictionarySheet
+              visible={dictVisible}
+              word={dictWord}
+              result={dictResult}
+              loading={dictLoading}
+              theme={settings.theme}
+              onClose={() => setDictVisible(false)}
             />
 
             <TocModal

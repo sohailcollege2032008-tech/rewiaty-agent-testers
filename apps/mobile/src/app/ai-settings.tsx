@@ -57,6 +57,72 @@ export default function AiSettingsScreen() {
           اربط مفتاحك الخاص (BYOK) عشان روايتي تشتغل على حسابك، بموديل بيقرا النص والصور مع بعض.
         </Text>
         <ByokSettingsCard theme={themeId} />
+
+        <View style={styles.linkGroup}>
+          <Pressable
+            testID="ai-settings-open-pdf-upload"
+            accessibilityRole="button"
+            accessibilityLabel="تحويل كتاب PDF بالذكاء الاصطناعي"
+            onPress={() => router.push('/pdf-upload')}
+            style={({ pressed }) => [
+              styles.linkRow,
+              {
+                backgroundColor: tokens.surfaceElevated,
+                borderColor: tokens.border,
+                opacity: pressed ? 0.75 : 1,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.linkTitle,
+                { color: tokens.text, fontFamily: TYPOGRAPHY.uiFont, writingDirection: 'rtl' },
+              ]}
+            >
+              تحويل كتاب PDF بالذكاء الاصطناعي
+            </Text>
+            <Text
+              style={[
+                styles.linkHint,
+                { color: tokens.muted, fontFamily: TYPOGRAPHY.uiFont, writingDirection: 'rtl' },
+              ]}
+            >
+              ارفع ملف PDF وشوف التكلفة التقديرية واختار مستوى الذكاء قبل التحويل.
+            </Text>
+          </Pressable>
+
+          <Pressable
+            testID="ai-settings-open-about"
+            accessibilityRole="button"
+            accessibilityLabel="عن التطبيق وتراخيص القاموس"
+            onPress={() => router.push('/about')}
+            style={({ pressed }) => [
+              styles.linkRow,
+              {
+                backgroundColor: tokens.surfaceElevated,
+                borderColor: tokens.border,
+                opacity: pressed ? 0.75 : 1,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.linkTitle,
+                { color: tokens.text, fontFamily: TYPOGRAPHY.uiFont, writingDirection: 'rtl' },
+              ]}
+            >
+              عن التطبيق وتراخيص القاموس
+            </Text>
+            <Text
+              style={[
+                styles.linkHint,
+                { color: tokens.muted, fontFamily: TYPOGRAPHY.uiFont, writingDirection: 'rtl' },
+              ]}
+            >
+              رخصة الكود وبيانات القاموس من ويكاموس العربي بموجب CC BY-SA 4.0.
+            </Text>
+          </Pressable>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -99,6 +165,29 @@ const styles = StyleSheet.create({
   pageHint: {
     fontSize: 12.5,
     lineHeight: 20,
+    textAlign: 'right',
+  },
+  linkGroup: {
+    gap: SPACING.sm,
+  },
+  linkRow: {
+    // Every row is a real 48dp+ touch target, matching the reader's back/settings buttons.
+    minHeight: 48,
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderRadius: RADIUS.card,
+  },
+  linkTitle: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  linkHint: {
+    fontSize: 12,
+    lineHeight: 18,
     textAlign: 'right',
   },
 });
