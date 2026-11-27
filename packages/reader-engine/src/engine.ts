@@ -114,6 +114,11 @@ export class ReaderEngine {
   private imageProofEmptyChecks = 0;
   /** Last box reported for the current book, so the pump cannot spam the host. */
   private imageProofSignature = '';
+  /**
+   * F27 — last `paper-grain-status` reported. A theme change re-applies the page, but most reports
+   * (every position) leave the grain untouched, so unchanged statuses are deduped the same way.
+   */
+  private paperGrainSignature = '';
   /** One-line account of the last measurement, quoted in the page when there is nothing painted. */
   private imageProofDetail = '';
   /** Debounce for the post-scroll position report (scroll mode only). */
@@ -593,6 +598,8 @@ export class ReaderEngine {
     this.imageProofTries = 0;
     this.imageProofEmptyChecks = 0;
     this.imageProofSignature = '';
+    // A new book starts with no grain reported either, so its status is emitted again.
+    this.paperGrainSignature = '';
     for (const id of ['reader-image-proof', 'reader-image-error', 'reader-image-probe']) {
       document.getElementById(id)?.remove();
     }
@@ -835,6 +842,9 @@ export class ReaderEngine {
           msg.chapterId,
         );
         postToHost({ type: 'ready' });
+        // F27: the theme (and therefore the grain) is applied by `setBook` above, so this is the
+        // first moment the status is meaningful — and it must not wait for exact pagination.
+        this.emitPaperGrainStatus();
         this.paginator.scheduleBackgroundWork();
         this.emitAfterSettle();
         break;
@@ -857,6 +867,9 @@ export class ReaderEngine {
         }
         const partial = msg.partial ?? {};
         this.paginator.updateSettings(partial, msg.insets);
+        // F27: a theme change repaints the grain (on → off → on). Report it before the position
+        // pipeline, which can withhold its first message until the page map is exact.
+        this.emitPaperGrainStatus();
         this.emitPositionAndToc();
         // Re-count the book for the new typography so the page numbers converge on the
         // real ones (the first report above is allowed to be an estimate).
@@ -1065,6 +1078,40 @@ export class ReaderEngine {
     return (last.x - first.x) / dt;
   }
 
+  /**
+   * F27 — report what the page is *actually* painting for the paper grain.
+   *
+   * Reading `getComputedStyle` (rather than echoing settings) is the point: it catches a rule that
+   * was removed, a theme that still matches, or a stray live filter — the exact failures a
+   * stylesheet review cannot. `hasLiveFilter` is reported separately so the host can show the grain
+   * as off instead of treating a forbidden `filter` as fine.
+   */
+  private emitPaperGrainStatus(): void {
+    const el = document.getElementById('paper-grain');
+    if (!el) return;
+    const style = getComputedStyle(el);
+    const backdrop =
+      (style as CSSStyleDeclaration & { backdropFilter?: string }).backdropFilter ??
+      (style as CSSStyleDeclaration & { webkitBackdropFilter?: string }).webkitBackdropFilter ??
+      'none';
+    const filter = typeof style.filter === 'string' && style.filter !== '' ? style.filter : 'none';
+    const active = style.display !== 'none';
+    const parsedOpacity = Number.parseFloat(style.opacity);
+    const parsedSize = Number.parseFloat(style.backgroundSize);
+    const status = {
+      type: 'paper-grain-status' as const,
+      active,
+      opacity: Number.isFinite(parsedOpacity) ? parsedOpacity : 0,
+      size: Number.isFinite(parsedSize) ? parsedSize : 0,
+      repeating: style.backgroundRepeat === 'repeat',
+      hasLiveFilter: filter !== 'none' || backdrop !== 'none',
+    };
+    const signature = `${status.active}:${status.opacity}:${status.size}:${status.repeating}:${status.hasLiveFilter}`;
+    if (signature === this.paperGrainSignature) return;
+    this.paperGrainSignature = signature;
+    postToHost(status);
+  }
+
   private emitPosition(userNavigated = false): void {
     const pos = this.paginator.getPositionSnapshot();
     if (!pos) return;
@@ -1076,6 +1123,9 @@ export class ReaderEngine {
       ...pos,
       ...(userNavigated ? { userNavigated: true } : {}),
     });
+    // A settled page is when the grain (if any) is guaranteed to be painted, and the position is
+    // the report the host already re-renders on — piggybacking keeps the two in sync.
+    this.emitPaperGrainStatus();
   }
 
   /**

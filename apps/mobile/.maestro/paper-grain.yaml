@@ -1,0 +1,144 @@
+appId: com.rewiaty.app
+---
+# F27 — ملمس الورق: قارئ بيفتح رواية على ورق Warraq/Sepia، والملمس الخفيف (3%) باين
+# على الصفحة، وبيختفي على الثيمات الغامقة. الإثبات من صفحة المحرّك نفسها (نص شفاف
+# في شجرة الـ accessibility) مش من الإعدادات.
+- launchApp
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 20000
+- waitForAnimationToEnd
+# Open the bars only if they are closed (they open on their own with a hint on first launch).
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-settings-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-settings-button"
+    timeout: 5000
+- tapOn:
+    id: "reader-settings-button"
+- tapOn:
+    id: "settings-tab-theme"
+
+# Warraq: the default paper theme — the grain must be on at exactly 3%.
+- extendedWaitUntil:
+    visible:
+      id: "theme-option-warraq"
+    timeout: 5000
+- tapOn:
+    id: "theme-option-warraq"
+# S2 pattern: close the settings sheet by tapping above it.
+- tapOn:
+    point: "50%,15%"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "reader-paper-grain-proof"
+      text: "ملمس الورق: مفعّل ٣٪"
+    timeout: 10000
+- takeScreenshot: "01-paper-grain-warraq"
+
+# Sepia: the second paper theme — same 3% tile, no re-download, no filter.
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-settings-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-settings-button"
+    timeout: 5000
+- tapOn:
+    id: "reader-settings-button"
+- tapOn:
+    id: "settings-tab-theme"
+- extendedWaitUntil:
+    visible:
+      id: "theme-option-sepia"
+    timeout: 5000
+- tapOn:
+    id: "theme-option-sepia"
+- tapOn:
+    point: "50%,15%"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "reader-paper-grain-proof"
+      text: "ملمس الورق: مفعّل ٣٪"
+    timeout: 10000
+- takeScreenshot: "02-paper-grain-sepia"
+
+# Burnt paper: a dark theme must drop the grain completely (no light flecks on dark paper).
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-settings-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-settings-button"
+    timeout: 5000
+- tapOn:
+    id: "reader-settings-button"
+- tapOn:
+    id: "settings-tab-theme"
+- extendedWaitUntil:
+    visible:
+      id: "theme-option-burnt-paper"
+    timeout: 5000
+- tapOn:
+    id: "theme-option-burnt-paper"
+- tapOn:
+    point: "50%,15%"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "reader-paper-grain-proof"
+      text: "ملمس الورق: متوقّف"
+    timeout: 10000
+- takeScreenshot: "03-paper-grain-burnt-paper-off"
+
+# Restore the paper theme so the next journey starts from the product default.
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-settings-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-settings-button"
+    timeout: 5000
+- tapOn:
+    id: "reader-settings-button"
+- tapOn:
+    id: "settings-tab-theme"
+- extendedWaitUntil:
+    visible:
+      id: "theme-option-warraq"
+    timeout: 5000
+- tapOn:
+    id: "theme-option-warraq"
+- tapOn:
+    point: "50%,15%"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "reader-paper-grain-proof"
+      text: "ملمس الورق: مفعّل ٣٪"
+    timeout: 10000

@@ -419,6 +419,72 @@ describe('ReaderScreen', () => {
     expect(utils.getByTestId('reader-image-error')).toBeTruthy();
   });
 
+  it('exposes the paper-grain proof as «مفعّل ٣٪» only for a live, filter-free 3% repeat', async () => {
+    const utils = await renderLoadedReader();
+    expect(utils.queryByTestId('reader-paper-grain-proof')).toBeNull();
+
+    // F27: the engine reads the painted page and reports it. The proof means "the grain is on
+    // screen at 3%, tiled, with no live filter" — not merely "a url was configured".
+    await act(async () => {
+      emitWebMessage({
+        type: 'paper-grain-status',
+        active: true,
+        opacity: 0.03,
+        size: 128,
+        repeating: true,
+        hasLiveFilter: false,
+      });
+    });
+
+    const proof = utils.getByTestId('reader-paper-grain-proof');
+    expect(proof.props.children).toBe('ملمس الورق: مفعّل ٣٪');
+
+    // A page that hides the grain (a dark theme, custom colours) says so, and the enabled line goes.
+    await act(async () => {
+      emitWebMessage({
+        type: 'paper-grain-status',
+        active: false,
+        opacity: 0,
+        size: 0,
+        repeating: false,
+        hasLiveFilter: false,
+      });
+    });
+
+    expect(utils.getByTestId('reader-paper-grain-proof').props.children).toBe('ملمس الورق: متوقّف');
+  });
+
+  it('never calls a filtered or wrongly-opaque grain «مفعّل»', async () => {
+    const utils = await renderLoadedReader();
+
+    // A live CSS filter is the exact thing F27 forbids, so an "active" grain that uses one is a
+    // failure the proof must show, not pass over.
+    await act(async () => {
+      emitWebMessage({
+        type: 'paper-grain-status',
+        active: true,
+        opacity: 0.03,
+        size: 128,
+        repeating: true,
+        hasLiveFilter: true,
+      });
+    });
+    expect(utils.getByTestId('reader-paper-grain-proof').props.children).toBe('ملمس الورق: متوقّف');
+
+    // A grain painted at the wrong strength is not the product spec either (3% ± 0.1%).
+    await act(async () => {
+      emitWebMessage({
+        type: 'paper-grain-status',
+        active: true,
+        opacity: 0.2,
+        size: 128,
+        repeating: true,
+        hasLiveFilter: false,
+      });
+    });
+    expect(utils.getByTestId('reader-paper-grain-proof').props.children).toBe('ملمس الورق: متوقّف');
+  });
+
   it('automatically uses burnt-paper when system colorScheme is dark and no manual theme is set', async () => {
     colorSchemeSpy.mockReturnValue('dark');
     await renderLoadedReader();
