@@ -5,7 +5,12 @@
  *  1. re-estimating an AI level never re-uploads the PDF, and
  *  2. `startConversion` sends no `art_direction` (it is persisted separately).
  */
-import { createRewiatyApiUploadService, SAMPLE_NEEDS_BYOK_AR, toProgressEvent } from '@/api/upload-service';
+import {
+  CONVERSION_NEEDS_BYOK_AR,
+  createRewiatyApiUploadService,
+  SAMPLE_NEEDS_BYOK_AR,
+  toProgressEvent,
+} from '@/api/upload-service';
 import type {
   BookArtDirection,
   CostEstimateResponse,
@@ -266,16 +271,31 @@ describe('createRewiatyApiUploadService', () => {
     });
   });
 
-  it('omits byok when no key is saved and lets the server error surface', async () => {
+  it('refuses to start a conversion without BYOK and never calls createJob (review P2)', async () => {
     resolveByok.mockResolvedValue(undefined);
+    const service = build();
+    await expect(
+      service.startConversion({
+        book_id: 'book_1',
+        upload_id: 'up_1',
+        ai_level: 'purist',
+      }),
+    ).rejects.toThrow(CONVERSION_NEEDS_BYOK_AR);
+    expect(client.createJob).not.toHaveBeenCalled();
+  });
+
+  it('still accepts an explicit byok block without reading storage', async () => {
+    resolveByok.mockRejectedValue(new Error('storage should not be read'));
     const service = build();
     await service.startConversion({
       book_id: 'book_1',
       upload_id: 'up_1',
-      ai_level: 'purist',
+      ai_level: 'essential',
+      byok: { mode: 'saved', key_id: 'key_7', model: 'gemini-3-pro' },
     });
+
     const body = client.createJob.mock.calls[0]![0];
-    expect(body).not.toHaveProperty('byok');
+    expect(body.byok).toEqual({ mode: 'saved', key_id: 'key_7', model: 'gemini-3-pro' });
     expect(body).not.toHaveProperty('budget_cap_usd');
   });
 
@@ -368,8 +388,61 @@ describe('createRewiatyApiUploadService', () => {
     expect(importReadyChapters).toHaveBeenNthCalledWith(2, ['ch_02']);
   });
 
-  it('throws when the initial chapter import persists no bundle on disk', async () => {
+  it('imports every manifest-ready chapter when the job completed without chapter.ready (review P1)', async () => {
     const importReadyChapters = jest.fn(async () => ({
+      importedCount: 3,
+      skippedCount: 0,
+      totalChapters: 3,
+      isComplete: true,
+      bookRecord: { id: 'book_1' } as never,
+    }));
+    importerMock.mockImplementation(() => ({ importReadyChapters }));
+    const service = build();
+
+    await service.ensureChapterImported!('book_1');
+
+    // No argument: the importer falls back to `manifest.ready_chapter_ids`.
+    expect(importReadyChapters).toHaveBeenCalledWith();
+  });
+
+  it('never borrows another book\'s upload_id for an explicit book_id (review P3)', async () => {
+    client.presignUpload
+      .mockResolvedValueOnce({ ...PRESIGN, upload_id: 'up_1', book_id: 'book_1' })
+      .mockResolvedValueOnce({ ...PRESIGN, upload_id: 'up_2', book_id: 'book_2' });
+    client.completeUpload
+      .mockResolvedValueOnce({ upload_id: 'up_1', book_id: 'book_1' })
+      .mockResolvedValueOnce({ upload_id: 'up_2', book_id: 'book_2' });
+    client.estimateJob
+      .mockResolvedValueOnce({ ...ESTIMATE, upload_id: 'up_1', book_id: 'book_1' })
+      .mockResolvedValueOnce({ ...ESTIMATE, upload_id: 'up_2', book_id: 'book_2' });
+
+    const service = build();
+    await service.uploadAndEstimate(PDF, { ai_level: 'essential' });
+    await service.uploadAndEstimate({ ...PDF, uri: 'file:///cache/second.pdf' }, { ai_level: 'essential' });
+
+    // `book_9` was never uploaded in this session: the last upload (book_2's up_2) must NOT leak.
+    await service.generateOnboardingSample({ book_id: 'book_9' });
+
+    expect(client.generateOnboardingSample).toHaveBeenCalledWith('book_9', {
+      byok: BYOK,
+      include_style_previews: true,
+    });
+  });
+
+  it('keeps the last upload as a fallback only when no book_id is named', async () => {
+    const service = build();
+    await service.uploadAndEstimate(PDF, { ai_level: 'essential' });
+
+    await service.generateOnboardingSample();
+
+    expect(client.generateOnboardingSample).toHaveBeenCalledWith('book_1', {
+      upload_id: 'up_1',
+      byok: BYOK,
+      include_style_previews: true,
+    });
+  });
+
+  it('throws when the initial chapter import persists no bundle on disk', async () => {    const importReadyChapters = jest.fn(async () => ({
       importedCount: 0,
       skippedCount: 1,
       totalChapters: 3,

@@ -108,6 +108,16 @@ export type CreateRewiatyApiUploadServiceOptions = {
 /** Shown when the user asks for an AI sample before saving a key. */
 export const SAMPLE_NEEDS_BYOK_AR = 'محتاج تحفظ مفتاح الموديل الأول عشان نجهّز العيّنة.';
 
+/**
+ * Shown when a conversion is attempted without a BYOK key.
+ *
+ * Why (review P2): `POST /v1/jobs` requires `byok` by contract. Sending the request without it
+ * spends a round-trip only to come back as a generic HTTP error; refusing locally keeps the
+ * message specific and the user on the settings screen that fixes it.
+ */
+export const CONVERSION_NEEDS_BYOK_AR =
+  'محتاج تحفظ مفتاح الموديل الأول من إعدادات الذكاء الاصطناعي عشان تبدأ التحويل.';
+
 /** Strong references to files mid-read (Hermes can collect a `File` during `await`). */
 const filesInFlight = new Set<File>();
 
@@ -316,12 +326,22 @@ export function createRewiatyApiUploadService(
     uploadAndEstimate,
 
     generateOnboardingSample: async (input?: OnboardingSampleServiceInput) => {
-      const bookId = input?.book_id ?? lastBookId;
+      const explicitBookId = input?.book_id;
+      const bookId = explicitBookId ?? lastBookId;
       if (!bookId) {
         throw new Error('مفيش كتاب محدد نجهّز له عيّنة.');
       }
+      /**
+       * Why (review P3): `lastUploadId` belongs to the *last uploaded* book. Reusing it for a
+       * different explicit `book_id` would ask the server for a sample of book A using book B's
+       * upload — the exact cross-book mix-up this map exists to prevent. It stays a fallback
+       * only when the caller did not name a book and no per-book upload is known.
+       */
       const uploadId =
-        input?.uploadId ?? input?.upload_id ?? bookToUploadId.get(bookId) ?? lastUploadId;
+        input?.uploadId ??
+        input?.upload_id ??
+        bookToUploadId.get(bookId) ??
+        (explicitBookId ? undefined : lastUploadId);
       const byok = input?.byok ?? (await resolveByok());
       if (!byok) {
         throw new Error(SAMPLE_NEEDS_BYOK_AR);
@@ -339,17 +359,21 @@ export function createRewiatyApiUploadService(
 
     startConversion: async (input: StartConversionServiceInput): Promise<StartConversionServiceResult> => {
       const byok = input.byok ?? (await resolveByok());
+      // Why (review P2): `byok` is required by the v0 contract. Refusing here — before any
+      // request — turns a generic server error into the one action that fixes it.
+      if (!byok) {
+        throw new Error(CONVERSION_NEEDS_BYOK_AR);
+      }
       const budgetCapUsd = input.budget_cap_usd ?? input.budgetCapUsd;
       // Why (OpenAPI v0): art direction is persisted on its own endpoint first; the job body only
-      // references the book. `byok` is omitted rather than sent as `undefined` when no key exists,
-      // and the server's own error then reaches the screen as the calm «تعذّر بدء التحويل».
-      const body = {
+      // references the book.
+      const body: JobCreateRequest = {
         book_id: input.book_id,
         upload_id: input.upload_id,
         ai_level: input.ai_level,
-        ...(byok ? { byok } : {}),
+        byok,
         ...(budgetCapUsd === undefined ? {} : { budget_cap_usd: budgetCapUsd }),
-      } as JobCreateRequest;
+      };
       const job = await client.createJob(body);
       return {
         job_id: job.job_id,
@@ -386,13 +410,18 @@ export function createRewiatyApiUploadService(
       return () => controller.abort();
     },
 
-    ensureChapterImported: async (bookId: string, chapterId: string): Promise<void> => {
+    ensureChapterImported: async (bookId: string, chapterId?: string): Promise<void> => {
       let importer = importers.get(bookId);
       if (!importer) {
         importer = new ProgressiveBookImporter(client, bookId, db);
         importers.set(bookId, importer);
       }
-      const result = await importer.importReadyChapters([chapterId]);
+      // No chapter id means the job completed without a `chapter.ready` event: import whatever
+      // the manifest marks ready (the importer already no-ops when nothing is ready yet).
+      const result =
+        chapterId === undefined
+          ? await importer.importReadyChapters()
+          : await importer.importReadyChapters([chapterId]);
       if (result) {
         if (result.bookRecord) {
           importedBooks.add(bookId);

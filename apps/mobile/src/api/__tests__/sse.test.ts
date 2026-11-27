@@ -24,8 +24,7 @@ function toBytes(text: string): Uint8Array {
   return new Uint8Array(out);
 }
 
-/** A Response whose `body` behaves like a native ReadableStream (web / Node path). */
-function streamingResponse(chunks: string[]): Response {
+/** A Response whose `body` behaves like a native ReadableStream (web / Node path). */function streamingResponse(chunks: string[]): Response {
   let index = 0;
   return {
     ok: true,
@@ -551,5 +550,230 @@ describe('subscribeToJobEvents', () => {
     expect(first.data.title).toBe('الفصل الأول');
     expect(first.data.message_ar).toBe('الفصل الأول جاهز، ابدأ اقرا');
     expect(JSON.stringify(received)).not.toContain('\uFFFD');
+  });
+});
+
+/**
+ * React Native has no streamable `fetch` body: `response.body` is undefined there, so the SSE
+ * endpoint used to arrive as one buffered response and `chapter.ready` only surfaced after the
+ * connection closed — the whole point of live progress was lost. The XHR path below fixes that.
+ */
+describe('subscribeToJobEvents (React Native XHR transport)', () => {
+  type MockXhr = {
+    method: string;
+    url: string;
+    headers: Record<string, string>;
+    responseText: string;
+    status: number;
+    aborted: boolean;
+    onprogress: (() => void) | null;
+    onload: (() => void) | null;
+    onerror: (() => void) | null;
+    onabort: (() => void) | null;
+    ontimeout: (() => void) | null;
+    open: (method: string, url: string) => void;
+    setRequestHeader: (key: string, value: string) => void;
+    send: () => void;
+    abort: () => void;
+    /** Test helper: append stream bytes and fire one progress tick. */
+    emitProgress: (text: string) => void;
+    /** Test helper: end the response with a status code. */
+    complete: (status: number) => void;
+  };
+
+  const originalXhr = (globalThis as { XMLHttpRequest?: unknown }).XMLHttpRequest;
+
+  function installMockXhr(): MockXhr[] {
+    const instances: MockXhr[] = [];
+    class MockXMLHttpRequest {
+      method = '';
+      url = '';
+      headers: Record<string, string> = {};
+      responseText = '';
+      status = 0;
+      aborted = false;
+      onprogress: (() => void) | null = null;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onabort: (() => void) | null = null;
+      ontimeout: (() => void) | null = null;
+
+      constructor() {
+        instances.push(this as unknown as MockXhr);
+      }
+      open(method: string, url: string): void {
+        this.method = method;
+        this.url = url;
+      }
+      setRequestHeader(key: string, value: string): void {
+        this.headers[key] = value;
+      }
+      send(): void {}
+      abort(): void {
+        this.aborted = true;
+        this.onabort?.();
+      }
+      emitProgress(text: string): void {
+        this.responseText += text;
+        this.onprogress?.();
+      }
+      complete(status: number): void {
+        this.status = status;
+        this.onload?.();
+      }
+    }
+    (globalThis as { XMLHttpRequest?: unknown }).XMLHttpRequest =
+      MockXMLHttpRequest as unknown as typeof XMLHttpRequest;
+    return instances;
+  }
+
+  const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+  afterEach(() => {
+    (globalThis as { XMLHttpRequest?: unknown }).XMLHttpRequest = originalXhr;
+  });
+
+  it('delivers chapter.ready during onprogress, before the connection is closed', async () => {
+    const instances = installMockXhr();
+    const received: JobSseEvent[] = [];
+
+    const done = subscribeToJobEvents({
+      baseUrl: 'https://api.test',
+      jobId: 'job_1',
+      transport: 'xhr',
+      retryDelayMs: 0,
+      getAccessToken: async () => 'jwt-xhr',
+      onEvent: (event) => received.push(event),
+    });
+
+    await flush();
+    expect(instances).toHaveLength(1);
+    const xhr = instances[0]!;
+    expect(xhr.method).toBe('GET');
+    expect(xhr.url).toBe('https://api.test/v1/jobs/job_1/events');
+    expect(xhr.headers.Authorization).toBe('Bearer jwt-xhr');
+    expect(xhr.headers.Accept).toBe('text/event-stream');
+
+    // Mid-stream: the socket is still open, yet the chapter must already be on screen.
+    xhr.emitProgress(frame('1', 'chapter.ready', chapterReadyEvent));
+    expect(received.map((event) => event.event)).toEqual(['chapter.ready']);
+    expect(xhr.aborted).toBe(false);
+    const first = received[0];
+    if (first?.event !== 'chapter.ready') throw new Error('expected chapter.ready first');
+    expect(first.data.title).toBe('الفصل الأول');
+
+    // A terminal frame closes the connection and resolves the subscription.
+    xhr.emitProgress(frame('2', 'job.completed', completedEvent));
+    const result = await done;
+
+    expect(result.closedByTerminalEvent).toBe(true);
+    expect(result.lastEventId).toBe('2');
+    expect(xhr.aborted).toBe(true);
+    expect(received.map((event) => event.event)).toEqual(['chapter.ready', 'job.completed']);
+    expect(instances).toHaveLength(1);
+  });
+
+  it('splits a frame that arrives across two progress ticks', async () => {
+    const instances = installMockXhr();
+    const received: JobSseEvent[] = [];
+    const body =
+      frame('1', 'chapter.ready', chapterReadyEvent) + frame('2', 'job.completed', completedEvent);
+
+    const done = subscribeToJobEvents({
+      baseUrl: 'https://api.test',
+      jobId: 'job_1',
+      transport: 'xhr',
+      onEvent: (event) => received.push(event),
+    });
+
+    await flush();
+    const xhr = instances[0]!;
+    xhr.emitProgress(body.slice(0, 30));
+    expect(received).toHaveLength(0);
+    xhr.emitProgress(body.slice(30));
+
+    const result = await done;
+    expect(result.closedByTerminalEvent).toBe(true);
+    expect(received.map((event) => event.event)).toEqual(['chapter.ready', 'job.completed']);
+  });
+
+  it('retries a 5xx with Last-Event-ID and then finishes', async () => {
+    const instances = installMockXhr();
+    const received: JobSseEvent[] = [];
+
+    const done = subscribeToJobEvents({
+      baseUrl: 'https://api.test',
+      jobId: 'job_1',
+      transport: 'xhr',
+      retryDelayMs: 0,
+      onEvent: (event) => received.push(event),
+    });
+
+    await flush();
+    instances[0]!.emitProgress(
+      frame('7', 'page.progress', {
+        job_id: 'job_1',
+        current_page: 3,
+        total_pages: 10,
+        percent: 30,
+        stage: 'ocr',
+      }),
+    );
+    instances[0]!.complete(503);
+
+    await flush();
+    expect(instances).toHaveLength(2);
+    expect(instances[1]!.headers['Last-Event-ID']).toBe('7');
+
+    instances[1]!.emitProgress(frame('8', 'job.completed', completedEvent));
+    const result = await done;
+
+    expect(result.closedByTerminalEvent).toBe(true);
+    expect(result.lastEventId).toBe('8');
+    expect(received.map((event) => event.event)).toEqual(['page.progress', 'job.completed']);
+  });
+
+  it('aborts the XHR and stops reconnecting when the caller aborts', async () => {
+    const instances = installMockXhr();
+    const controller = new AbortController();
+
+    const done = subscribeToJobEvents({
+      baseUrl: 'https://api.test',
+      jobId: 'job_1',
+      transport: 'xhr',
+      signal: controller.signal,
+      onEvent: () => undefined,
+    });
+
+    await flush();
+    expect(instances).toHaveLength(1);
+    controller.abort();
+
+    const result = await done;
+    expect(instances[0]!.aborted).toBe(true);
+    expect(result.closedByTerminalEvent).toBe(false);
+    expect(instances).toHaveLength(1);
+  });
+
+  it('reports a non-retryable status once and gives up', async () => {
+    const instances = installMockXhr();
+    const onError = jest.fn();
+
+    const done = subscribeToJobEvents({
+      baseUrl: 'https://api.test',
+      jobId: 'job_1',
+      transport: 'xhr',
+      retryDelayMs: 0,
+      onEvent: () => undefined,
+      onError,
+    });
+
+    await flush();
+    instances[0]!.complete(404);
+    const result = await done;
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(instances).toHaveLength(1);
+    expect(result.closedByTerminalEvent).toBe(false);
   });
 });

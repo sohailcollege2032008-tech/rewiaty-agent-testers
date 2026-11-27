@@ -252,9 +252,18 @@ export type PdfUploadService = {
   generateOnboardingSample: (input: GenerateSampleInput) => Promise<OnboardingSampleResponse>;
   saveArtDirection: (bookId: string, input: BookArtDirectionInput) => Promise<BookArtDirection>;
   startConversion: (input: StartConversionInput) => Promise<StartConversionResult>;
-  ensureChapterImported?: (bookId: string, chapterId: string) => Promise<void>;
+  /**
+   * `chapterId` is optional because a completed job may never have emitted `chapter.ready`:
+   * in that case the service imports whatever the manifest marks ready instead of guessing an id.
+   */
+  ensureChapterImported?: (bookId: string, chapterId?: string) => Promise<void>;
+  /**
+   * `onError` reports a transport failure the stream could not recover from, so the screen can
+   * say «still running, follow it in Mission Control» instead of going silent.
+   */
   subscribeProgress: (
     jobId: string,
     onEvent: (event: ConversionProgressEvent) => void,
+    onError?: (error: Error) => void,
   ) => () => void;
 };

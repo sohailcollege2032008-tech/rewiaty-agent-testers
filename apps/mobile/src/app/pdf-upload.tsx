@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useRouter } from 'expo-router';
 
-import { createRewiatyApiUploadService, RewiatyApiClient } from '@/api';
+import { createRewiatyApiUploadService, getAuthenticatedApiClient } from '@/api';
 import { OFFLINE_SERVICE_BANNER_AR, PdfUploadScreen } from '@/screens/pdf-upload-screen';
 
 /**
@@ -29,7 +29,9 @@ export default function PdfUploadRoute() {
 
   const service = useMemo(() => {
     if (!baseUrl) return undefined;
-    return createRewiatyApiUploadService({ client: new RewiatyApiClient({ baseUrl }) });
+    // Why (review P1): the live client must authenticate the device and send a Bearer JWT on
+    // presign/estimate/job calls; the shared factory keeps one device identity for the app.
+    return createRewiatyApiUploadService({ client: getAuthenticatedApiClient(baseUrl) });
   }, [baseUrl]);
 
   return (
