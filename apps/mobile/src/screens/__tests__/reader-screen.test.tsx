@@ -42,6 +42,33 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
+// F24 needs the pan config the ribbon registers, so this suite captures every registered pan
+// gesture and drives the ribbon's own one (identified by its testID) by hand.
+type MockPanEvent = { translationY: number; canceled?: boolean };
+type MockPanConfig = {
+  testID?: string;
+  onBegin?: (event: MockPanEvent) => void;
+  onActivate?: (event: MockPanEvent) => void;
+  onUpdate?: (event: MockPanEvent) => void;
+  onDeactivate?: (event: MockPanEvent) => void;
+  onFinalize?: (event: MockPanEvent) => void;
+  [key: string]: unknown;
+};
+const mockPanGestures: MockPanConfig[] = [];
+jest.mock('react-native-gesture-handler', () => {
+  const { View } = require('react-native');
+  return {
+    GestureHandlerRootView: View,
+    GestureDetector: ({ children }: { children: React.ReactNode }) => children,
+    usePanGesture: (config: MockPanConfig) => {
+      mockPanGestures.push(config);
+      return {};
+    },
+    useTapGesture: () => ({}),
+    useSimultaneousGestures: () => ({}),
+  };
+});
+
 jest.mock('react-native-webview', () => {
   const React = require('react');
   const { View } = require('react-native');
@@ -817,6 +844,100 @@ describe('ReaderScreen', () => {
         ],
       }),
     );
+  });
+
+  it('saves a bookmark by pulling the ribbon down and removes it by pushing the extended ribbon up (F24)', async () => {
+    mockKv.clear();
+    mockKv.set('reader_hud_hint_seen_v1', true);
+    const { getByTestId } = await renderLoadedReader();
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+    });
+
+    const ribbonPan = () => {
+      const config = [...mockPanGestures]
+        .reverse()
+        .find((candidate) => candidate.testID === 'reader-bookmark-ribbon-gesture');
+      expect(config).toBeTruthy();
+      return config!;
+    };
+
+    // A downward pull past the threshold, released cleanly: save at the current position.
+    await act(async () => {
+      const pan = ribbonPan();
+      pan.onBegin?.({ translationY: 0 });
+      pan.onActivate?.({ translationY: 12 });
+      pan.onUpdate?.({ translationY: 60 });
+      pan.onDeactivate?.({ translationY: 60, canceled: false });
+      pan.onFinalize?.({ translationY: 60, canceled: false });
+    });
+
+    expect(getByTestId('reader-bookmark-ribbon').props.accessibilityState).toEqual({
+      selected: true,
+    });
+    expect(saveBookReaderState).toHaveBeenCalledWith(
+      'book_123',
+      expect.objectContaining({
+        bookmarkItems: [
+          expect.objectContaining({ anchor: { blockId: 'ch01_p0003', charOffset: 12 }, page: 2 }),
+        ],
+      }),
+    );
+
+    // The ribbon is extended now: an upward push past the release threshold removes it.
+    const callsBeforeRemoval = (saveBookReaderState as jest.Mock).mock.calls.length;
+    await act(async () => {
+      const pan = ribbonPan();
+      pan.onBegin?.({ translationY: 0 });
+      pan.onActivate?.({ translationY: -12 });
+      pan.onUpdate?.({ translationY: -60 });
+      pan.onDeactivate?.({ translationY: -60, canceled: false });
+      pan.onFinalize?.({ translationY: -60, canceled: false });
+    });
+
+    expect(getByTestId('reader-bookmark-ribbon').props.accessibilityState).toEqual({
+      selected: false,
+    });
+    const removalCalls = (saveBookReaderState as jest.Mock).mock.calls.slice(callsBeforeRemoval);
+    expect(removalCalls.some(([, state]) => state.bookmarkItems.length === 0)).toBe(true);
+  });
+
+  it('does not save, remove, or tick the haptic on a short ribbon drag or a cancelled one (F24)', async () => {
+    mockKv.clear();
+    mockKv.set('reader_hud_hint_seen_v1', true);
+    const { getByTestId } = await renderLoadedReader();
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+    });
+
+    const panConfig = [...mockPanGestures]
+      .reverse()
+      .find((candidate) => candidate.testID === 'reader-bookmark-ribbon-gesture');
+    expect(panConfig).toBeTruthy();
+
+    const callsBefore = (saveBookReaderState as jest.Mock).mock.calls.length;
+    await act(async () => {
+      panConfig!.onBegin?.({ translationY: 0 });
+      panConfig!.onActivate?.({ translationY: 10 });
+      panConfig!.onUpdate?.({ translationY: 26 });
+      panConfig!.onDeactivate?.({ translationY: 26, canceled: false });
+      panConfig!.onFinalize?.({ translationY: 26, canceled: false });
+      panConfig!.onBegin?.({ translationY: 0 });
+      panConfig!.onActivate?.({ translationY: 10 });
+      panConfig!.onUpdate?.({ translationY: 70 });
+      panConfig!.onDeactivate?.({ translationY: 70, canceled: true });
+      panConfig!.onFinalize?.({ translationY: 70, canceled: true });
+    });
+
+    expect(getByTestId('reader-bookmark-ribbon').props.accessibilityState).toEqual({
+      selected: false,
+    });
+    const bookmarkSaves = (saveBookReaderState as jest.Mock).mock.calls
+      .slice(callsBefore)
+      .filter(([, state]) => state.bookmarkItems.length > 0);
+    expect(bookmarkSaves).toHaveLength(0);
   });
 
   it('restores HUD visibility on settings close and suppresses taps for 300ms', async () => {
