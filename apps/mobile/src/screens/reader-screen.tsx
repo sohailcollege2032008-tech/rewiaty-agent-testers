@@ -25,6 +25,7 @@ import WebView, { type WebViewMessageEvent, type WebViewNavigation } from 'react
 import { HighlightNoteModal } from '@/components/highlight-note-modal';
 import { HighlightToolbar } from '@/components/highlight-toolbar';
 import { DictionarySheet } from '@/components/dictionary-sheet';
+import { JumpBackPill } from '@/components/jump-back-pill';
 import { ReaderHud } from '@/components/reader-hud';
 import { ReaderSettingsSheet } from '@/components/reader-settings-sheet';
 import { TocModal } from '@/components/toc-modal';
@@ -99,6 +100,17 @@ import type {
   WebToRNMessage,
 } from '@/types/reader';
 import { debounce } from '@/utils/debounce';
+import {
+  chapterIdFromAnchor,
+  dismissJumpBack,
+  emptyJumpBackState,
+  isSameAnchorSpot,
+  recordJump,
+  recordReadingProgress,
+  type JumpBackState,
+  type JumpOrigin,
+  type JumpTarget,
+} from '@/utils/jump-back';
 import { progressToPercent } from '@/utils/progress';
 import { showToast } from '@/utils/toast';
 
@@ -196,6 +208,40 @@ function isReaderDocumentUrl(url: string, baseUrl: string): boolean {
   return url === baseUrl;
 }
 
+/**
+ * F26 (Codex #42 P2) — the place a book remembers, phrased as a jump origin the pill can return to.
+ *
+ * Opening a search hit lands the reader on the hit itself, not on the page they were reading; the
+ * saved position is the real way back, so it becomes the origin of that jump. `null` when the book
+ * remembers nothing, or when the saved position IS the hit (there would be nothing to go back to).
+ */
+function savedReaderOrigin(
+  book: Book,
+  state: BookReaderState,
+  landingAnchor: Anchor,
+): JumpOrigin | null {
+  const savedAnchor = state.anchor ?? null;
+  const savedPage = state.page ?? 1;
+  const savedProgress = state.progress ?? 0;
+  if (savedAnchor === null && savedPage <= 1 && savedProgress <= 0) return null;
+  if (savedAnchor && isSameAnchorSpot(savedAnchor, landingAnchor)) return null;
+
+  const chapterId =
+    state.chapterId ??
+    (savedAnchor ? chapterIdFromAnchor(savedAnchor) : null) ??
+    book.chapters[0]?.id ??
+    'ch01';
+  const chapterTitle = book.chapters.find((chapter) => chapter.id === chapterId)?.title ?? chapterId;
+
+  return {
+    anchor: savedAnchor,
+    chapterId,
+    chapterTitle,
+    page: savedPage,
+    createdAt: Date.now(),
+  };
+}
+
 export function ReaderScreen() {
   useKeepAwake();
 
@@ -242,6 +288,8 @@ export function ReaderScreen() {
   // 'ready' can arrive again (WebView reload); the first-open hint is checked once per screen.
   const hintCheckedRef = useRef(false);
   const lastPageKeyRef = useRef<string | null>(null);
+  /** The reader's own place (chapter + chapter page + text anchor) — not the shifting page number. */
+  const lastReadingIdentityRef = useRef<string | null>(null);
   const currentAnchorRef = useRef<Anchor | null>(null);
   const bookmarkItemsRef = useRef<BookmarkItem[]>([]);
   const highlightsRef = useRef<HighlightItem[]>([]);
@@ -335,6 +383,42 @@ export function ReaderScreen() {
   });
   const [imageProof, setImageProof] = useState<{ count: number; width: number; height: number } | null>(
     null,
+  );
+
+  // F26 «صباعك بين الصفحات»: where the reader was before a jump, kept in a pure state machine so
+  // the screen only has to feed it the moments that matter (a jump, a page turn).
+  const [jumpBack, setJumpBack] = useState<JumpBackState>(emptyJumpBackState);
+  const jumpBackRef = useRef<JumpBackState>(jumpBack);
+  jumpBackRef.current = jumpBack;
+  const pageInfoRef = useRef(pageInfo);
+  pageInfoRef.current = pageInfo;
+  const chapterTitleRef = useRef('');
+
+  /** Runs a jump-back transition against the freshest state (handlers and WebView messages race). */
+  const applyJumpBack = useCallback((transition: (state: JumpBackState) => JumpBackState) => {
+    const next = transition(jumpBackRef.current);
+    if (next === jumpBackRef.current) return;
+    jumpBackRef.current = next;
+    setJumpBack(next);
+  }, []);
+
+  const currentJumpOrigin = useCallback((): JumpOrigin => {
+    const pos = pageInfoRef.current;
+    return {
+      anchor: currentAnchorRef.current,
+      chapterId: pos.chapterId,
+      chapterTitle: chapterTitleRef.current || pos.chapterId,
+      page: pos.page,
+      createdAt: Date.now(),
+    };
+  }, []);
+
+  /** A deliberate jump away from the current spot: offer the way back. */
+  const noteJumpAway = useCallback(
+    (target: JumpTarget) => {
+      applyJumpBack((prev) => recordJump(prev, currentJumpOrigin(), target));
+    },
+    [applyJumpBack, currentJumpOrigin],
   );
 
   const themeTokens = useMemo(() => getAppThemeTokens(settings.theme), [settings.theme]);
@@ -535,6 +619,21 @@ export function ReaderScreen() {
         latestStateRef.current = bundle.state;
         currentAnchorRef.current = bundle.state.anchor ?? null;
 
+        // Why (Codex #42 P2): a book opened straight on a search hit still remembers where its
+        // reader was. Without seeding the origin here, that landing has no way back at all — the
+        // pill would only ever appear for jumps made after the screen was already open.
+        if (activeSearchAnchor) {
+          const savedOrigin = savedReaderOrigin(bundle.book, bundle.state, activeSearchAnchor);
+          if (savedOrigin) {
+            const seeded = recordJump(emptyJumpBackState(), savedOrigin, {
+              chapterId: chapterIdFromAnchor(activeSearchAnchor) ?? savedOrigin.chapterId,
+              anchor: activeSearchAnchor,
+            });
+            jumpBackRef.current = seeded;
+            setJumpBack(seeded);
+          }
+        }
+
         const initialBookmarks = normalizeBookmarkItems(
           bundle.state.bookmarkItems,
           bundle.state.bookmarks,
@@ -602,9 +701,16 @@ export function ReaderScreen() {
     const key = `${bookId}:${searchAnchor.blockId}:${searchAnchor.charOffset}`;
     if (appliedSearchKeyRef.current === key) return;
     appliedSearchKeyRef.current = key;
+    // Why (Codex #42 P2): a new search hit inside an already-open reader is a jump like any other.
+    // Without recording the current spot first, opening a hit silently destroys the reader's place.
+    noteJumpAway({
+      chapterId: chapterIdFromAnchor(searchAnchor) ?? pageInfoRef.current.chapterId,
+      anchor: searchAnchor,
+    });
+    // P1 #44: an explicit goto invalidates the cold-open restore guard.
     restoreGuardRef.current = null;
     postToEngine({ type: 'goto', anchor: searchAnchor });
-  }, [bookId, engineReady, searchAnchor, postToEngine]);
+  }, [bookId, engineReady, searchAnchor, noteJumpAway, postToEngine]);
 
   useEffect(() => {
     if (!webLoaded || !book || hasSentLoadRef.current) return;
@@ -800,7 +906,19 @@ export function ReaderScreen() {
             setEditingHighlightState(null);
           }
           lastPageKeyRef.current = pageKey;
-          currentAnchorRef.current = parsed.anchor ?? null;
+          // F26: page turns in the new spot are what retire the jump-back pill on their own.
+          // Background pagination keeps refining page counts, which moves the global page NUMBER
+          // while the reader sits still (the chapter page and the text anchor do not move). Those
+          // reports must not read as "the reader kept reading".
+          const anchor: Anchor | null = parsed.anchor ?? null;
+          const readingIdentity = `${parsed.chapterId}:${parsed.chapterPage ?? ''}:${anchor?.blockId ?? ''}:${anchor?.charOffset ?? ''}`;
+          if (lastReadingIdentityRef.current !== readingIdentity) {
+            lastReadingIdentityRef.current = readingIdentity;
+            // The anchor travels with the report: the page key alone cannot tell that the reader
+            // came back to the same text after a reflow moved its page number (Codex #42 P2).
+            applyJumpBack((prev) => recordReadingProgress(prev, pageKey, Date.now(), anchor));
+          }
+          currentAnchorRef.current = anchor;
           setPageInfo({
             chapterId: parsed.chapterId,
             page: parsed.page,
@@ -914,7 +1032,7 @@ export function ReaderScreen() {
           break;
       }
     },
-    [bookId, debouncedSave, handleCloseSettings, persistScenes],
+    [bookId, debouncedSave, handleCloseSettings, persistScenes, applyJumpBack],
   );
 
   const handleBack = useCallback(() => {
@@ -936,18 +1054,25 @@ export function ReaderScreen() {
 
   const handleSelectChapter = useCallback(
     (chapterId: string) => {
+      const entry = tocEntries.find((chapter) => chapter.id === chapterId);
+      // F26: a TOC jump is the classic «where was I?» moment — leave a way back.
+      noteJumpAway({ chapterId, page: entry?.startPage ?? 0 });
+      // P1 #44: an explicit goto invalidates the cold-open restore guard.
       restoreGuardRef.current = null;
       postToEngine({ type: 'goto', chapterId });
     },
-    [postToEngine],
+    [noteJumpAway, postToEngine, tocEntries],
   );
 
   const handleSeekPage = useCallback(
     (targetPage: number) => {
+      // F26: a timeline seek across the book also earns a way back to the page we were on.
+      noteJumpAway({ chapterId: pageInfoRef.current.chapterId, page: targetPage });
+      // P1 #44: an explicit goto invalidates the cold-open restore guard.
       restoreGuardRef.current = null;
       postToEngine({ type: 'goto', page: targetPage });
     },
-    [postToEngine],
+    [noteJumpAway, postToEngine],
   );
 
   const handleSettingsChange = useCallback(
@@ -1014,6 +1139,7 @@ export function ReaderScreen() {
     if (fromToc) return fromToc;
     return book?.chapters.find((c) => c.id === pageInfo.chapterId)?.title ?? book?.meta.title ?? '';
   }, [tocEntries, book, pageInfo.chapterId]);
+  chapterTitleRef.current = activeChapterTitle;
 
   const persistBookmarks = useCallback(
     (nextItems: BookmarkItem[]) => {
@@ -1062,6 +1188,9 @@ export function ReaderScreen() {
 
   const handleOpenBookmark = useCallback(
     (item: BookmarkItem, anchor: Anchor | null) => {
+      // F26: opening a bookmark is a jump — remember the page the reader left.
+      noteJumpAway({ chapterId: item.chapterId, page: item.page ?? 0, anchor });
+      // P1 #44: an explicit goto invalidates the cold-open restore guard.
       restoreGuardRef.current = null;
       if (anchor) {
         postToEngine({ type: 'goto', anchor });
@@ -1069,7 +1198,7 @@ export function ReaderScreen() {
         postToEngine({ type: 'goto', page: item.page });
       }
     },
-    [postToEngine],
+    [noteJumpAway, postToEngine],
   );
 
   const persistHighlights = useCallback(
@@ -1245,14 +1374,33 @@ export function ReaderScreen() {
   );
 
   const handleOpenHighlight = useCallback(
-    (_item: HighlightItem, anchor: Anchor | null) => {
+    (item: HighlightItem, anchor: Anchor | null) => {
+      // F26: jumping to a highlight in another chapter leaves a way back too.
+      noteJumpAway({ chapterId: item.chapterId, page: 0, anchor });
+      // P1 #44: an explicit goto invalidates the cold-open restore guard.
       restoreGuardRef.current = null;
       if (anchor) {
         postToEngine({ type: 'goto', anchor });
       }
     },
-    [postToEngine],
+    [noteJumpAway, postToEngine],
   );
+
+  const handleJumpBackReturn = useCallback(
+    (origin: JumpOrigin) => {
+      applyJumpBack(dismissJumpBack);
+      if (origin.anchor) {
+        postToEngine({ type: 'goto', anchor: origin.anchor });
+      } else {
+        postToEngine({ type: 'goto', page: origin.page });
+      }
+    },
+    [applyJumpBack, postToEngine],
+  );
+
+  const handleDismissJumpBack = useCallback(() => {
+    applyJumpBack(dismissJumpBack);
+  }, [applyJumpBack]);
 
   const handleExportHighlights = useCallback(() => {
     const currentBook = bookRef.current;
@@ -1584,6 +1732,21 @@ export function ReaderScreen() {
               />
             </Svg>
           </Pressable>
+        ) : null}
+
+        {/* F26 «صباعك بين الصفحات»: the way back to the page the reader jumped away from. It is
+            hidden while a sheet owns the screen so it can never sit on top of one. */}
+        {book ? (
+          <JumpBackPill
+            origin={tocVisible || settingsVisible ? null : jumpBack.origin}
+            dir={effectiveDir}
+            theme={settings.theme}
+            // Above the open bars it would sit on the scrubber; above the quiet footer it sits at
+            // its own ~48dp line. Either way it never covers a control.
+            bottomOffset={hudVisible ? effectiveHudFooterHeight + 10 : undefined}
+            onReturn={handleJumpBackReturn}
+            onDismiss={handleDismissJumpBack}
+          />
         ) : null}
 
         {!engineReady ? (

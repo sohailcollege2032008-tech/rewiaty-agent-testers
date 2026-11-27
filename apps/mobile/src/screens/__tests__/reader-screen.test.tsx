@@ -21,10 +21,14 @@ const postedToWebView: string[] = [];
 let capturedOnLoadEnd: (() => void) | undefined;
 let capturedOnMessage: ((event: { nativeEvent: { data: string } }) => void) | undefined;
 let capturedWebViewProps: Record<string, unknown> | undefined;
+/** What `useLocalSearchParams` reports; a search hit opens the reader as `{ id, blockId, charOffset }`. */
+let mockSearchParams: { id: string; blockId?: string; charOffset?: string } = {
+  id: 'book_123',
+};
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ back: mockBack }),
-  useLocalSearchParams: () => ({ id: 'book_123' }),
+  useLocalSearchParams: () => mockSearchParams,
 }));
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -106,6 +110,7 @@ describe('ReaderScreen', () => {
     capturedOnLoadEnd = undefined;
     capturedOnMessage = undefined;
     capturedWebViewProps = undefined;
+    mockSearchParams = { id: 'book_123' };
 
     Dimensions.set({
       window: { width: 390, height: 844, scale: 2, fontScale: 1 },
@@ -895,6 +900,211 @@ describe('ReaderScreen', () => {
 
     addListenerSpy.mockRestore();
   });
+  it('offers «ارجع لصفحة N» after a TOC jump and returns to the page the reader left (F26)', async () => {
+    mockKv.clear();
+    mockKv.set('reader_hud_hint_seen_v1', true);
+    const { getByTestId, queryByTestId, getByText } = await renderLoadedReader();
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({
+        type: 'position',
+        anchor: { blockId: 'ch01_p0003', charOffset: 12 },
+        chapterId: 'ch01',
+        page: 2,
+        pageCount: 10,
+        bookProgress: 0.2,
+      });
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+
+    // No pill until the reader actually jumps.
+    expect(queryByTestId('jump-back-pill')).toBeNull();
+
+    await fireEvent.press(getByTestId('reader-toc-button'));
+    await fireEvent.press(getByTestId('toc-item-ch02'));
+
+    await waitFor(() => expect(getByTestId('jump-back-pill')).toBeTruthy());
+    expect(getByText('ارجع لصفحة 2')).toBeTruthy();
+
+    await fireEvent.press(getByTestId('jump-back-pill'));
+
+    expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
+      type: 'goto',
+      anchor: { blockId: 'ch01_p0003', charOffset: 12 },
+    });
+    await waitFor(() => expect(queryByTestId('jump-back-pill')).toBeNull());
+  });
+
+  it('retires the pill after three page turns in the new spot (F26)', async () => {
+    mockKv.clear();
+    mockKv.set('reader_hud_hint_seen_v1', true);
+    const { getByTestId, queryByTestId } = await renderLoadedReader();
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({ type: 'position', chapterId: 'ch01', page: 2, pageCount: 10, bookProgress: 0.2 });
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+
+    await fireEvent.press(getByTestId('reader-toc-button'));
+    await fireEvent.press(getByTestId('toc-item-ch02'));
+    await waitFor(() => expect(getByTestId('jump-back-pill')).toBeTruthy());
+
+    const turn = (page: number) => ({
+      type: 'position' as const,
+      chapterId: 'ch02',
+      page,
+      pageCount: 10,
+      chapterPage: page - 2,
+      chapterPageCount: 8,
+      anchor: { blockId: `ch02_p00${page}`, charOffset: 0 },
+      bookProgress: 0.3,
+    });
+
+    await act(async () => {
+      // The jump's own landing is not a turn…
+      emitWebMessage(turn(3));
+      // …these two are, and the reader is still on the pill.
+      emitWebMessage(turn(4));
+      emitWebMessage(turn(5));
+    });
+    expect(getByTestId('jump-back-pill')).toBeTruthy();
+
+    await act(async () => {
+      emitWebMessage(turn(6));
+    });
+    await waitFor(() => expect(queryByTestId('jump-back-pill')).toBeNull());
+  });
+
+  it('does not read background pagination churn as reading in the new spot (F26)', async () => {
+    mockKv.clear();
+    mockKv.set('reader_hud_hint_seen_v1', true);
+    const { getByTestId, queryByTestId } = await renderLoadedReader();
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({ type: 'position', chapterId: 'ch01', page: 2, pageCount: 10, bookProgress: 0.2 });
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+
+    await fireEvent.press(getByTestId('reader-toc-button'));
+    await fireEvent.press(getByTestId('toc-item-ch02'));
+    await waitFor(() => expect(getByTestId('jump-back-pill')).toBeTruthy());
+
+    // The landing, then the engine re-paginating: the global page number climbs while the reader
+    // is still on the same chapter page and the same text block. That is not reading.
+    const report = (page: number) => ({
+      type: 'position' as const,
+      chapterId: 'ch02',
+      page,
+      pageCount: 10,
+      chapterPage: 1,
+      chapterPageCount: 8,
+      anchor: { blockId: 'ch02_p0001', charOffset: 0 },
+      bookProgress: 0.3,
+    });
+
+    await act(async () => {
+      emitWebMessage(report(3));
+      emitWebMessage(report(4));
+      emitWebMessage(report(5));
+      emitWebMessage(report(6));
+      emitWebMessage(report(7));
+    });
+
+    await waitFor(() => expect(getByTestId('jump-back-pill')).toBeTruthy());
+    // …and a real page turn in the new spot still retires it.
+    await act(async () => {
+      emitWebMessage({ ...report(8), chapterPage: 2, anchor: { blockId: 'ch02_p0002', charOffset: 0 } });
+      emitWebMessage({ ...report(9), chapterPage: 3, anchor: { blockId: 'ch02_p0003', charOffset: 0 } });
+      emitWebMessage({ ...report(10), chapterPage: 4, anchor: { blockId: 'ch02_p0004', charOffset: 0 } });
+    });
+    await waitFor(() => expect(queryByTestId('jump-back-pill')).toBeNull());
+  });
+
+  it('never lets the pill sit on top of the settings sheet (F26)', async () => {
+    mockKv.clear();
+    mockKv.set('reader_hud_hint_seen_v1', true);
+    const { getByTestId, queryByTestId } = await renderLoadedReader();
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({ type: 'position', chapterId: 'ch01', page: 2, pageCount: 10, bookProgress: 0.2 });
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+
+    await fireEvent.press(getByTestId('reader-toc-button'));
+    await fireEvent.press(getByTestId('toc-item-ch02'));
+    await waitFor(() => expect(getByTestId('jump-back-pill')).toBeTruthy());
+
+    await fireEvent.press(getByTestId('reader-settings-button'));
+    await waitFor(() => expect(queryByTestId('jump-back-pill')).toBeNull());
+
+    await fireEvent.press(getByTestId('settings-dismiss-backdrop'));
+    await waitFor(() => expect(getByTestId('jump-back-pill')).toBeTruthy());
+  });
+
+  it('offers the saved reading position as the way back when a book opens on a search hit (F26 / Codex #42 P2)', async () => {
+    mockKv.clear();
+    mockKv.set('reader_hud_hint_seen_v1', true);
+    // A search result in chapter 2 opens the reader directly on the hit…
+    mockSearchParams = { id: 'book_123', blockId: 'ch02_p0005', charOffset: '7' };
+
+    const { getByTestId, getByText } = await renderLoadedReader();
+
+    // …the book still remembers the page the reader was actually reading (ch01, page 2)…
+    const loadPayload = JSON.parse(postedToWebView[0]!);
+    expect(loadPayload.anchor).toEqual({ blockId: 'ch02_p0005', charOffset: 7 });
+    await waitFor(() => expect(getByTestId('jump-back-pill')).toBeTruthy());
+    expect(getByText('ارجع لصفحة 2')).toBeTruthy();
+
+    // …and the pill goes back to that remembered spot, not to the search hit again.
+    await fireEvent.press(getByTestId('jump-back-pill'));
+    expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
+      type: 'goto',
+      anchor: { blockId: 'ch01_p0003', charOffset: 12 },
+    });
+  });
+
+  it('keeps the reader’s place when a new search hit lands in an already-open reader (F26 / Codex #42 P2)', async () => {
+    mockKv.clear();
+    mockKv.set('reader_hud_hint_seen_v1', true);
+
+    const utils = await renderLoadedReader();
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({
+        type: 'position',
+        anchor: { blockId: 'ch01_p0003', charOffset: 12 },
+        chapterId: 'ch01',
+        page: 2,
+        pageCount: 10,
+        bookProgress: 0.2,
+      });
+    });
+    expect(utils.queryByTestId('jump-back-pill')).toBeNull();
+
+    // A second search hit arrives while the reader is open: the goto must not swallow their place.
+    mockSearchParams = { id: 'book_123', blockId: 'ch02_p0005', charOffset: '7' };
+    // `rerender` runs inside act() itself; nesting another act here makes React warn about overlap.
+    await utils.rerender(<ReaderScreen />);
+
+    expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
+      type: 'goto',
+      anchor: { blockId: 'ch02_p0005', charOffset: 7 },
+    });
+    await waitFor(() => expect(utils.getByTestId('jump-back-pill')).toBeTruthy());
+    expect(utils.getByText('ارجع لصفحة 2')).toBeTruthy();
+
+    await fireEvent.press(utils.getByTestId('jump-back-pill'));
+    expect(JSON.parse(postedToWebView.at(-1)!)).toEqual({
+      type: 'goto',
+      anchor: { blockId: 'ch01_p0003', charOffset: 12 },
+    });
+  });
+
   it('sends the saved chapterId to the engine so an empty chapter can be restored (#44)', async () => {
     // An empty chapter has no block to anchor to: the saved anchor is the chapter id itself,
     // and `chapterId` is what lets the engine find it even when the anchor is missing.
