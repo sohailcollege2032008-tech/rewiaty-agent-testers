@@ -2,6 +2,7 @@ import {
   DEFAULT_SETTINGS,
   THEMES,
   type IndentMode,
+  type ReadingMode,
   type ReaderSettings,
   type TashkeelMode,
   type TextAlignMode,
@@ -25,6 +26,8 @@ const VALID_ALIGNS = new Set<TextAlignMode>(['start', 'justify']);
 const VALID_INDENTS = new Set<IndentMode>(['classic', 'block']);
 const VALID_TASHKEEL = new Set<TashkeelMode>(['full', 'none', 'shadda-tanween']);
 const VALID_DIRS = new Set<'auto' | 'rtl' | 'ltr'>(['auto', 'rtl', 'ltr']);
+/** F22: the two reading layouts the engine can render. */
+const VALID_READING_MODES = new Set<ReadingMode>(['paginated', 'scroll']);
 
 type RawStoredSettings = Partial<Omit<ReaderSettings, 'theme'>> & {
   theme?: string;
@@ -104,6 +107,14 @@ export function sanitizeSettingsPartial(
   }
   if (partial.dirOverride !== undefined && VALID_DIRS.has(partial.dirOverride)) {
     next.dirOverride = partial.dirOverride;
+  }
+  // F22: scroll mode and its top progress bar. An unknown mode is dropped (never coerced),
+  // so a stale stored value falls back to the `DEFAULT_SETTINGS` layout.
+  if (partial.readingMode !== undefined && VALID_READING_MODES.has(partial.readingMode)) {
+    next.readingMode = partial.readingMode;
+  }
+  if (typeof partial.showScrollProgressBar === 'boolean') {
+    next.showScrollProgressBar = partial.showScrollProgressBar;
   }
 
   return next;
@@ -232,6 +243,9 @@ export function getSectionResetPartial(
         maxReadingWidth: DEFAULT_SETTINGS.maxReadingWidth,
         dirOverride: DEFAULT_SETTINGS.dirOverride,
         disableAnimation: DEFAULT_SETTINGS.disableAnimation,
+        // F22: «وضع القراءة» and its progress bar are layout choices.
+        readingMode: DEFAULT_SETTINGS.readingMode,
+        showScrollProgressBar: DEFAULT_SETTINGS.showScrollProgressBar,
       };
     case 'theme':
       return {

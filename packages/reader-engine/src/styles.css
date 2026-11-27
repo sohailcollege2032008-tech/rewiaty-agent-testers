@@ -886,3 +886,142 @@ body {
   color: var(--accent-color);
   font-weight: 600;
 }
+
+/* ---------------------------------------------------------------------------
+   F22 — continuous vertical scroll mode.
+   The stage becomes one vertical scroller; chapters stack in normal flow at full
+   width. The offscreen measurement probe lives outside `.reader-root`, so page
+   counts keep being measured with columns while the reader sees this layout.
+   --------------------------------------------------------------------------- */
+.reader-root.scroll-mode {
+  touch-action: pan-y;
+}
+
+.reader-root.scroll-mode .reader-stage {
+  overflow-y: auto;
+  overflow-x: hidden;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: none;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  /*
+   * Virtualization owns the scroll position: when a slot above the reading line fills
+   * in (its reserved estimate replaced by the real height) the mount applies the exact
+   * compensating delta. Chrome's own scroll anchoring would apply the same correction a
+   * second time and yank the reader away from the line, so it must stay off.
+   */
+  overflow-anchor: none;
+}
+
+.reader-root.scroll-mode .reader-stage::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.reader-root.scroll-mode .reader-track {
+  position: static;
+  height: auto;
+  /* Readable breathing room above the first chapter and below the last one. */
+  padding: var(--padding-top) 0 var(--padding-bottom);
+  transform: none !important;
+  transition: none !important;
+  will-change: auto;
+}
+
+.reader-root.scroll-mode .spread-gutter {
+  display: none;
+}
+
+.scroll-chapter-slot {
+  position: relative;
+  width: 100%;
+}
+
+/* One continuous column: chapter dividers replace the page edges. */
+.reader-root.scroll-mode .scroll-chapter-slot + .scroll-chapter-slot {
+  border-top: 1px solid var(--page-edge, var(--quote-bg));
+}
+
+.reader-root.scroll-mode .chapter {
+  position: relative;
+  top: auto;
+  left: auto;
+  right: auto;
+  width: 100%;
+  height: auto;
+  padding: 0 var(--margin-h);
+  column-width: auto;
+  column-count: auto;
+  column-gap: normal;
+  column-fill: balance;
+  transform: none !important;
+}
+
+/* Horizontal Arabic rules still apply: no letter-spacing, ever. */
+.reader-root.scroll-mode .chapter[dir="rtl"] {
+  letter-spacing: 0 !important;
+}
+
+.reader-root.scroll-mode .chapter .block-image img {
+  max-height: none;
+}
+
+/* Soft paper edges so text dissolves into the bar area instead of being cut. */
+.scroll-edge-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 24px;
+  pointer-events: none;
+  z-index: 15;
+  display: none;
+}
+
+.reader-root.scroll-mode .scroll-edge-fade-top {
+  display: block;
+  top: 0;
+  background: linear-gradient(to bottom, var(--bg-color) 0%, transparent 100%);
+}
+
+.reader-root.scroll-mode .scroll-edge-fade-bottom {
+  display: block;
+  bottom: 0;
+  background: linear-gradient(to top, var(--bg-color) 0%, transparent 100%);
+}
+
+/* Thin reading-progress bar pinned to the top edge. */
+.scroll-progress-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 16;
+  pointer-events: none;
+  display: none;
+  overflow: hidden;
+  background-color: var(--quote-bg);
+}
+
+.reader-root.scroll-mode .scroll-progress-bar {
+  display: block;
+}
+
+.reader-root.scroll-mode.scroll-progress-hidden .scroll-progress-bar {
+  display: none;
+}
+
+.scroll-progress-fill {
+  width: 100%;
+  height: 100%;
+  background-color: var(--accent-color);
+  transform: scaleX(0);
+  transform-origin: 0% 50%;
+  transition: transform 80ms linear;
+}
+
+.reader-root[dir="rtl"] .scroll-progress-fill {
+  transform-origin: 100% 50%;
+}

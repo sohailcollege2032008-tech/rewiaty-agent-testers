@@ -12,7 +12,7 @@ import Svg, { Circle, Path } from 'react-native-svg';
 
 import { TYPOGRAPHY } from '@/theme/layout';
 import { getAppThemeTokens, THEME_OPTIONS } from '@/theme/reader-theme';
-import type { ThemeId } from '@/types/reader';
+import type { ReadingMode, ThemeId } from '@/types/reader';
 import { PageScrubber } from './page-scrubber';
 
 const EASE_OUT = Easing.bezier(0.22, 1, 0.36, 1);
@@ -23,6 +23,10 @@ export type ReaderHudProps = {
   chapterTitle: string;
   page: number;
   pageCount: number;
+  /** F22: which layout the engine is rendering. Defaults to `paginated`. */
+  readingMode?: ReadingMode;
+  /** F22 scroll mode: 0..1 position inside the current chapter. */
+  chapterProgress?: number;
   /** The engine has not measured every chapter yet, so `pageCount` is an estimate. */
   estimated?: boolean;
   chapterCount?: number;
@@ -45,6 +49,8 @@ export function ReaderHud({
   chapterTitle,
   page,
   pageCount,
+  readingMode = 'paginated',
+  chapterProgress,
   estimated = false,
   chapterCount,
   isBookmarked = false,
@@ -424,7 +430,9 @@ export function ReaderHud({
                 { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
               ]}
             >
-              {`صفحة ${page} من ${estimated ? '~' : ''}${pageCount}`}
+              {readingMode === 'scroll'
+                ? `الفصل ${Math.round(Math.max(0, Math.min(1, chapterProgress ?? 0)) * 100)}%`
+                : `صفحة ${page} من ${estimated ? '~' : ''}${pageCount}`}
             </Text>
           </View>
 

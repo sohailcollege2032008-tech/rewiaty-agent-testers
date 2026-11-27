@@ -16,7 +16,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { READER_FONT_FAMILIES, type SettingsTabId } from '@/storage/settings-store';
 import { FONT_LABELS_AR, RADIUS, TYPOGRAPHY, useResponsiveLayout } from '@/theme/layout';
 import { getAppThemeTokens, THEME_OPTIONS, type AppThemeTokens } from '@/theme/reader-theme';
-import type { IndentMode, ReaderSettings, TashkeelMode, TextAlignMode } from '@/types/reader';
+import type {
+  IndentMode,
+  ReadingMode,
+  ReaderSettings,
+  TashkeelMode,
+  TextAlignMode,
+} from '@/types/reader';
 
 export type ReaderSettingsSheetProps = {
   visible: boolean;
@@ -54,6 +60,12 @@ const DIR_OPTIONS: ReadonlyArray<{ value: 'auto' | 'rtl' | 'ltr'; label: string 
   { value: 'auto', label: 'تلقائي' },
   { value: 'rtl', label: 'يمين لليسار' },
   { value: 'ltr', label: 'يسار لليمين' },
+];
+
+/** F22 — وضع القراءة: صفحات تتقلّب، أو تمرير رأسي متصل. */
+const READING_MODE_OPTIONS: ReadonlyArray<{ value: ReadingMode; label: string }> = [
+  { value: 'paginated', label: 'صفحات' },
+  { value: 'scroll', label: 'تمرير' },
 ];
 
 // Why (P2 #60): under React Native `I18nManager.forceRTL(true)`, `textAlign: 'right'` mirrors
@@ -510,6 +522,75 @@ function SettingsContent({
           <Text style={[styles.sectionTitle, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}>
             تنسيق الصفحة
           </Text>
+
+          {/* F22 — «وضع القراءة»: الصفحات المقلوبة أو التمرير المتصل. */}
+          <View style={stackControlRow ? styles.ctrlRowStacked : styles.ctrlRow}>
+            <Text
+              style={[styles.ctrlLabel, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}
+              numberOfLines={1}
+            >
+              وضع القراءة
+            </Text>
+            <View
+              style={[
+                styles.segGroup,
+                stackControlRow && styles.segGroupStacked,
+                { borderColor: palette.border, backgroundColor: palette.surface },
+              ]}
+            >
+              {READING_MODE_OPTIONS.map((opt) => {
+                const active = (settings.readingMode ?? 'paginated') === opt.value;
+                return (
+                  <Pressable
+                    key={opt.value}
+                    testID={`settings-reading-mode-${opt.value}`}
+                    onPress={() => onChange({ readingMode: opt.value })}
+                    hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+                    style={({ pressed }) => [
+                      styles.segBtn,
+                      active && { backgroundColor: palette.ctaBg },
+                      pressed && styles.pressed,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.65}
+                      style={[
+                        styles.segBtnText,
+                        {
+                          color: active ? palette.ctaText : palette.muted,
+                          fontWeight: active ? '600' : '500',
+                          fontFamily: TYPOGRAPHY.uiFont,
+                        },
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          {settings.readingMode === 'scroll' ? (
+            <View style={[styles.switchRow, { borderTopColor: palette.border }]}>
+              <Text
+                style={[styles.switchLabel, { color: palette.text, fontFamily: TYPOGRAPHY.uiFont }]}
+              >
+                شريط التقدم العلوي
+              </Text>
+              <Switch
+                testID="settings-scroll-progress-switch"
+                value={settings.showScrollProgressBar !== false}
+                onValueChange={(value) => onChange({ showScrollProgressBar: value })}
+                trackColor={{ false: palette.border, true: palette.accent }}
+                thumbColor={palette.surfaceElevated}
+              />
+            </View>
+          ) : null}
 
           <View style={stackControlRow ? styles.ctrlRowStacked : styles.ctrlRow}>
             <Text

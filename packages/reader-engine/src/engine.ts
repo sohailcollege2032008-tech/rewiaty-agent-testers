@@ -59,6 +59,11 @@ const IMAGE_PROOF_SLOW_TRIES = 20;
  * "the figure is about to appear".
  */
 const IMAGE_PROOF_EMPTY_CHECKS = 5;
+/**
+ * Quiet window (ms) after the last scroll event before the reading line is read. Below this
+ * a finger is still moving; above it the reader has stopped and the position is worth sending.
+ */
+const SCROLL_SETTLE_MS = 100;
 
 export class ReaderEngine {
   private readonly rootEl: HTMLElement;
@@ -111,6 +116,8 @@ export class ReaderEngine {
   private imageProofSignature = '';
   /** One-line account of the last measurement, quoted in the page when there is nothing painted. */
   private imageProofDetail = '';
+  /** Debounce for the post-scroll position report (scroll mode only). */
+  private scrollSettleTimer: number | null = null;
   private fontStyleEl: HTMLStyleElement | null = null;
   private appliedFontBaseUrl = '';
   /** Bumped on every `load`, so a settle pass for an old book can't report over a new one. */
@@ -201,10 +208,15 @@ export class ReaderEngine {
         dragging: false,
       };
       this.dragSamples = [{ x: e.clientX, t: performance.now() }];
-      try {
-        this.rootEl.setPointerCapture(e.pointerId);
-      } catch {
-        // Synthetic pointer events (tests) have no capturable pointer id.
+      // Why (F22): in scroll mode the finger owns the vertical axis. Capturing the pointer
+      // would keep the browser's native scroller from seeing the move, so a real drag would
+      // never scroll the chapter stack.
+      if (!this.paginator.isScrollMode()) {
+        try {
+          this.rootEl.setPointerCapture(e.pointerId);
+        } catch {
+          // Synthetic pointer events (tests) have no capturable pointer id.
+        }
       }
 
       const target = e.target as HTMLElement | null;
@@ -248,6 +260,11 @@ export class ReaderEngine {
 
       const gesture = this.gesture;
       if (!gesture) return;
+
+      // Why (F22): there is no page to drag in scroll mode — vertical movement is the
+      // browser's scroll. Bailing before the gesture bookkeeping keeps `beginDrag` from
+      // ever firing, so the tap/selection paths stay untouched.
+      if (this.paginator.isScrollMode()) return;
 
       gesture.lastX = e.clientX;
       this.dragSamples.push({ x: e.clientX, t: performance.now() });
@@ -515,6 +532,27 @@ export class ReaderEngine {
     this.trackEl.addEventListener('load', this.handleImageLoad, true);
     this.trackEl.addEventListener('error', this.handleImageError, true);
 
+    // Why (F22): in scroll mode the stage is the scroller, so the progress bar has to follow
+    // `scrollTop` on every frame while the position is only worth reporting once the finger
+    // stops. Both are coalesced here: rAF for the paint, a quiet window for the message.
+    this.stageEl.addEventListener(
+      'scroll',
+      () => {
+        if (!this.paginator.isScrollMode()) return;
+        this.paginator.handleScrollFrame();
+        if (this.scrollSettleTimer !== null) {
+          window.clearTimeout(this.scrollSettleTimer);
+        }
+        this.scrollSettleTimer = window.setTimeout(() => {
+          this.scrollSettleTimer = null;
+          if (!this.paginator.isScrollMode()) return;
+          this.paginator.handleScrollSettled();
+          this.emitPosition();
+        }, SCROLL_SETTLE_MS);
+      },
+      { passive: true },
+    );
+
     document.fonts?.addEventListener?.('loadingdone', () => {
       if (this.paginator.handleFontLoad()) {
         this.emitPositionAndToc();
@@ -775,6 +813,10 @@ export class ReaderEngine {
         this.closeScenePromptEditor();
         this.gesture = null;
         this.paginator.cancelDrag();
+        if (this.scrollSettleTimer !== null) {
+          window.clearTimeout(this.scrollSettleTimer);
+          this.scrollSettleTimer = null;
+        }
         this.awaitingExactPosition = true;
         this.resetImageProof();
         // F46: install the scene set BEFORE the book is mounted, so the very first
@@ -806,6 +848,13 @@ export class ReaderEngine {
         break;
       }
       case 'settings': {
+        if (this.scrollSettleTimer !== null) {
+          window.clearTimeout(this.scrollSettleTimer);
+          this.scrollSettleTimer = null;
+          if (this.paginator.isScrollMode()) {
+            this.paginator.handleScrollSettled();
+          }
+        }
         const partial = msg.partial ?? {};
         this.paginator.updateSettings(partial, msg.insets);
         this.emitPositionAndToc();
