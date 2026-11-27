@@ -14,12 +14,16 @@ appId: com.rewiaty.app
     timeout: 20000
 - waitForAnimationToEnd
 # أول الكتاب: مفيش مقروء لسه (الحافة اليمين عند حدها الأدنى 2px) وكل الكتاب متبقي (الشمال 6px).
-- assertVisible:
-    id: "reader-page-edge-read"
-    text: "سمك المقروء 2\\.0 بيكسل"
+- extendedWaitUntil:
+    visible:
+      id: "reader-page-edge-read"
+      rightOf:
+        id: "reader-page-edge-remaining"
+      text: "^سمك المقروء 2[.]0 بيكسل$"
+    timeout: 10000
 - assertVisible:
     id: "reader-page-edge-remaining"
-    text: "سمك المتبقي 6\\.0 بيكسل"
+    text: "^سمك المتبقي 6[.]0 بيكسل$"
 - takeScreenshot: "01-edges-at-start"
 # افتح الـ HUD عشان الشريط (لو مقفول).
 - runFlow:
