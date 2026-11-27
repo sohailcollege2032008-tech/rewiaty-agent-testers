@@ -17,9 +17,13 @@ appId: com.rewiaty.app
       id: "reader-loading-overlay"
     timeout: 45000
 - waitForAnimationToEnd
-- assertVisible: "1 / .*"
+- assertVisible:
+    id: "reader-page-counter"
+    text: "صفحة 1 من .*"
 - takeScreenshot: "01-before-idle"
 - runScript: wait-45s.js
 # Still on page 1 and still Awake: no stray tap turned a page during the idle.
-- assertVisible: "1 / .*"
+- assertVisible:
+    id: "reader-page-counter"
+    text: "صفحة 1 من .*"
 - takeScreenshot: "02-after-45s-idle"

@@ -19,4 +19,6 @@ appId: com.rewiaty.app
     visible: ".*تَعْرِفُ الْبَحْرَ قَبْلَ أَنْ تَعْرِفَ اسْمَهُ.*"
     timeout: 2000
 - takeScreenshot: "02-first-page-under-2s"
-- assertVisible: ".* / .*"
+- assertVisible:
+    id: "reader-page-counter"
+    text: "صفحة .* من .*"
