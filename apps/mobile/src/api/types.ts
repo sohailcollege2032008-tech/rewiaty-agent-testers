@@ -515,6 +515,25 @@ export interface PushTokenResponse {
   registered_at: string;
 }
 
+/**
+ * The `data` payload the backend attaches to a `chapter_ready` / `job_completed` push.
+ *
+ * Mirrors `contracts/openapi.yaml` (v0.1.0). It is deliberately a separate type from the
+ * notification envelope: tap handling validates this object at runtime, because whatever
+ * arrives from the OS is untrusted input.
+ */
+export type PushNotificationEvent = 'chapter_ready' | 'job_completed';
+
+export interface PushNotificationData {
+  event: PushNotificationEvent;
+  book_id: string;
+  job_id: string;
+  /** Present on `chapter_ready`: the chapter that just became readable. */
+  chapter_id?: string;
+  /** Present on `chapter_ready`: 1-based chapter index in the book (Chapter 1 is 1). */
+  chapter_index?: number;
+}
+
 /* ------------------------------------------------------------------ onboarding (F42) */
 
 export interface SuggestedThemeCandidate {

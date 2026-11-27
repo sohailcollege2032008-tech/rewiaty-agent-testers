@@ -54,6 +54,8 @@ type DeviceSession = {
   authenticating: Promise<string> | null;
   deviceId: Promise<string> | null;
   deviceSecret: Promise<string> | null;
+  /** Read-or-create the stable device id (the same identity used for `POST /v1/auth/device`). */
+  getDeviceId: () => Promise<string>;
 };
 
 /** One session (one client) per normalized base URL. */
@@ -194,6 +196,7 @@ function createSession(baseUrl: string, options: AuthenticatedApiClientOptions):
     authenticating: null,
     deviceId: null,
     deviceSecret: null,
+    getDeviceId: () => readDeviceId(),
   };
 
   const readDeviceId = (): Promise<string> => {
@@ -262,12 +265,33 @@ export function getAuthenticatedApiClient(
   baseUrl: string,
   options: AuthenticatedApiClientOptions = {},
 ): RewiatyApiClient {
+  return getOrCreateSession(baseUrl, options).client;
+}
+
+/**
+ * The stable device id for a base URL — the same identity `getAuthenticatedApiClient` registers.
+ *
+ * Why (F38): the push token row is keyed by `device_id`, so registration must use the *same*
+ * value the JWT was issued for; generating a second identity would create a token row the
+ * device never authenticates with.
+ */
+export function getAuthenticatedDeviceId(
+  baseUrl: string,
+  options: AuthenticatedApiClientOptions = {},
+): Promise<string> {
+  return getOrCreateSession(baseUrl, options).getDeviceId();
+}
+
+function getOrCreateSession(
+  baseUrl: string,
+  options: AuthenticatedApiClientOptions,
+): DeviceSession {
   const key = normalizeBaseUrl(baseUrl);
   const existing = sessions.get(key);
-  if (existing) return existing.client;
+  if (existing) return existing;
   const created = createSession(key, options);
   sessions.set(key, created);
-  return created.client;
+  return created;
 }
 
 /** Drops every cached client, token and in-memory identity. Tests only. */
