@@ -745,6 +745,9 @@ describe('ReaderScreen', () => {
     expect(hudChapter.props.ellipsizeMode).toBe('tail');
     const hudCounter = getByTestId('reader-page-counter');
     expect(hudCounter.props.numberOfLines).toBe(1);
+    // P2 a11y (QA r1) Issue #50: the WebView's #reader-live-region is the single live source
+    // for a page turn. A second live region on the counter made TalkBack speak every turn twice.
+    expect(hudCounter.props.accessibilityLiveRegion).toBeUndefined();
     expect(
       (ReactNative.StyleSheet.flatten(hudCounter.props.style) as Record<string, unknown>).flexShrink,
     ).toBe(0);

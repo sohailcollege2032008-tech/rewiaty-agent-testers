@@ -260,9 +260,10 @@ describe('ReaderScreen F49 dictionary integration', () => {
     const positioner = utils.getByTestId('highlight-toolbar');
     const style = StyleSheet.flatten(positioner.props.style) as {
       left: number;
-      width: number;
+      width?: number;
+      maxWidth?: number;
     };
-    return { left: style.left, width: style.width };
+    return { left: style.left, width: style.width ?? style.maxWidth ?? 0 };
   }
 
   it('fits the toolbar with the dictionary action on a 360dp screen (create mode)', async () => {

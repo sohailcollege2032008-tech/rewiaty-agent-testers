@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import { RADIUS, TYPOGRAPHY } from '@/theme/layout';
@@ -30,12 +31,26 @@ export type HighlightToolbarProps = {
 
 const TOOLBAR_HEIGHT = 54;
 const TOOLBAR_GAP = 10;
-/** Width the «المعجم» button adds, so the clamp keeps swatches + note + dictionary + delete. */
+/** Page gutter the pill keeps on both sides (`left` ∈ [12, containerWidth - width - 12]). */
+const TOOLBAR_GUTTER = 12;
+/**
+ * Touch target budget (a11y, Issue #49 QA r1): every control's own box is 48×48dp — the target
+ * is real layout, never a `hitSlop` halo that overlaps its neighbour. The coloured circle
+ * inside keeps its visual size (28dp) so the pill still looks like a palette, not four blocks.
+ */
+const CONTROL_SIZE = 48;
+const SWATCH_GAP = 8;
+const SWATCH_DOT = 28;
+/** Width the «المعجم» button adds before `onLayout` measures the real pill. */
 const DICTIONARY_BUTTON_WIDTH = 56;
-/** Narrowest the toolbar may get on a 360dp phone before the outer clamp takes over. */
-const MIN_TOOLBAR_WIDTH = 240;
-/** Horizontal breathing room kept on both sides of the toolbar. */
-const TOOLBAR_SIDE_MARGIN = 12;
+/**
+ * Natural content width before `onLayout` has measured the pill. Only used for the first
+ * frame's `left`; the real width takes over immediately after (Issue #59 QA r1: a fixed
+ * width clipped the fourth (gold) swatch at 200% font scale). Both are clamped to
+ * `containerWidth - 24` and the pill wraps when it cannot fit on one row.
+ */
+const ESTIMATED_WIDTH_VIEW = 320;
+const ESTIMATED_WIDTH_EDIT = 372;
 
 export function HighlightToolbar({
   visible,
@@ -53,37 +68,48 @@ export function HighlightToolbar({
   onPressDictionary,
   onPressDelete,
 }: HighlightToolbarProps) {
+  // Hooks must run before the early return; a hidden toolbar simply keeps its last measurement.
+  const [measured, setMeasured] = useState({ width: 0, height: 0 });
+
   if (!visible || !rect) return null;
 
   const palette = getAppThemeTokens(theme);
-  // Why (L4 budget): the toolbar must never overflow a 360dp screen. The desired width grows with
-  // the extra actions, then clamps to `containerWidth - 24` (never below 240) so at 360dp with
-  // swatches + note + dictionary + delete it is 336 wide at left=12 (right edge 348).
-  const desiredWidth =
-    (isEditing ? 316 : 264) + (onPressDictionary ? DICTIONARY_BUTTON_WIDTH : 0);
+  const maxToolbarWidth = Math.max(0, containerWidth - TOOLBAR_GUTTER * 2);
+  const widthEstimate =
+    (isEditing ? ESTIMATED_WIDTH_EDIT : ESTIMATED_WIDTH_VIEW) +
+    (onPressDictionary ? DICTIONARY_BUTTON_WIDTH : 0);
   const toolbarWidth = Math.min(
-    desiredWidth,
-    Math.max(MIN_TOOLBAR_WIDTH, containerWidth - TOOLBAR_SIDE_MARGIN * 2),
+    measured.width > 0 ? measured.width : widthEstimate,
+    maxToolbarWidth,
   );
+  const toolbarHeight = measured.height > 0 ? measured.height : TOOLBAR_HEIGHT;
   const safeTop = Math.max(8, topInset + 6);
   const safeBottom = Math.max(8, bottomInset + 6);
 
   const selectionTop = rect.top + webviewOffsetTop;
   const selectionBottom = rect.bottom + webviewOffsetTop;
 
-  const preferredAbove = selectionTop - TOOLBAR_HEIGHT - TOOLBAR_GAP;
+  const preferredAbove = selectionTop - toolbarHeight - TOOLBAR_GAP;
   const preferredBelow = selectionBottom + TOOLBAR_GAP;
-  const maxTop = Math.max(safeTop, containerHeight - safeBottom - TOOLBAR_HEIGHT);
+  const maxTop = Math.max(safeTop, containerHeight - safeBottom - toolbarHeight);
 
   let top = preferredAbove >= safeTop ? preferredAbove : preferredBelow;
   top = Math.max(safeTop, Math.min(maxTop, top));
 
   const centerX = (rect.left + rect.right) / 2;
-  const maxLeft = Math.max(TOOLBAR_SIDE_MARGIN, containerWidth - toolbarWidth - TOOLBAR_SIDE_MARGIN);
-  const left = Math.max(
-    TOOLBAR_SIDE_MARGIN,
-    Math.min(maxLeft, centerX - toolbarWidth / 2),
-  );
+  // Clamp against the *measured* width so the pill can never be pushed past the right edge,
+  // however wide the content grows (font scale, dictionary button, delete button, long Arabic label).
+  const maxLeft = Math.max(TOOLBAR_GUTTER, containerWidth - toolbarWidth - TOOLBAR_GUTTER);
+  const left = Math.max(TOOLBAR_GUTTER, Math.min(maxLeft, centerX - toolbarWidth / 2));
+
+  const handleLayout = (event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    setMeasured((prev) =>
+      Math.abs(prev.width - width) < 0.5 && Math.abs(prev.height - height) < 0.5
+        ? prev
+        : { width, height },
+    );
+  };
 
   return (
     <View
@@ -93,26 +119,28 @@ export function HighlightToolbar({
     >
       <View
         testID="highlight-toolbar"
+        onLayout={handleLayout}
         style={[
           styles.toolbarPositioner,
           {
             top,
             left,
-            width: toolbarWidth,
-            height: TOOLBAR_HEIGHT,
+            maxWidth: maxToolbarWidth,
           },
         ]}
       >
         <View
+          testID="highlight-toolbar-pill"
           style={[
             styles.toolbar,
             {
+              maxWidth: maxToolbarWidth,
               backgroundColor: palette.popoverBg,
               borderColor: palette.popoverBorder,
             },
           ]}
         >
-          <View style={styles.colorsRow}>
+          <View testID="highlight-toolbar-colors" style={styles.colorsRow}>
             {HIGHLIGHT_COLORS.map((item) => {
               const swatch = palette.isDark ? item.swatchDark : item.swatchLight;
               const selected = isEditing && activeColor === item.id;
@@ -133,7 +161,10 @@ export function HighlightToolbar({
                   accessibilityLabel={item.labelAr}
                   accessibilityState={{ selected }}
                 >
-                  <View style={[styles.colorDot, { backgroundColor: swatch }]} />
+                  <View
+                    testID={`highlight-color-dot-${item.id}`}
+                    style={[styles.colorDot, { backgroundColor: swatch }]}
+                  />
                 </Pressable>
               );
             })}
@@ -152,7 +183,7 @@ export function HighlightToolbar({
             accessibilityRole="button"
             accessibilityLabel="ملاحظة"
           >
-            <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+            <Svg width={15} height={15} viewBox="0 0 24 24" fill="none">
               <Path
                 d="M4 20h4l10.5-10.5a2.1 2.1 0 00-3-3L5 17v3z"
                 stroke={palette.accent}
@@ -172,8 +203,6 @@ export function HighlightToolbar({
             <Pressable
               testID="highlight-dictionary-button"
               onPress={onPressDictionary}
-              // 48dp box + 4dp slop on every side = 56dp effective touch target (L4 budget).
-              hitSlop={4}
               style={({ pressed }) => [
                 styles.dictionaryBtn,
                 { backgroundColor: palette.chipBg, borderColor: palette.border },
@@ -232,78 +261,76 @@ const styles = StyleSheet.create({
   toolbar: {
     direction: 'rtl',
     minHeight: TOOLBAR_HEIGHT,
-    height: TOOLBAR_HEIGHT,
-    maxWidth: '100%',
-    paddingHorizontal: 6,
-    paddingVertical: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     borderRadius: RADIUS.pill,
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    // Issue #59: on a narrow screen (or 200% font scale) the actions drop to a second row
+    // instead of the last control being clipped off the pill.
+    flexWrap: 'wrap',
     gap: 4,
     boxShadow: '0 10px 28px rgba(0, 0, 0, 0.24)',
   },
   colorsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
-    flexShrink: 0,
+    gap: SWATCH_GAP,
   },
   colorBtn: {
-    // 32dp visual + hitSlop 4 keeps the four swatches inside the 336dp phone budget.
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: CONTROL_SIZE,
+    height: CONTROL_SIZE,
+    borderRadius: CONTROL_SIZE / 2,
     borderWidth: 1.5,
     borderColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
   },
   colorDot: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: SWATCH_DOT,
+    height: SWATCH_DOT,
+    borderRadius: SWATCH_DOT / 2,
   },
   divider: {
     width: 1,
     height: 24,
-    marginHorizontal: 2,
-    flexShrink: 0,
+    marginHorizontal: 0,
   },
   noteBtn: {
-    minHeight: 40,
-    paddingHorizontal: 9,
+    minWidth: CONTROL_SIZE,
+    minHeight: CONTROL_SIZE,
+    paddingHorizontal: 8,
     borderRadius: RADIUS.pill,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 4,
   },
   noteText: {
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: '700',
   },
   dictionaryBtn: {
-    // L4 budget: an explicit 48x48 target; with hitSlop 4 it is 56dp effective.
-    minHeight: 48,
-    minWidth: 48,
-    paddingHorizontal: 6,
+    minWidth: CONTROL_SIZE,
+    minHeight: CONTROL_SIZE,
+    paddingHorizontal: 8,
     borderRadius: RADIUS.pill,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
   },
   dictionaryText: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '700',
   },
   deleteBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: CONTROL_SIZE,
+    height: CONTROL_SIZE,
+    borderRadius: CONTROL_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
   },
   pressed: {
     opacity: 0.75,

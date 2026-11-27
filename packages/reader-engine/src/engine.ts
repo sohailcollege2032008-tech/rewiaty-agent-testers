@@ -65,9 +65,12 @@ export class ReaderEngine {
   private readonly stageEl: HTMLElement;
   private readonly trackEl: HTMLElement;
   private readonly footnoteBackdrop: HTMLElement;
+  private readonly footnotePopover: HTMLElement;
   private readonly footnoteTitle: HTMLElement;
   private readonly footnoteBody: HTMLElement;
   private readonly footnoteCloseBtn: HTMLElement;
+  /** Visually hidden live region that announces settled page turns to TalkBack/VoiceOver. */
+  private readonly liveRegion: HTMLElement;
 
   private readonly paginator: Paginator;
   /** F46 — the structured prompt editor, mounted on #reader-root (never in the page flow). */
@@ -99,6 +102,8 @@ export class ReaderEngine {
   private dragSamples: Array<{ x: number; t: number }> = [];
   private resizeTimer: number | null = null;
   private imageSettleTimer: number | null = null;
+  /** Re-report scheduled once a figure is proven painted (see `reportAfterFigureProof`). */
+  private imageProofSettleTimer: number | null = null;
   private imageProofTimer: number | null = null;
   private imageProofTries = 0;
   private imageProofEmptyChecks = 0;
@@ -123,6 +128,13 @@ export class ReaderEngine {
    * real dismiss, because any new gesture starts with a fresh `pointerdown` that clears it.
    */
   private footnoteOpenPointerId: number | null = null;
+  /** Element that had focus when the footnote dialog opened; restored when it closes. */
+  private footnoteReturnFocus: HTMLElement | null = null;
+  /**
+   * Last page announced through `#reader-live-region`. Background pagination re-emits the same
+   * position many times while it measures; deduping keeps TalkBack from repeating the page.
+   */
+  private lastAnnouncedPage = '';
   /**
    * The first position of a book is withheld until the paginator knows the exact page
    * map, so the reader never sees a page number (or a total) that is about to move.
@@ -134,9 +146,11 @@ export class ReaderEngine {
     this.stageEl = document.getElementById('reader-stage')!;
     this.trackEl = document.getElementById('reader-track')!;
     this.footnoteBackdrop = document.getElementById('footnote-backdrop')!;
+    this.footnotePopover = document.getElementById('footnote-popover')!;
     this.footnoteTitle = document.getElementById('footnote-title')!;
     this.footnoteBody = document.getElementById('footnote-body')!;
     this.footnoteCloseBtn = document.getElementById('footnote-close')!;
+    this.liveRegion = document.getElementById('reader-live-region')!;
 
     this.paginator = new Paginator(this.rootEl, this.stageEl, this.trackEl, DEFAULT_SETTINGS, {
       onBackgroundProgress: () => {
@@ -304,7 +318,7 @@ export class ReaderEngine {
           // The click that follows this pointerup belongs to the same gesture: opening the
           // sheet must not also dismiss it. See footnoteOpenPointerId.
           this.footnoteOpenPointerId = e.pointerId;
-          this.openFootnote(fnId);
+          this.openFootnote(fnId, fnLink);
         }
         return;
       }
@@ -392,6 +406,14 @@ export class ReaderEngine {
       const fnLink = target?.closest<HTMLElement>('[data-fn]');
       if (fnLink) {
         e.preventDefault();
+        // Assistive tech (TalkBack's double-tap, Switch Access) activates a control with a
+        // plain `click` and no pointer gesture. The pointer path already opened the sheet, so
+        // only a click that finds it closed has to open it here.
+        if (this.footnoteBackdrop.hidden) {
+          const fnId = fnLink.getAttribute('data-fn');
+          if (fnId) this.openFootnote(fnId, fnLink);
+        }
+        return;
       }
     });
 
@@ -427,10 +449,32 @@ export class ReaderEngine {
         }
         return;
       }
-      if (!this.footnoteBackdrop.hidden && e.key === 'Escape') {
-        this.closeFootnote();
+
+      // Issue #50 (QA r1): a footnote reference is a `role="button"`; it has to answer the
+      // keyboard like one. Enter/Space open the sheet, and the opener is remembered so closing
+      // puts the caret back on that reference (also when the sheet was opened by touch).
+      const keyTarget = e.target as HTMLElement | null;
+      const keyFnRef = keyTarget?.closest?.<HTMLElement>('[data-fn]') ?? null;
+      if (keyFnRef && (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar')) {
+        e.preventDefault();
+        const fnId = keyFnRef.getAttribute('data-fn');
+        if (fnId && this.footnoteBackdrop.hidden) this.openFootnote(fnId, keyFnRef);
         return;
       }
+
+      if (!this.footnoteBackdrop.hidden) {
+        if (e.key === 'Escape') {
+          this.closeFootnote();
+          return;
+        }
+        if (e.key === 'Tab') {
+          this.trapFootnoteFocus(e);
+          return;
+        }
+        // A modal dialog owns the keyboard: no page shortcut may run behind it.
+        return;
+      }
+
       const dir = this.paginator.getDirection();
       if (e.key === 'ArrowLeft') {
         if (dir === 'rtl') this.goNext();
@@ -503,6 +547,10 @@ export class ReaderEngine {
     if (this.imageProofTimer !== null) {
       window.clearTimeout(this.imageProofTimer);
       this.imageProofTimer = null;
+    }
+    if (this.imageProofSettleTimer !== null) {
+      window.clearTimeout(this.imageProofSettleTimer);
+      this.imageProofSettleTimer = null;
     }
     this.imageProofTries = 0;
     this.imageProofEmptyChecks = 0;
@@ -649,6 +697,33 @@ export class ReaderEngine {
     this.imageProofSignature = signature;
     this.writeOutcomeMarker(count, width, height);
     postToHost({ type: 'image-rendered', count, width, height });
+    if (count > 0 && width > 0 && height > 0) this.reportAfterFigureProof();
+  }
+
+  /**
+   * Re-measure and re-report the position *after* the painted-figure proof.
+   *
+   * Why (bug, Issue #47): a figure that decodes after the first measurement changes the height
+   * its chapter is measured against, so the page map must be re-derived. `handleImageLoad` does
+   * that on a `load` event — but it emits the position *before* the proof, and on Android a
+   * data-URL figure is already decoded when it is inserted, so no `load` is dispatched at all
+   * (the same reason the proof itself is DOM-driven, see `scheduleImageProof`). The only report
+   * then arrives before the figure is proven painted, or not at all, so "the page map after the
+   * figure" was a race. With this pass the proof is always followed by a settled position, which
+   * is the report the host can key the map it trusts on.
+   */
+  private reportAfterFigureProof(): void {
+    if (this.imageProofSettleTimer !== null) {
+      window.clearTimeout(this.imageProofSettleTimer);
+    }
+    this.imageProofSettleTimer = window.setTimeout(() => {
+      this.imageProofSettleTimer = null;
+      // The proof read a real box, so layout has already applied; this pass re-derives the page
+      // counts from the box the reader will actually see. Report even when the count is
+      // unchanged: a figure can move page boundaries without changing the total.
+      this.paginator.settleLayout();
+      this.emitPositionAndToc();
+    }, 0);
   }
 
   private logFontStatus(): void {
@@ -946,11 +1021,31 @@ export class ReaderEngine {
     if (!pos) return;
     // A number is on screen now; stop withholding the rest of the session's reports.
     this.awaitingExactPosition = false;
+    this.announcePosition(pos.page, pos.pageCount);
     postToHost({
       type: 'position',
       ...pos,
       ...(userNavigated ? { userNavigated: true } : {}),
     });
+  }
+
+  /**
+   * Tell assistive tech which page the reader landed on.
+   *
+   * Called from `emitPosition`, which only fires on a *settled* move (a drag release, a
+   * keyboard turn, a goto). Two things keep TalkBack from chattering (Issue #50, QA r1):
+   * the page number is the only thing announced — a background pass that refines the
+   * *total* never re-announces the same page — and nothing is announced while the finger
+   * still owns the drag (the release reports, which is the settled state).
+   *
+   * The WebView is the single live source; the RN HUD counter must not also carry
+   * `accessibilityLiveRegion` or every turn is spoken twice.
+   */
+  private announcePosition(page: number, pageCount: number): void {
+    if (this.paginator.isDragging()) return;
+    if (String(page) === this.lastAnnouncedPage) return;
+    this.lastAnnouncedPage = String(page);
+    this.liveRegion.textContent = `صفحة ${page} من ${pageCount}`;
   }
 
   private emitToc(): void {
@@ -1031,18 +1126,67 @@ export class ReaderEngine {
     void Promise.race([fontsReady, bounded]).then(attempt);
   }
 
-  private openFootnote(fnId: string): void {
+  private openFootnote(fnId: string, opener?: HTMLElement | null): void {
     const blocks: Block[] | undefined = this.book?.footnotes[fnId];
     if (!blocks || blocks.length === 0) return;
     const dir = this.paginator.getDirection();
     this.footnoteBackdrop.setAttribute('dir', dir);
     this.footnoteTitle.textContent = dir === 'rtl' ? `حاشية [${fnId}]` : `Footnote [${fnId}]`;
     this.footnoteBody.innerHTML = blocks.map((b) => `<p>${b.html}</p>`).join('');
+    // A dialog is a focus context: remember where the reader was so closing it puts the
+    // caret back exactly there (keyboard/Switch Access users otherwise lose their place).
+    // The opener is passed explicitly because a touch does not always leave it focused.
+    const active = document.activeElement;
+    const candidate = opener ?? (active instanceof HTMLElement ? active : null);
+    this.footnoteReturnFocus =
+      candidate && candidate !== document.body && candidate.isConnected ? candidate : null;
+    // The page behind the sheet is not part of the dialog: inert keeps Tab, TalkBack and
+    // Switch Access inside `#footnote-popover` until it closes.
+    this.stageEl.setAttribute('inert', '');
     this.footnoteBackdrop.hidden = false;
+    this.footnoteCloseBtn.focus();
+  }
+
+  /** Keep Tab / Shift+Tab cycling inside the open footnote dialog (Issue #50, QA r1). */
+  private trapFootnoteFocus(event: KeyboardEvent): void {
+    const selector =
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const focusable = Array.from(this.footnotePopover.querySelectorAll<HTMLElement>(selector)).filter(
+      (node) => node.getClientRects().length > 0,
+    );
+    if (focusable.length === 0) {
+      event.preventDefault();
+      this.footnotePopover.focus();
+      return;
+    }
+    const active = document.activeElement as HTMLElement | null;
+    const index = active ? focusable.indexOf(active) : -1;
+    if (event.shiftKey) {
+      if (index <= 0) {
+        event.preventDefault();
+        focusable[focusable.length - 1]!.focus();
+      }
+      return;
+    }
+    if (index === -1 || index === focusable.length - 1) {
+      event.preventDefault();
+      focusable[0]!.focus();
+    }
   }
 
   private closeFootnote(): void {
+    if (this.footnoteBackdrop.hidden) return;
     this.footnoteBackdrop.hidden = true;
+    this.stageEl.removeAttribute('inert');
+    const target = this.footnoteReturnFocus;
+    this.footnoteReturnFocus = null;
+    if (target && target.isConnected) {
+      target.focus();
+    } else if (this.footnotePopover.contains(document.activeElement)) {
+      // The remembered node may be gone (a page turn remounted the chapter). Never leave
+      // focus on a hidden dialog: hand it back to the document instead.
+      this.footnoteCloseBtn.blur();
+    }
   }
 }
 

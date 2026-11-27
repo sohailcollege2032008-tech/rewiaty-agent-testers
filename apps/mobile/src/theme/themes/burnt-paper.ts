@@ -17,7 +17,7 @@ export const burntPaperTheme: AppThemeTokens = {
   accentSoft: 'rgba(223, 120, 99, 0.15)',
   ctaBg: '#A34131',
   ctaText: '#FAF3EA',
-  onAccent: '#FAF3EA',
+  onAccent: '#181310',
   ribbon: '#B34636',
   ribbonDeep: '#8B3123',
   ribbonStitch: 'rgba(250, 238, 224, 0.28)',

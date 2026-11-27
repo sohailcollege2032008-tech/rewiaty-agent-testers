@@ -178,7 +178,9 @@ describe('HighlightToolbar RTL physical coordinate isolation', () => {
 
     expect(containerStyle.direction).toBe('ltr');
     expect(toolbarStyle.direction).toBeUndefined();
-    // centerX = 300, toolbarWidth = 264 -> left = min(400-264-12=124, 300-132=168) = 124
-    expect(toolbarStyle.left).toBe(124);
+    // Before `onLayout`, centerX = 300 with the estimated width (320):
+    // left = min(400 - 320 - 12 = 68, 300 - 160 = 140) = 68. The measured width takes over
+    // on the next frame (Issue #59), still clamped to the same 12dp gutter.
+    expect(toolbarStyle.left).toBe(68);
   });
 });

@@ -17,7 +17,7 @@ export const oledCrimsonTheme: AppThemeTokens = {
   accentSoft: 'rgba(212, 106, 90, 0.15)',
   ctaBg: '#9B3A2C',
   ctaText: '#F8EFE8',
-  onAccent: '#F8EFE8',
+  onAccent: '#0D0A09',
   ribbon: '#B04233',
   ribbonDeep: '#822A1E',
   ribbonStitch: 'rgba(248, 232, 224, 0.24)',
