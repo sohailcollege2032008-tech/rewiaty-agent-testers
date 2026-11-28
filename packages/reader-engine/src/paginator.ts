@@ -1713,6 +1713,7 @@ export class Paginator {
       // in place. Trusting the layout here unlocks the position/TOC the exact pass fills in.
       this.metricsTrusted = true;
       this.startExactPagination();
+      if (this.settings.readingFocus !== 'off') this.refreshReadingFocus();
       return false;
     }
     const signature = this.layoutSignature();

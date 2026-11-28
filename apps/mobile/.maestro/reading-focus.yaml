@@ -66,6 +66,9 @@ appId: com.rewiaty.app
     visible:
       id: "reader-settings-button"
     timeout: 5000
+- assertVisible:
+    id: "reader-page-counter"
+    text: "^صفحة 2 من .*"
 - tapOn:
     id: "reader-settings-button"
 - tapOn:

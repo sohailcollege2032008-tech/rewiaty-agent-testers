@@ -1111,3 +1111,10 @@ body {
 .reader-root[data-reading-focus='paragraph'] .block-p.reading-focus-current {
   color: var(--text-color) !important;
 }
+
+/* A custom ink at the minimum contrast can have no readable muted variant. Keep the active
+   paragraph identifiable with a non-layout marker in the original, readable ink. */
+:root[data-theme='custom'] .reader-root[data-reading-focus='paragraph'] .block-p.reading-focus-current {
+  outline: 1px solid var(--text-color);
+  outline-offset: 2px;
+}
