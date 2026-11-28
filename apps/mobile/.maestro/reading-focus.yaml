@@ -91,15 +91,7 @@ appId: com.rewiaty.app
 - assertVisible:
     id: "reading-focus-engine-status"
 - takeScreenshot: "03-reading-focus-ruler"
-# ---- 4) إيقاف: مفيش سطر حالة، الصفحة رجعت زي ما كانت ----
-- tapOn:
-    id: "settings-reading-focus-off"
-- extendedWaitUntil:
-    notVisible:
-      id: "reading-focus-engine-status"
-    timeout: 5000
-- takeScreenshot: "04-reading-focus-off"
-# Reopen the reader cold so the last assertion uses persisted settings.
+# Reopen cold with the non-default ruler mode to prove the setting was saved.
 - stopApp
 - launchApp:
     clearState: false
@@ -128,12 +120,22 @@ appId: com.rewiaty.app
     id: "settings-tab-layout"
 - scrollUntilVisible:
     element:
-      id: "settings-reading-focus-off"
+      id: "settings-reading-focus-ruler"
     direction: DOWN
     timeout: 10000
 - assertVisible:
-    id: "settings-reading-focus-off"
+    id: "settings-reading-focus-ruler"
     selected: true
-- assertNotVisible:
-    id: "reading-focus-engine-status"
-- takeScreenshot: "05-reading-focus-off-persisted"
+- extendedWaitUntil:
+    visible:
+      text: "خط التتبع · الفقرة .* من .*"
+    timeout: 10000
+- takeScreenshot: "04-reading-focus-ruler-persisted"
+# Turning focus off clears the engine's reading guide.
+- tapOn:
+    id: "settings-reading-focus-off"
+- extendedWaitUntil:
+    notVisible:
+      id: "reading-focus-engine-status"
+    timeout: 5000
+- takeScreenshot: "05-reading-focus-off"
