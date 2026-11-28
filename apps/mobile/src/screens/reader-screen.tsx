@@ -136,7 +136,7 @@ import {
   type TimelineChapterInput,
 } from '@/utils/chapter-timeline';
 import { EyeRestTracker } from '@/utils/eye-rest';
-import { HIDDEN_PROOF_HOST_STYLE, HIDDEN_PROOF_TEXT_STYLE } from '@/utils/hidden-proof';
+import { HiddenProof } from '@/utils/hidden-proof';
 import {
   chapterIdFromAnchor,
   dismissJumpBack,
@@ -2402,29 +2402,19 @@ export function ReaderScreen({ qaClient, qaResolveByok, qaHasByokKey }: ReaderSc
             gets its own node, so "nothing rendered" can be told apart from "nothing reported" —
             without it the negative control could pass for the wrong reason. */}
         {imageProof ? (
-          <View pointerEvents="none" testID="reader-image-proof-host" style={HIDDEN_PROOF_HOST_STYLE}>
-            {imageProof.count > 0 && imageProof.width > 0 && imageProof.height > 0 ? (
-              <Text testID="reader-image-proof" style={HIDDEN_PROOF_TEXT_STYLE}>
-                {`صورة ${imageProof.width}×${imageProof.height}`}
-              </Text>
-            ) : (
-              <Text testID="reader-image-error" style={HIDDEN_PROOF_TEXT_STYLE}>
-                {'الصورة مش ظاهرة'}
-              </Text>
-            )}
-          </View>
+          imageProof.count > 0 && imageProof.width > 0 && imageProof.height > 0 ? (
+            <HiddenProof testID="reader-image-proof" label={`صورة ${imageProof.width}×${imageProof.height}`} />
+          ) : (
+            <HiddenProof testID="reader-image-error" label="الصورة مش ظاهرة" />
+          )
         ) : null}
 
-        {/* F27 — ملمس الورق proof. Same idea as the figure proof: a transparent Text node the
+        {/* F27 — ملمس الورق proof. Same idea as the figure proof: an invisible node the
             accessibility tree exposes, so a Maestro journey can tell "3% grain painted" apart from
-            "the theme silently dropped it". It uses the same 1×1 clipped host as the figure proof so
-            no reader can ever see it on the page (RC3 showed the old mid-page label). */}
+            "the theme silently dropped it". It is a childless transparent View, so no reader can
+            ever see it on the page (RC3 showed the old mid-page label). */}
         {paperGrainProof ? (
-          <View pointerEvents="none" testID="reader-paper-grain-proof-host" style={HIDDEN_PROOF_HOST_STYLE}>
-            <Text accessible testID="reader-paper-grain-proof" style={HIDDEN_PROOF_TEXT_STYLE}>
-              {paperGrainProof}
-            </Text>
-          </View>
+          <HiddenProof testID="reader-paper-grain-proof" label={paperGrainProof} />
         ) : null}
 
         {/* F31 — 22px left-edge brightness strip + live readout pill. */}

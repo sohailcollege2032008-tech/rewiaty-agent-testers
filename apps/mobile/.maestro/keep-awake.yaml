@@ -17,6 +17,29 @@ appId: com.rewiaty.app
       id: "reader-loading-overlay"
     timeout: 45000
 - waitForAnimationToEnd
+# RC3.1: the quiet running footer («صفحة 1 من N») is drawn only while the bars are CLOSED — with
+# the bars open that line already sits above the scrubber. The bars open on their own with a
+# first-launch hint (device run 46130714258 failed here), so close them before reading the footer.
+- runFlow:
+    when:
+      visible:
+        id: "reader-settings-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- waitForAnimationToEnd
+# The hint can land a beat after the engine is ready, so check once more before asserting.
+- runFlow:
+    when:
+      visible:
+        id: "reader-settings-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-settings-button"
+    timeout: 5000
 - assertVisible:
     id: "reader-running-numbers"
     text: "صفحة 1 من .*"

@@ -19,6 +19,28 @@ appId: com.rewiaty.app
     visible: ".*تَعْرِفُ الْبَحْرَ قَبْلَ أَنْ تَعْرِفَ اسْمَهُ.*"
     timeout: 2000
 - takeScreenshot: "02-first-page-under-2s"
+# RC3.1: the quiet running footer («صفحة N من M») is drawn only while the bars are CLOSED; the bars
+# open on their own with a first-launch hint, so close them before asserting the page counter.
+- runFlow:
+    when:
+      visible:
+        id: "reader-settings-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- waitForAnimationToEnd
+# The hint can land a beat after the engine is ready, so check once more before asserting.
+- runFlow:
+    when:
+      visible:
+        id: "reader-settings-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-settings-button"
+    timeout: 5000
 - assertVisible:
     id: "reader-running-numbers"
     text: "صفحة .* من .*"

@@ -414,7 +414,7 @@ describe('ReaderScreen', () => {
     });
 
     const proof = utils.getByTestId('reader-image-proof');
-    expect(proof.props.children).toBe('صورة 240×160');
+    expect(proof.props.accessibilityLabel).toBe('صورة 240×160');
     expect(utils.queryByTestId('reader-image-error')).toBeNull();
   });
 
@@ -429,7 +429,7 @@ describe('ReaderScreen', () => {
     });
 
     const failure = utils.getByTestId('reader-image-error');
-    expect(failure.props.children).toBe('الصورة مش ظاهرة');
+    expect(failure.props.accessibilityLabel).toBe('الصورة مش ظاهرة');
     expect(utils.queryByTestId('reader-image-proof')).toBeNull();
   });
 
@@ -459,12 +459,12 @@ describe('ReaderScreen', () => {
       await act(async () => {
         emitWebMessage({ type: 'paper-grain-status', theme, state });
       });
-      expect(utils.getByTestId('reader-paper-grain-proof').props.children)
+      expect(utils.getByTestId('reader-paper-grain-proof').props.accessibilityLabel)
         .toBe(`ملمس الورق (${theme}): ${label}`);
     }
   });
 
-  it('keeps every engine proof invisible to a reader while still exposing it to Maestro (RC3)', async () => {
+  it('keeps every engine proof invisible to a reader while still exposing it to Maestro (RC3.1)', async () => {
     const utils = await renderLoadedReader();
 
     await act(async () => {
@@ -473,28 +473,22 @@ describe('ReaderScreen', () => {
     });
 
     // The proofs must still be in the tree for the device journeys…
-    const imageHost = ReactNative.StyleSheet.flatten(
-      utils.getByTestId('reader-image-proof-host').props.style,
-    ) as Record<string, unknown>;
-    const grainHost = ReactNative.StyleSheet.flatten(
-      utils.getByTestId('reader-paper-grain-proof-host').props.style,
-    ) as Record<string, unknown>;
-
-    // …but neither host can occupy a visible pixel of the page: 1×1, clipped and fully transparent.
-    for (const host of [imageHost, grainHost]) {
-      expect(host.position).toBe('absolute');
-      expect(host.width).toBe(1);
-      expect(host.height).toBe(1);
-      expect(host.overflow).toBe('hidden');
-      expect(host.opacity).toBe(0);
-    }
-
     for (const id of ['reader-image-proof', 'reader-paper-grain-proof']) {
-      const label = ReactNative.StyleSheet.flatten(
-        utils.getByTestId(id).props.style,
-      ) as Record<string, unknown>;
-      expect(label.color).toBe('transparent');
-      expect(Number(label.fontSize)).toBeLessThanOrEqual(1);
+      const proof = utils.getByTestId(id);
+      const style = ReactNative.StyleSheet.flatten(proof.props.style) as Record<string, unknown>;
+
+      // …but a proof is a childless, transparent box: nothing is ever painted for a reader.
+      expect(proof.props.children).toBeUndefined();
+      expect(style.position).toBe('absolute');
+      expect(style.backgroundColor).toBe('transparent');
+      // 48×48 and no `opacity: 0` — a 1×1 faded node is not "visible" to Maestro (run 46130714258).
+      expect(style.width).toBe(48);
+      expect(style.height).toBe(48);
+      expect(style.opacity).toBeUndefined();
+
+      // The sentence travels as accessibility text (Android `content-desc`), which Maestro matches.
+      expect(typeof proof.props.accessibilityLabel).toBe('string');
+      expect(proof.props.accessibilityLabel.length).toBeGreaterThan(0);
     }
   });
 
