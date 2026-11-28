@@ -16,6 +16,11 @@ on:
         required: false
         default: all
         type: string
+      api_base_url:
+        description: Optional backend URL baked into the APK (EXPO_PUBLIC_API_BASE_URL); empty = offline-only build
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -61,6 +66,7 @@ jobs:
         working-directory: app
         env:
           EXPO_PUBLIC_PUSH_QA_SEAM: ${{ inputs.flow == 'push-registration-deeplink' && '1' || '0' }}
+          EXPO_PUBLIC_API_BASE_URL: ${{ inputs.api_base_url }}
         run: bash scripts/build-apk.sh
 
       - name: Stage APK
@@ -80,6 +86,8 @@ jobs:
       - name: Build release APK (arm64-v8a only)
         if: inputs.flow != 'push-registration-deeplink'
         working-directory: app
+        env:
+          EXPO_PUBLIC_API_BASE_URL: ${{ inputs.api_base_url }}
         run: SKIP_PREP=1 ABIS=arm64-v8a bash scripts/build-apk.sh
 
       - name: Stage ARM64 APK
