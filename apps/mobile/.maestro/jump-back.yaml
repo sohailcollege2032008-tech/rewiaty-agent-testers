@@ -35,10 +35,11 @@ appId: com.rewiaty.app
     timeout: 15000
 - tapOn:
     id: "toc-item-ch03"
-# The jump landed in chapter 3…
+# The jump landed in chapter 3 (the HUD stays open across a TOC jump, so its chapter title — not
+# the quiet running footer, which is hidden while the bars are open — is the visible proof)…
 - extendedWaitUntil:
     visible:
-      id: "reader-running-chapter"
+      id: "reader-chapter-title"
       text: ".*الثَّالِث.*"
     timeout: 20000
 # …and the pill offers the way back to the page we left.
@@ -57,7 +58,7 @@ appId: com.rewiaty.app
 # Back where we were: chapter 1, page 1 (the bars stay open across a TOC jump).
 - extendedWaitUntil:
     visible:
-      id: "reader-running-chapter"
+      id: "reader-chapter-title"
       text: ".*الْأَوَّل.*"
     timeout: 20000
 - extendedWaitUntil:

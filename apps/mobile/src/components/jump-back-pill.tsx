@@ -122,8 +122,8 @@ export function JumpBackPill({
             style={({ pressed }) => [styles.action, pressed && styles.pressed]}
           >
             <Svg
-              width={16}
-              height={16}
+              width={14}
+              height={14}
               viewBox="0 0 24 20"
               style={dir === 'rtl' ? undefined : styles.mirrored}
             >
@@ -171,36 +171,36 @@ const styles = StyleSheet.create({
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
-    paddingStart: 14,
-    paddingEnd: 4,
-    paddingVertical: 4,
+    gap: 1,
+    paddingStart: 10,
+    paddingEnd: 2,
+    paddingVertical: 2,
     borderRadius: RADIUS.pill,
     borderWidth: 1,
-    maxWidth: 320,
+    maxWidth: 230,
   },
   action: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    minHeight: 36,
+    gap: 6,
+    paddingVertical: 5,
+    minHeight: 28,
   },
   label: {
-    fontSize: 13,
+    fontSize: 11.5,
     fontWeight: '600',
     flexShrink: 1,
     textAlign: 'center',
   },
   dismiss: {
-    minWidth: 36,
-    minHeight: 36,
+    minWidth: 28,
+    minHeight: 28,
     alignItems: 'center',
     justifyContent: 'center',
   },
   dismissGlyph: {
-    fontSize: 18,
-    lineHeight: 20,
+    fontSize: 15,
+    lineHeight: 17,
     opacity: 0.72,
   },
   mirrored: {

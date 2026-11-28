@@ -174,6 +174,14 @@ export function sanitizeSettingsPartial(
   if (partial.readingFocus !== undefined && VALID_READING_FOCUS.has(partial.readingFocus)) {
     next.readingFocus = partial.readingFocus;
   }
+  // F27 / F25 — the optional page effects: a stored value must be a real boolean, so a mangled
+  // row falls back to the default (off) instead of switching an effect on by accident.
+  if (typeof partial.paperGrain === 'boolean') {
+    next.paperGrain = partial.paperGrain;
+  }
+  if (typeof partial.pageEdges === 'boolean') {
+    next.pageEdges = partial.pageEdges;
+  }
 
   // F31 — الإضاءة وراحة العين.
   if (partial.dimmer !== undefined) {
@@ -381,6 +389,9 @@ export function getSectionResetPartial(
         showScrollProgressBar: DEFAULT_SETTINGS.showScrollProgressBar,
         // F33: the focus control lives in «تنسيق الصفحة» too.
         readingFocus: DEFAULT_SETTINGS.readingFocus,
+        // F27 / F25: the optional page effects reset to off with the rest of the layout.
+        paperGrain: DEFAULT_SETTINGS.paperGrain,
+        pageEdges: DEFAULT_SETTINGS.pageEdges,
       };
     case 'theme':
       // F31: «المظهر» owns the lighting/auto-theme/eye-rest comfort settings too, so «افتراضي»

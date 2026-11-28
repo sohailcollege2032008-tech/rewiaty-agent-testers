@@ -212,6 +212,16 @@ export type ReaderSettings = {
    * The reading line itself is the geometry documented in `reading-focus.ts`.
    */
   readingFocus?: ReadingFocusMode;
+  /**
+   * F27 — ملمس الورق. Default `false`: a new reader gets a clean page, and the grain is a taste
+   * they opt into from «تنسيق الصفحة». The two paper themes still decide where it *can* paint.
+   */
+  paperGrain?: boolean;
+  /**
+   * F25 — سُمك حواف الصفحات. Default `false`: the living edge indicators are an optional reading
+   * aid, not chrome every new reader has to dismiss.
+   */
+  pageEdges?: boolean;
 };
 
 export type ThemeTokens = {
@@ -424,7 +434,11 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   eyeRestIntervalMinutes: 45,
   readingMode: 'paginated',
   showScrollProgressBar: true,
+  // F33 / F27 / F25 — every optional reading effect starts off for a new reader and is opened
+  // from «تنسيق الصفحة» when they ask for it.
   readingFocus: 'off',
+  paperGrain: false,
+  pageEdges: false,
 };
 
 export type ReaderInsets = {

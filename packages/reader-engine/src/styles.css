@@ -114,6 +114,16 @@ body {
   background-image: var(--paper-grain-image);
 }
 
+/*
+ * F27 — the reader's opt-in. `paperGrain` defaults to off, so a new reader gets a flat page even
+ * on Warraq/Sepia; the settings switch sets `data-paper-grain="on"`. The attribute selector wins
+ * over the theme rules above, whether it is on or off.
+ */
+:root[data-paper-grain='off'] .paper-grain {
+  display: none;
+  opacity: 0;
+}
+
 .reader-stage {
   position: relative;
   width: var(--stage-width, min(100%, var(--max-width)));

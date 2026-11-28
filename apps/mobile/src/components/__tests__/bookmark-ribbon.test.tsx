@@ -162,6 +162,31 @@ describe('bookmark ribbon drag arithmetic (F24)', () => {
   });
 });
 
+describe('bookmark ribbon declutter (RC3)', () => {
+  it('paints no fabric at all until the page is actually bookmarked', async () => {
+    const { queryByTestId, getByTestId, rerender } = await renderRibbon();
+
+    // Collapsed: invisible fabric, but the corner touch target and its label stay usable.
+    expect(queryByTestId('reader-bookmark-fabric')).toBeNull();
+    expect(getByTestId('reader-bookmark-ribbon').props.accessibilityLabel).toBe(
+      'حفظ علامة مرجعية',
+    );
+
+    await rerender(
+      <BookmarkRibbon
+        isBookmarked
+        color="#8b1e3f"
+        onToggle={jest.fn()}
+        hitSlop={10}
+        style={{ position: 'absolute', top: 40, width: 34, height: 52 }}
+      />,
+    );
+
+    // Bookmarked: the crimson ribbon is the only thing that marks the page.
+    expect(getByTestId('reader-bookmark-fabric')).toBeTruthy();
+  });
+});
+
 describe('bookmark ribbon gesture wiring (F24)', () => {
   it('follows the finger during the drag and springs back to rest on release', async () => {
     const { onToggle } = await renderRibbon();

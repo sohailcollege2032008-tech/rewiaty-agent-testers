@@ -13,6 +13,33 @@ appId: com.rewiaty.app
       id: "reader-loading-overlay"
     timeout: 20000
 - waitForAnimationToEnd
+# RC3: the living page edges are opt-in now. Turn them on from «تنسيق الصفحة» before judging them.
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-settings-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-settings-button"
+    timeout: 5000
+- tapOn:
+    id: "reader-settings-button"
+- tapOn:
+    id: "settings-tab-layout"
+- scrollUntilVisible:
+    element:
+      id: "settings-page-edges-switch"
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: "settings-page-edges-switch"
+# Close the sheet (the bars stay open after it) and let the engine repaint the edges.
+- tapOn:
+    point: "50%,15%"
+- waitForAnimationToEnd
 # أول الكتاب: مفيش مقروء لسه (الحافة اليمين عند حدها الأدنى 2px) وكل الكتاب متبقي (الشمال 6px).
 - extendedWaitUntil:
     visible:
@@ -91,3 +118,31 @@ appId: com.rewiaty.app
     id: "reader-page-counter"
     text: "^صفحة 1 من .*"
 - takeScreenshot: "03-edges-reset"
+# RC3: leave the optional effect off again so later journeys start from the product default.
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-settings-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-settings-button"
+    timeout: 5000
+- tapOn:
+    id: "reader-settings-button"
+- tapOn:
+    id: "settings-tab-layout"
+- scrollUntilVisible:
+    element:
+      id: "settings-page-edges-switch"
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: "settings-page-edges-switch"
+- tapOn:
+    point: "50%,15%"
+- waitForAnimationToEnd
+- assertNotVisible:
+    id: "reader-page-edge-read"

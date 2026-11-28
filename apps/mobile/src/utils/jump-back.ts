@@ -13,6 +13,12 @@ import type { Anchor } from '@rewiaty/book-format';
 export const JUMP_BACK_AUTO_DISMISS_TURNS = 3;
 
 /**
+ * RC3 declutter: when a reader has not touched the pill within this window it leaves on its own.
+ * The screen owns the timer; the state machine stays pure/predictable.
+ */
+export const JUMP_BACK_AUTO_HIDE_MS = 6_000;
+
+/**
  * Reading actively in the new spot for longer than this retires the pill too — a reader who has
  * settled somewhere else does not want a way back nagging them.
  */

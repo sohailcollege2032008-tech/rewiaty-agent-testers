@@ -30,6 +30,9 @@ appId: com.rewiaty.app
 - assertVisible:
     id: "reader-bookmark-ribbon"
 - assertVisible: "حفظ علامة مرجعية"
+# RC3: with nothing marked, no fabric is painted at all — only the corner touch target remains.
+- assertNotVisible:
+    id: "reader-bookmark-fabric"
 - takeScreenshot: "01-ribbon-collapsed"
 # 1) Pull DOWN from the ribbon corner, past the commit threshold: the bookmark is saved and the
 #    fabric extends.
@@ -42,6 +45,8 @@ appId: com.rewiaty.app
 - extendedWaitUntil:
     visible: "إزالة العلامة المرجعية"
     timeout: 5000
+- assertVisible:
+    id: "reader-bookmark-fabric"
 - takeScreenshot: "02-ribbon-saved"
 # 2) The saved state must survive a cold reopen — this is the storage path, not just the icon.
 - stopApp
@@ -67,6 +72,8 @@ appId: com.rewiaty.app
 - extendedWaitUntil:
     visible: "إزالة العلامة المرجعية"
     timeout: 5000
+- assertVisible:
+    id: "reader-bookmark-fabric"
 - takeScreenshot: "03-bookmark-persisted"
 # 3) The collapsed HUD puts the ribbon close to the top. Start near the lower end of the extended
 #    ribbon and finish just above it, with enough travel to cross the removal threshold.
@@ -78,6 +85,8 @@ appId: com.rewiaty.app
 - extendedWaitUntil:
     visible: "حفظ علامة مرجعية"
     timeout: 5000
+- assertNotVisible:
+    id: "reader-bookmark-fabric"
 - takeScreenshot: "04-ribbon-removed"
 # 4) And the removal is stored too.
 - stopApp
@@ -103,4 +112,6 @@ appId: com.rewiaty.app
 - extendedWaitUntil:
     visible: "حفظ علامة مرجعية"
     timeout: 5000
+- assertNotVisible:
+    id: "reader-bookmark-fabric"
 - takeScreenshot: "05-removal-persisted"

@@ -35,8 +35,6 @@ export type ReaderHudProps = {
   chapterProgress?: number;
   /** The engine has not measured every chapter yet, so `pageCount` is an estimate. */
   estimated?: boolean;
-  chapterCount?: number;
-  isBookmarked?: boolean;
   isTablet?: boolean;
   isTabletLandscape?: boolean;
   dir: 'rtl' | 'ltr';
@@ -73,8 +71,6 @@ export function ReaderHud({
   readingMode = 'paginated',
   chapterProgress,
   estimated = false,
-  chapterCount,
-  isBookmarked = false,
   isTablet = false,
   isTabletLandscape = false,
   dir,
@@ -519,16 +515,6 @@ export function ReaderHud({
             timelineMarkers={timelineMarkers}
           />
 
-          <View style={styles.footerSubRow}>
-            <Text style={[styles.subText, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}>
-              {chapterCount ? `${chapterCount} فصول` : 'القراءة الحالية'}
-            </Text>
-            {isBookmarked ? (
-              <Text style={[styles.subText, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}>
-                الصفحة محفوظة بالشريطة
-              </Text>
-            ) : null}
-          </View>
         </View>
       </Animated.View>
     </View>
@@ -652,15 +638,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     fontVariant: ['tabular-nums'],
-  },
-  footerSubRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  subText: {
-    fontSize: 11,
   },
   themeBtnSwatch: {
     width: 18,

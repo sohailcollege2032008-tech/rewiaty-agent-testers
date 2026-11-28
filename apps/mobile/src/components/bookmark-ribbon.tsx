@@ -151,17 +151,17 @@ export function BookmarkRibbon({
         accessibilityState={{ selected: isBookmarked }}
         accessibilityHint="اسحب لأسفل للحفظ، ولأعلى على الشريطة الممدودة للإزالة"
       >
-        <Svg
-          width={18}
-          height={isBookmarked ? 42 : 16}
-          viewBox={isBookmarked ? '0 0 18 42' : '0 0 18 16'}
-          style={{ opacity: isBookmarked ? 1 : 0.46 }}
-        >
-          <Path
-            d={isBookmarked ? 'M0 0 H18 V42 L9 34 L0 42 Z' : 'M0 0 H18 V16 L9 12 L0 16 Z'}
-            fill={color}
-          />
-        </Svg>
+        {isBookmarked ? (
+          <Svg
+            testID="reader-bookmark-fabric"
+            width={18}
+            height={42}
+            viewBox="0 0 18 42"
+            style={{ opacity: 1 }}
+          >
+            <Path d="M0 0 H18 V42 L9 34 L0 42 Z" fill={color} />
+          </Svg>
+        ) : null}
       </AnimatedPressable>
     </GestureDetector>
   );

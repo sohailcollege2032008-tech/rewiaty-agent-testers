@@ -141,9 +141,9 @@ async function decodePaintedTexture(
 }
 
 for (const theme of ['warraq', 'sepia'] as const) {
-  test(`paints the 128px paper grain at 3% on the ${theme} theme`, async ({ page }) => {
+  test(`paints the 128px paper grain at 3% on the ${theme} theme when the reader opts in`, async ({ page }) => {
     await mountEngine(page);
-    await loadBook(page, { theme });
+    await loadBook(page, { theme, paperGrain: true });
 
     const paint = await readPaint(page);
     expect(paint.dataTheme).toBe(theme);
@@ -183,15 +183,36 @@ for (const theme of HIDDEN_THEMES) {
   });
 }
 
+test('keeps the grain hidden for a new reader until the setting is turned on (RC3)', async ({ page }) => {
+  await mountEngine(page);
+  // The paper theme allows grain, but the setting defaults off: the page must be flat.
+  await loadBook(page, { theme: 'warraq' });
+
+  const paint = await readPaint(page);
+  expect(paint.dataTheme).toBe('warraq');
+  expect(paint.display).toBe('none');
+  expect(paint.opacity).toBe('0');
+
+  const status = await waitForGrainStatus(page);
+  expect(status).toMatchObject({ theme: 'warraq', state: 'hidden' });
+
+  // …and the same page paints it once the reader opts in.
+  await sendBridge(page, { type: 'settings', partial: { paperGrain: true } });
+  expect(await waitForGrainStatus(page, 2)).toMatchObject({ theme: 'warraq', state: 'painted' });
+  expect((await readPaint(page)).opacity).toBe('0.03');
+});
+
 test('keeps the grain hidden when custom colours are painting', async ({ page }) => {
   await mountEngine(page);
   await loadBook(page, {
     theme: 'warraq',
+    paperGrain: true,
     customColors: { enabled: true, bg: '#FAF7F0', text: '#231F1A' },
   });
 
   const paint = await readPaint(page);
-  // Custom colours take the page over via their own theme key; the grain must not ride along.
+  // Custom colours take the page over via their own theme key; the grain must not ride along
+  // even with the switch explicitly on.
   expect(paint.dataTheme).toBe('custom');
   expect(paint.display).toBe('none');
   expect(paint.opacity).toBe('0');
@@ -202,7 +223,7 @@ test('keeps the grain hidden when custom colours are painting', async ({ page })
 
 test('reports distinct grain verdicts across theme changes', async ({ page }) => {
   await mountEngine(page);
-  await loadBook(page, { theme: 'warraq' });
+  await loadBook(page, { theme: 'warraq', paperGrain: true });
   expect(await waitForGrainStatus(page)).toMatchObject({ theme: 'warraq', state: 'painted' });
 
   await sendBridge(page, { type: 'settings', partial: { theme: 'sepia' } });
@@ -227,7 +248,7 @@ for (const override of [
       const style = document.querySelector('style');
       style?.sheet?.insertRule(`#paper-grain { ${rule} !important; }`);
     }, override);
-    await loadBook(page, { theme: 'warraq' });
+    await loadBook(page, { theme: 'warraq', paperGrain: true });
     expect(await waitForGrainStatus(page)).toMatchObject({ theme: 'warraq', state: 'invalid' });
   });
 }

@@ -60,6 +60,46 @@ describe('settings-store', () => {
     expect(settings.marginVertical).toBeGreaterThanOrEqual(16);
   });
 
+  it('starts every optional page effect off for a new reader (RC3)', async () => {
+    // A brand-new install must get a clean page: no grain, no edge bands, no focus guide.
+    expect(DEFAULT_SETTINGS.paperGrain).toBe(false);
+    expect(DEFAULT_SETTINGS.pageEdges).toBe(false);
+    expect(DEFAULT_SETTINGS.readingFocus).toBe('off');
+
+    const settings = await loadReaderSettings(db);
+    expect(settings.paperGrain).toBe(false);
+    expect(settings.pageEdges).toBe(false);
+    expect(settings.readingFocus).toBe('off');
+  });
+
+  it('persists the optional page effects, sanitizes junk, and resets them with the layout tab (RC3)', async () => {
+    const enabled = await updateReaderSettings(
+      { paperGrain: true, pageEdges: true, readingFocus: 'ruler' },
+      db,
+    );
+    expect(enabled.paperGrain).toBe(true);
+    expect(enabled.pageEdges).toBe(true);
+    expect(enabled.readingFocus).toBe('ruler');
+    expect((await loadReaderSettings(db)).paperGrain).toBe(true);
+
+    // A stored non-boolean (an older/corrupt row) must not turn an effect on by accident.
+    const junkDb = createKvTestDb();
+    await junkDb.runAsync(
+      'INSERT INTO kv (key, value) VALUES (?, ?)',
+      SETTINGS_KV_KEY,
+      JSON.stringify({ paperGrain: 'yes', pageEdges: 1 }),
+    );
+    const sanitized = await loadReaderSettings(junkDb);
+    expect(sanitized.paperGrain).toBe(false);
+    expect(sanitized.pageEdges).toBe(false);
+
+    // «افتراضي» in the layout tab puts the optional effects back off.
+    const afterLayoutReset = await resetSection('layout', db);
+    expect(afterLayoutReset.paperGrain).toBe(false);
+    expect(afterLayoutReset.pageEdges).toBe(false);
+    expect(afterLayoutReset.readingFocus).toBe('off');
+  });
+
   it('migrates implicit pre-R5 Amiri default to Noto Naskh Arabic while preserving user-chosen fonts (A5)', async () => {
     // User changed fontSize before R5, which implicitly saved fontFamily: 'Amiri'
     await db.runAsync(

@@ -88,6 +88,30 @@ describe('JumpBackPill', () => {
     expect(Number(flat.bottom)).toBeGreaterThanOrEqual(48);
   });
 
+  it('is a compact, unobtrusive moment of chrome (RC3)', async () => {
+    const { getByTestId, getByText } = await renderPill();
+
+    const label = StyleSheet.flatten(getByText('ارجع لصفحة 42').props.style) as Record<
+      string,
+      unknown
+    >;
+    // Smaller than the original 13px floating label.
+    expect(Number(label.fontSize)).toBeLessThanOrEqual(12);
+
+    const action = StyleSheet.flatten(getByTestId('jump-back-pill').props.style) as Record<
+      string,
+      unknown
+    >;
+    expect(Number(action.minHeight)).toBeLessThanOrEqual(30);
+
+    const dismiss = StyleSheet.flatten(getByTestId('jump-back-dismiss').props.style) as Record<
+      string,
+      unknown
+    >;
+    expect(Number(dismiss.minWidth)).toBeLessThanOrEqual(30);
+    expect(Number(dismiss.minHeight)).toBeLessThanOrEqual(30);
+  });
+
   it('turns untouchable and leaves the accessibility tree as soon as the origin clears (Codex #42 P3)', async () => {
     const { queryByTestId, getByTestId, rerender } = await renderPill();
     const hidden = { includeHiddenElements: true } as const;

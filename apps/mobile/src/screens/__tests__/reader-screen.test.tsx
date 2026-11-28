@@ -464,6 +464,102 @@ describe('ReaderScreen', () => {
     }
   });
 
+  it('keeps every engine proof invisible to a reader while still exposing it to Maestro (RC3)', async () => {
+    const utils = await renderLoadedReader();
+
+    await act(async () => {
+      emitWebMessage({ type: 'image-rendered', count: 1, width: 240, height: 160 });
+      emitWebMessage({ type: 'paper-grain-status', theme: 'warraq', state: 'painted' });
+    });
+
+    // The proofs must still be in the tree for the device journeys…
+    const imageHost = ReactNative.StyleSheet.flatten(
+      utils.getByTestId('reader-image-proof-host').props.style,
+    ) as Record<string, unknown>;
+    const grainHost = ReactNative.StyleSheet.flatten(
+      utils.getByTestId('reader-paper-grain-proof-host').props.style,
+    ) as Record<string, unknown>;
+
+    // …but neither host can occupy a visible pixel of the page: 1×1, clipped and fully transparent.
+    for (const host of [imageHost, grainHost]) {
+      expect(host.position).toBe('absolute');
+      expect(host.width).toBe(1);
+      expect(host.height).toBe(1);
+      expect(host.overflow).toBe('hidden');
+      expect(host.opacity).toBe(0);
+    }
+
+    for (const id of ['reader-image-proof', 'reader-paper-grain-proof']) {
+      const label = ReactNative.StyleSheet.flatten(
+        utils.getByTestId(id).props.style,
+      ) as Record<string, unknown>;
+      expect(label.color).toBe('transparent');
+      expect(Number(label.fontSize)).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('keeps page-edge bands off for a new reader and draws them only after the setting is enabled (RC3)', async () => {
+    mockKv.clear();
+    mockKv.set('reader_hud_hint_seen_v1', true);
+    const utils = await renderLoadedReader();
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({ type: 'position', chapterId: 'ch01', page: 2, pageCount: 10, bookProgress: 0.2 });
+    });
+
+    // The engine has measured the book, yet nothing is drawn: the effect is opt-in.
+    expect(utils.queryByTestId('reader-page-edge-read')).toBeNull();
+    expect(utils.queryByTestId('reader-page-edge-remaining')).toBeNull();
+
+    await act(async () => {
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+    await fireEvent.press(utils.getByTestId('reader-settings-button'));
+    await fireEvent.press(utils.getByTestId('settings-tab-layout'));
+    await fireEvent(utils.getByTestId('settings-page-edges-switch'), 'valueChange', true);
+    await fireEvent.press(utils.getByTestId('settings-dismiss-backdrop'));
+
+    expect(utils.getByTestId('reader-page-edge-read')).toBeTruthy();
+    expect(utils.getByTestId('reader-page-edge-remaining')).toBeTruthy();
+  });
+
+  it('shows the chapter and page counter once — no faded duplicate under the open HUD (RC3)', async () => {
+    mockKv.clear();
+    mockKv.set('reader_hud_hint_seen_v1', true);
+    const utils = await renderLoadedReader();
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({
+        type: 'position',
+        anchor: { blockId: 'ch02_p0001', charOffset: 0 },
+        chapterId: 'ch02',
+        page: 8,
+        pageCount: 13,
+        chapterPage: 3,
+        chapterPageCount: 6,
+        bookProgress: 7 / 12,
+      });
+    });
+
+    // HUD closed: the quiet running footer is the only indicator on the page.
+    expect(utils.getByTestId('reader-running-footer')).toBeTruthy();
+
+    // HUD open: the chapter and «صفحة X من Y» live directly above the scrubber, so the faded
+    // copy underneath is gone instead of being drawn twice.
+    await act(async () => {
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+    expect(utils.getByTestId('reader-chapter-title')).toBeTruthy();
+    expect(utils.getByTestId('reader-page-counter')).toBeTruthy();
+    expect(utils.queryByTestId('reader-running-footer')).toBeNull();
+
+    // The old sub-row («N فصول» / «الصفحة محفوظة بالشريطة») was removed with it.
+    expect(utils.queryByText(/فصول/)).toBeNull();
+    expect(utils.queryByText('الصفحة محفوظة بالشريطة')).toBeNull();
+  });
+
   it('automatically uses burnt-paper when system colorScheme is dark and no manual theme is set', async () => {
     colorSchemeSpy.mockReturnValue('dark');
     await renderLoadedReader();
@@ -1254,7 +1350,7 @@ describe('ReaderScreen', () => {
     await waitFor(() => expect(queryByTestId('jump-back-pill')).toBeNull());
   });
 
-  it('retires the pill after three page turns in the new spot (F26)', async () => {
+  it('retires the pill on the first real page turn in the new spot (RC3)', async () => {
     mockKv.clear();
     mockKv.set('reader_hud_hint_seen_v1', true);
     const { getByTestId, queryByTestId } = await renderLoadedReader();
@@ -1281,18 +1377,47 @@ describe('ReaderScreen', () => {
     });
 
     await act(async () => {
-      // The jump's own landing is not a turn…
+      // The jump's own landing is not a turn: the pill is still there to go back.
       emitWebMessage(turn(3));
-      // …these two are, and the reader is still on the pill.
-      emitWebMessage(turn(4));
-      emitWebMessage(turn(5));
     });
     expect(getByTestId('jump-back-pill')).toBeTruthy();
 
     await act(async () => {
-      emitWebMessage(turn(6));
+      // RC3 declutter: the first page the reader really turns retires it at once — no "keep
+      // reading for three pages" wait, and no pill nagging over the text they moved on to.
+      emitWebMessage(turn(4));
     });
     await waitFor(() => expect(queryByTestId('jump-back-pill')).toBeNull());
+  });
+
+  it('auto-hides the pill after six quiet seconds without interaction (RC3)', async () => {
+    mockKv.clear();
+    mockKv.set('reader_hud_hint_seen_v1', true);
+    jest.useFakeTimers();
+    const { getByTestId, queryByTestId } = await renderLoadedReader();
+
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({ type: 'position', chapterId: 'ch01', page: 2, pageCount: 10, bookProgress: 0.2 });
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+
+    await fireEvent.press(getByTestId('reader-toc-button'));
+    await fireEvent.press(getByTestId('toc-item-ch02'));
+    await waitFor(() => expect(getByTestId('jump-back-pill')).toBeTruthy());
+
+    // Still offered just before the window closes…
+    await act(async () => {
+      jest.advanceTimersByTime(5_000);
+    });
+    expect(getByTestId('jump-back-pill')).toBeTruthy();
+
+    // …and gone once nothing touched it for six seconds.
+    await act(async () => {
+      jest.advanceTimersByTime(1_001);
+    });
+    expect(queryByTestId('jump-back-pill')).toBeNull();
+    jest.useRealTimers();
   });
 
   it('does not read background pagination churn as reading in the new spot (F26)', async () => {
@@ -1910,8 +2035,17 @@ describe('ReaderScreen', () => {
     });
   }
 
+  /** RC3: the living edges are opt-in, so these F25 tests opt in before they render. */
+  function enablePageEdges() {
+    (loadThemePreference as jest.Mock).mockResolvedValue({
+      settings: { ...DEFAULT_SETTINGS, pageEdges: true },
+      hasManualTheme: false,
+    });
+  }
+
   it('thickens the read edge and thins the remaining edge as pages advance in an RTL book (F25)', async () => {
     // Saved position: page 2 of 10 → 1/9 read. RTL: what is read accumulates on the physical right.
+    enablePageEdges();
     const utils = await renderLoadedReader();
     await emitReady();
     expect(utils.queryByTestId('reader-page-edge-read')).toBeNull();
@@ -1950,6 +2084,7 @@ describe('ReaderScreen', () => {
   });
 
   it('mirrors the two edges for an LTR book (F25)', async () => {
+    enablePageEdges();
     mockBookDir('ltr', 4, 10);
     const utils = await renderLoadedReader();
     await emitReady();
@@ -1965,6 +2100,7 @@ describe('ReaderScreen', () => {
   });
 
   it('keeps the 2..6 floor on a single-page book instead of inventing progress (F25)', async () => {
+    enablePageEdges();
     mockBookDir('rtl', 1, 1);
     const utils = await renderLoadedReader();
     await emitReady();

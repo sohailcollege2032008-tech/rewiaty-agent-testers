@@ -27,6 +27,16 @@ appId: com.rewiaty.app
     timeout: 5000
 - tapOn:
     id: "reader-settings-button"
+# RC3: the grain is opt-in now, so turn it on before judging it on the paper themes.
+- tapOn:
+    id: "settings-tab-layout"
+- scrollUntilVisible:
+    element:
+      id: "settings-paper-grain-switch"
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: "settings-paper-grain-switch"
 - tapOn:
     id: "settings-tab-theme"
 
@@ -141,4 +151,35 @@ appId: com.rewiaty.app
     visible:
       id: "reader-paper-grain-proof"
       text: "^ملمس الورق [(]warraq[)]: مفعّل ٣٪$"
+    timeout: 10000
+# RC3: restore the product default (grain off) for the journeys that follow.
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-settings-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-settings-button"
+    timeout: 5000
+- tapOn:
+    id: "reader-settings-button"
+- tapOn:
+    id: "settings-tab-layout"
+- scrollUntilVisible:
+    element:
+      id: "settings-paper-grain-switch"
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: "settings-paper-grain-switch"
+- tapOn:
+    point: "50%,15%"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "reader-paper-grain-proof"
+      text: "^ملمس الورق [(]warraq[)]: متوقّف$"
     timeout: 10000

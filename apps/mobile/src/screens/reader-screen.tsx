@@ -136,11 +136,13 @@ import {
   type TimelineChapterInput,
 } from '@/utils/chapter-timeline';
 import { EyeRestTracker } from '@/utils/eye-rest';
+import { HIDDEN_PROOF_HOST_STYLE, HIDDEN_PROOF_TEXT_STYLE } from '@/utils/hidden-proof';
 import {
   chapterIdFromAnchor,
   dismissJumpBack,
   emptyJumpBackState,
   isSameAnchorSpot,
+  JUMP_BACK_AUTO_HIDE_MS,
   recordJump,
   recordReadingProgress,
   type JumpBackState,
@@ -604,6 +606,15 @@ export function ReaderScreen({ qaClient, qaResolveByok, qaHasByokKey }: ReaderSc
     },
     [applyJumpBack, currentJumpOrigin],
   );
+
+  // F26 / RC3: the way-back pill is a moment, not chrome. It leaves after six quiet seconds; a real
+  // page turn retires it immediately (see the `position` branch), and returning/dismissing clears it.
+  const jumpBackOrigin = jumpBack.origin;
+  useEffect(() => {
+    if (!jumpBackOrigin) return;
+    const timer = setTimeout(() => applyJumpBack(dismissJumpBack), JUMP_BACK_AUTO_HIDE_MS);
+    return () => clearTimeout(timer);
+  }, [applyJumpBack, jumpBackOrigin]);
 
   const themeTokens = useMemo(() => {
     const base = getAppThemeTokens(settings.theme);
@@ -1346,7 +1357,12 @@ export function ReaderScreen({ qaClient, qaResolveByok, qaHasByokKey }: ReaderSc
             lastReadingIdentityRef.current = readingIdentity;
             // The anchor travels with the report: the page key alone cannot tell that the reader
             // came back to the same text after a reflow moved its page number (Codex #42 P2).
-            applyJumpBack((prev) => recordReadingProgress(prev, pageKey, Date.now(), anchor));
+            applyJumpBack((prev) => {
+              const next = recordReadingProgress(prev, pageKey, Date.now(), anchor);
+              // RC3 declutter: one real page turn in the new spot retires the pill at once — a
+              // reader who kept reading does not need a way back lingering over the text.
+              return next.origin && next.turnsInNewSpot >= 1 ? dismissJumpBack(next) : next;
+            });
           }
           currentAnchorRef.current = anchor;
           setPageInfo({
@@ -2166,8 +2182,12 @@ export function ReaderScreen({ qaClient, qaResolveByok, qaHasByokKey }: ReaderSc
   const progressRatio =
     pageInfo.pageCount > 1 ? Math.max(0, Math.min(1, (pageInfo.page - 1) / (pageInfo.pageCount - 1))) : 0;
   // F25 — what is read vs what is left, as two physical paper stacks. Hidden until the engine has
-  // measured the book: a saved page number is not progress yet.
-  const pageEdges = pageEdgeLayout(progressRatio, engineReady && positionMeasured ? pageInfo.pageCount : 0, effectiveDir);
+  // measured the book: a saved page number is not progress yet. The effect is opt-in (default off),
+  // so a new reader gets a clean page with no edge bands at all.
+  const pageEdges =
+    settings.pageEdges === true
+      ? pageEdgeLayout(progressRatio, engineReady && positionMeasured ? pageInfo.pageCount : 0, effectiveDir)
+      : null;
   const pctRead = progressToPercent(pageInfo.bookProgress);
 
   if (loadError) {
@@ -2382,17 +2402,13 @@ export function ReaderScreen({ qaClient, qaResolveByok, qaHasByokKey }: ReaderSc
             gets its own node, so "nothing rendered" can be told apart from "nothing reported" —
             without it the negative control could pass for the wrong reason. */}
         {imageProof ? (
-          // A real Text node: text views are what the on-device accessibility tree always exposes
-          // (`reader-page-counter` proves that), whereas a 1px, 1%-opacity blank View was skipped
-          // entirely (CI run 45672094646). Its colour is transparent, so a reader sees nothing;
-          // the container takes no touches.
-          <View pointerEvents="none" style={styles.imageProof}>
+          <View pointerEvents="none" testID="reader-image-proof-host" style={HIDDEN_PROOF_HOST_STYLE}>
             {imageProof.count > 0 && imageProof.width > 0 && imageProof.height > 0 ? (
-              <Text testID="reader-image-proof" style={styles.imageProofLabel}>
+              <Text testID="reader-image-proof" style={HIDDEN_PROOF_TEXT_STYLE}>
                 {`صورة ${imageProof.width}×${imageProof.height}`}
               </Text>
             ) : (
-              <Text testID="reader-image-error" style={styles.imageProofLabel}>
+              <Text testID="reader-image-error" style={HIDDEN_PROOF_TEXT_STYLE}>
                 {'الصورة مش ظاهرة'}
               </Text>
             )}
@@ -2401,11 +2417,11 @@ export function ReaderScreen({ qaClient, qaResolveByok, qaHasByokKey }: ReaderSc
 
         {/* F27 — ملمس الورق proof. Same idea as the figure proof: a transparent Text node the
             accessibility tree exposes, so a Maestro journey can tell "3% grain painted" apart from
-            "the theme silently dropped it". Sits above `reader-image-proof` so the two never
-            overlap. Only a live, filter-free 3% tile counts as «مفعّل». */}
+            "the theme silently dropped it". It uses the same 1×1 clipped host as the figure proof so
+            no reader can ever see it on the page (RC3 showed the old mid-page label). */}
         {paperGrainProof ? (
-          <View pointerEvents="none" style={styles.paperGrainProof}>
-            <Text accessible testID="reader-paper-grain-proof" style={styles.imageProofLabel}>
+          <View pointerEvents="none" testID="reader-paper-grain-proof-host" style={HIDDEN_PROOF_HOST_STYLE}>
+            <Text accessible testID="reader-paper-grain-proof" style={HIDDEN_PROOF_TEXT_STYLE}>
               {paperGrainProof}
             </Text>
           </View>
@@ -2442,8 +2458,10 @@ export function ReaderScreen({ qaClient, qaResolveByok, qaHasByokKey }: ReaderSc
           </View>
         ) : null}
 
-        {/* Quiet Running Footer */}
-        {book ? (
+        {/* Quiet Running Footer — only while the HUD is closed. With the bars open, the chapter
+            and «صفحة X من Y» already sit directly above the scrubber; drawing a second faded copy
+            underneath was the RC3 duplicate line. */}
+        {book && !hudVisible ? (
           <View
             testID="reader-running-footer"
             pointerEvents="none"
@@ -2591,8 +2609,6 @@ export function ReaderScreen({ qaClient, qaResolveByok, qaHasByokKey }: ReaderSc
               readingMode={pageInfo.readingMode}
               chapterProgress={pageInfo.chapterProgress}
               estimated={pageInfo.estimated}
-              chapterCount={book.chapters.length}
-              isBookmarked={isBookmarked}
               isTablet={layout.isTablet}
               isTabletLandscape={layout.isTabletLandscape}
               dir={effectiveDir}
@@ -2737,24 +2753,6 @@ export function ReaderScreen({ qaClient, qaResolveByok, qaHasByokKey }: ReaderSc
 }
 
 const styles = StyleSheet.create({
-  // A transparent, contentless strip along the bottom edge. The text inside is what proves a figure
-  // painted; the container only takes it out of hit-testing so the scrubber underneath still works.
-  imageProof: {
-    position: 'absolute',
-    start: 0,
-    bottom: 0,
-  },
-  paperGrainProof: {
-    position: 'absolute',
-    start: 24,
-    top: '40%',
-    zIndex: 5,
-  },
-  imageProofLabel: {
-    color: 'transparent',
-    fontSize: 8,
-    lineHeight: 12,
-  },
   hudHint: {
     position: 'absolute',
     alignSelf: 'center',

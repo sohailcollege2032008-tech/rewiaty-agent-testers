@@ -732,6 +732,34 @@ function SettingsContent({
             </Text>
           ) : null}
 
+          {/* F27 / F25 — the optional reading effects. Both start off for a new reader; the
+              switch is the only way in, so the default page stays clean. */}
+          <View style={[styles.switchRow, { borderTopColor: palette.border }]}>
+            <Text style={[styles.switchLabel, { color: palette.text, fontFamily: TYPOGRAPHY.uiFont }]}>
+              ملمس الورق
+            </Text>
+            <Switch
+              testID="settings-paper-grain-switch"
+              value={settings.paperGrain === true}
+              onValueChange={(value) => onChange({ paperGrain: value })}
+              trackColor={{ false: palette.border, true: palette.accent }}
+              thumbColor={palette.surfaceElevated}
+            />
+          </View>
+
+          <View style={[styles.switchRow, { borderTopColor: palette.border }]}>
+            <Text style={[styles.switchLabel, { color: palette.text, fontFamily: TYPOGRAPHY.uiFont }]}>
+              سُمك حواف الصفحات
+            </Text>
+            <Switch
+              testID="settings-page-edges-switch"
+              value={settings.pageEdges === true}
+              onValueChange={(value) => onChange({ pageEdges: value })}
+              trackColor={{ false: palette.border, true: palette.accent }}
+              thumbColor={palette.surfaceElevated}
+            />
+          </View>
+
           <View style={stackControlRow ? styles.ctrlRowStacked : styles.ctrlRow}>
             <Text
               style={[styles.ctrlLabel, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}

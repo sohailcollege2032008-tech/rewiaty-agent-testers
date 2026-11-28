@@ -2332,7 +2332,12 @@ export class Paginator {
     // is only set for the themes the product allows — a dark page or a custom pair carries none.
     // `customTokens` (not merely `enabled`) is what counts: a pair the engine rejected falls back
     // to its preset paper, so the grain must follow the preset that is actually painted.
-    if (isPaperGrainTheme(this.settings.theme, customTokens !== null)) {
+    // The setting is the reader's opt-in: with `paperGrain` off (the default) the layer is
+    // `display:none`, so the page is flat even on the two paper themes.
+    const grainOn =
+      this.settings.paperGrain === true && isPaperGrainTheme(this.settings.theme, customTokens !== null);
+    document.documentElement.setAttribute('data-paper-grain', grainOn ? 'on' : 'off');
+    if (grainOn) {
       rootStyle.setProperty('--paper-grain-image', `url("${PAPER_GRAIN_DATA_URI}")`);
     } else {
       rootStyle.removeProperty('--paper-grain-image');
