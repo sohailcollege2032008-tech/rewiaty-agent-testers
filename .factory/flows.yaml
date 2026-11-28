@@ -152,6 +152,12 @@ flows:
     target: release-apk
     run: "bash scripts/ci-flows.sh jump-back"
     artifact: ".factory/evidence/latest/apk/app.apk"
+  - id: bookmark-ribbon
+    who: "قارئ عايز يحفظ مكانه أو يشيل العلامة بإيده"
+    steps: "يفتح الرواية ← يقفل الـ HUD ← الشريطة القماش في الركن ومكتوب عليها «حفظ علامة مرجعية» ← يسحبها لتحت ويتجاوز الحد ← تبقى ممدودة ومكتوب عليها «إزالة العلامة المرجعية» ← يقفل التطبيق ويفتحه ← العلامة لسه محفوظة ← يسحب الشريطة الممدودة لفوق ويتجاوز الحد ← ترجع مقفولة «حفظ علامة مرجعية»"
+    target: release-apk
+    run: "bash scripts/ci-flows.sh bookmark-ribbon"
+    artifact: ".factory/evidence/latest/apk/app.apk"
   - id: welcome-back
     who: "قارئ فاتح كتاب لسه مفتوح من قريب"
     steps: "يفتح التطبيق ← يفتح الرواية التجريبية (اتفتحت دلوقتي) ← كارت «فين كنا واقفين؟» مبيظهرش ← يقلّب صفحة والقراية عادية (شرط الغياب > ٣ أيام متغطي باختبارات الوحدة والكومبوننت)"
