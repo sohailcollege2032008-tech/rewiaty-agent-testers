@@ -41,6 +41,12 @@ export type PdfUploadScreenProps = {
    * sees «الخدمة السحابية لسه مش مفعّلة» instead of a silent broken flow.
    */
   unconfiguredNoticeAr?: string | null;
+  /**
+   * F38: fire-and-forget push-permission/registration request. Called when a background
+   * conversion job is started — it must never be awaited, so a denied permission cannot block
+   * or delay the conversion.
+   */
+  onRequestPushNotifications?: () => void;
 };
 
 type Phase = 'idle' | 'uploading' | 'preflight' | 'onboarding' | 'processing' | 'completed' | 'cancelled';
@@ -162,6 +168,7 @@ export function PdfUploadScreen({
   onOpenReader,
   onBack,
   unconfiguredNoticeAr,
+  onRequestPushNotifications,
 }: PdfUploadScreenProps) {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
@@ -429,6 +436,14 @@ export function PdfUploadScreen({
       // Why (sync lock, review P2): two taps in one frame must never create two jobs.
       if (startingRef.current) return;
       startingRef.current = true;
+      // F38: a conversion is a long background job, so this is the right moment to ask for
+      // push permission. It is fired synchronously and never awaited — a denial or a crash in
+      // the notification layer cannot block the conversion.
+      try {
+        onRequestPushNotifications?.();
+      } catch {
+        // Push notifications are optional feedback, not part of the conversion.
+      }
       const attemptId = ++attemptIdRef.current;
       setPending('start');
       setNotice(null);
@@ -488,7 +503,7 @@ export function PdfUploadScreen({
         if (attemptId === attemptIdRef.current) setPending(null);
       }
     },
-    [aiLevel, effectiveService, estimate, handleProgressEvent, unsubscribe],
+    [aiLevel, effectiveService, estimate, handleProgressEvent, onRequestPushNotifications, unsubscribe],
   );
 
   const handleConfirmPreflight = useCallback(() => {

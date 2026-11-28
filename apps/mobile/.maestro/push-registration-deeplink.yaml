@@ -1,0 +1,67 @@
+appId: com.rewiaty.app
+---
+# F38 / #92 — إشعارات Expo على release APK أوفلاين (رحلة QA).
+#
+# الرحلة دي بتشتغل على الـ release APK اللي بيتبني في testers CI. البيلد ده أوفلاين: مفيش
+# `EXPO_PUBLIC_API_BASE_URL`، ولا Expo project id، ولا FCM credentials، ولا Google Play Services،
+# فمستحيل يجيب Expo push token حقيقي أو يبعت إشعار حقيقي. علشان كده البيلد بيتعمل بـ
+# `EXPO_PUBLIC_PUSH_QA_SEAM=1` (compile-time opt-in):
+#
+#   - الحافتين اللي بيتستبوا: OS permissions/token (دائماً granted + توكن ثابت) وAPI transport
+#     (client في الذاكرة، من غير URL ولا طلب شبكة).
+#   - اللي بيفضل حقيقي: `registerDevicePushToken` نفسه — نفس الـ validation، ونفس كتابة
+#     `push_token_id_v1` في KV، ونفس الـ result mapping.
+#
+# الإثبات الأول: البانر بيعرض `push-qa:registered` من غير ما التطبيق يقع (و`reader-error-state`
+# مش موجود). الإثبات التاني: payload بشكل الإشعار الحقيقي (chapter_ready) بيدخل من QA deep link
+# ويعدّي على **نفس** `routeFromPushNotificationData`، والبانر يعرض الـ route اللي الدالة رجّعته،
+# والقارئ يفتح الكتاب التجريبي فعلاً.
+#
+# `book_sample` هو alias الرحلة للكتاب التجريبي؛ الـ id الحقيقي للكتاب المدمج مشتق من محتواه
+# (`book_898d8c1a8ed51866`)، ومثبّت باختبار وحدة في `push-qa-seam.test.ts` — لو ملف العينة
+# اتغيّر، الاختبار بيفشل ويقولك تحدّث الـ id هنا.
+#
+# مالوش وجود في release عادي: من غير الـ env، `PUSH_QA_SEAM_ENABLED` بيتبني `false` وكل
+# المسار ده مش بيتنفّذ.
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+
+# 1) تسجيل الإشعارات: المؤشر بيظهر بعد ما دالة التسجيل الحقيقية ترجع registered.
+- extendedWaitUntil:
+    visible:
+      id: "qa-push-seam-status"
+    timeout: 15000
+- assertVisible:
+    id: "qa-push-seam-status"
+    text: "push-qa:registered"
+- assertNotVisible:
+    id: "qa-push-seam-route"
+- takeScreenshot: "01-push-registered"
+
+# 2) payload إشعار chapter_ready للكتاب التجريبي يعدّي على نفس دالة routing.
+- openLink: "rewiaty:///?qa_push=1&event=chapter_ready&book_id=book_sample&job_id=qa-job-1&chapter_id=qa-ch-01&chapter_index=1"
+- extendedWaitUntil:
+    visible:
+      id: "qa-push-seam-route"
+    timeout: 15000
+- assertVisible:
+    id: "qa-push-seam-route"
+    text: "push-qa:route:/reader/book_898d8c1a8ed51866"
+
+# 3) القارئ فتح الكتاب الصح مش شاشة خطأ.
+- extendedWaitUntil:
+    visible:
+      id: "reader-book-vessel"
+    timeout: 20000
+- assertNotVisible:
+    id: "reader-error-state"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 20000
+- assertVisible:
+    id: "reader-book-vessel"
+- takeScreenshot: "02-reader-opened-from-push"
