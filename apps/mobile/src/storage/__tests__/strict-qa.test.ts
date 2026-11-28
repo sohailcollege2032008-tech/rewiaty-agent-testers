@@ -6,10 +6,14 @@ import {
   buildStrictQaExcerpts,
   createStoredByokResolver,
   DEFAULT_STRICT_QA_MAX_EXCERPTS,
+  explainCutoffForSelection,
   hasStoredByokKey,
+  MAX_STRICT_QA_CHAPTER_TITLE_CHARS,
+  MAX_STRICT_QA_EXCERPT_TEXT_CHARS,
   MAX_STRICT_QA_EXCERPTS,
   parseBlockPosition,
   parseChapterNumber,
+  STRICT_QA_AUTH_MESSAGE_AR,
   STRICT_QA_BUDGET_MESSAGE_AR,
   STRICT_QA_EMPTY_CONTEXT_MESSAGE_AR,
   STRICT_QA_GENERIC_ERROR_MESSAGE_AR,
@@ -261,6 +265,82 @@ describe('buildStrictQaExcerpts', () => {
       buildStrictQaExcerpts({ book: THREE_CHAPTER_BOOK, upToChapterId: '', upToBlockId: '' }),
     ).toEqual([]);
   });
+
+  it('clamps excerpt text to 8000 chars and the chapter title to 300', () => {
+    const longText = 'ا'.repeat(9000);
+    const longTitle = 'ع'.repeat(400);
+    const book = makeBook([{ id: 'ch01', title: longTitle, texts: [longText] }]);
+
+    const excerpts = buildStrictQaExcerpts({
+      book,
+      upToChapterId: 'ch01',
+      upToBlockId: 'ch01_p0001',
+    });
+
+    expect(excerpts).toHaveLength(1);
+    expect(excerpts[0]?.text).toHaveLength(MAX_STRICT_QA_EXCERPT_TEXT_CHARS);
+    expect(MAX_STRICT_QA_EXCERPT_TEXT_CHARS).toBe(8000);
+    expect(excerpts[0]?.chapter_title).toHaveLength(MAX_STRICT_QA_CHAPTER_TITLE_CHARS);
+    expect(MAX_STRICT_QA_CHAPTER_TITLE_CHARS).toBe(300);
+    // Truncation keeps the beginning of the text, never a tail from a later position.
+    expect(excerpts[0]?.text.startsWith('ااا')).toBe(true);
+    expect(excerpts[0]?.chapter_title?.startsWith('ععع')).toBe(true);  });
+});
+
+describe('explainCutoffForSelection', () => {
+  it('cuts at the end of the selected word inside its own block (not the page anchor)', () => {
+    const before = 'وقف في آخر السوق ينادي على ';
+    const word = 'البطل';
+    const after = '. ثم حدث في الصفحة الجاية ما لسه القارئ ما قراهوش.';
+    const text = `${before}${word}${after}`;
+    const book = makeBook([{ id: 'ch01', title: 'الفصل الأول', texts: [text] }]);
+    const blockId = 'ch01_p0001';
+    const charOffset = text.indexOf(word);
+
+    const cutoff = explainCutoffForSelection({
+      chapterId: 'ch01',
+      anchor: { blockId, charOffset },
+      length: word.length,
+    });
+
+    expect(cutoff).toEqual({
+      chapterId: 'ch01',
+      blockId,
+      charOffset: charOffset + word.length,
+    });
+
+    // The whole sentence up to the last letter of the word reaches the model; nothing after it.
+    const excerpts = buildStrictQaExcerpts({
+      book,
+      upToChapterId: cutoff!.chapterId,
+      upToBlockId: cutoff!.blockId,
+      upToCharOffset: cutoff!.charOffset,
+    });
+
+    expect(excerpts).toHaveLength(1);
+    expect(excerpts[0]?.text).toBe(`${before}${word}`);
+    expect(excerpts[0]?.text.endsWith(word)).toBe(true);
+    expect(excerpts[0]?.text).not.toContain('ثم حدث');
+  });
+
+  it('returns null when there is no usable selection to cut at', () => {
+    expect(explainCutoffForSelection(null)).toBeNull();
+    expect(explainCutoffForSelection(undefined)).toBeNull();
+    expect(
+      explainCutoffForSelection({
+        chapterId: '',
+        anchor: { blockId: 'ch01_p0001', charOffset: 2 },
+        length: 3,
+      }),
+    ).toBeNull();
+    expect(
+      explainCutoffForSelection({
+        chapterId: 'ch01',
+        anchor: { blockId: '', charOffset: 2 },
+        length: 3,
+      }),
+    ).toBeNull();
+  });
 });
 
 describe('askStrictBookQuestion', () => {
@@ -418,6 +498,34 @@ describe('askStrictBookQuestion', () => {
 
     const rate = await askStrictBookQuestion({ ...base, apiClient: rateClient });
     expect(rate).toMatchObject({ status: 'error', messageAr: STRICT_QA_RATE_LIMIT_MESSAGE_AR });
+  });
+
+  it('maps 401 and 403 to the "link the device" sentence', async () => {
+    const unauthorized: StrictQaApiClient = {
+      askBookQuestion: async () => {
+        throw Object.assign(new Error('unauthorized'), { status: 401, code: 'UNAUTHORIZED' });
+      },
+    };
+    const forbidden: StrictQaApiClient = {
+      askBookQuestion: async () => {
+        throw Object.assign(new Error('forbidden'), { status: 403, code: 'FORBIDDEN' });
+      },
+    };
+
+    const base = {
+      book: THREE_CHAPTER_BOOK,
+      question: 'سؤال',
+      upToChapterId: 'ch02',
+      upToBlockId: 'ch02_p0002',
+      resolveByok: async () => EPHEMERAL_BYOK,
+    };
+
+    const auth = await askStrictBookQuestion({ ...base, apiClient: unauthorized });
+    expect(auth).toMatchObject({ status: 'error', messageAr: STRICT_QA_AUTH_MESSAGE_AR });
+    const denied = await askStrictBookQuestion({ ...base, apiClient: forbidden });
+    expect(denied).toMatchObject({ status: 'error', messageAr: STRICT_QA_AUTH_MESSAGE_AR });
+
+    expect(STRICT_QA_AUTH_MESSAGE_AR).toBe('اربط الجهاز بالخدمة الأول من إعدادات الـ AI');
   });
 
   it('never surfaces a provider error message (so an echoed key cannot leak)', async () => {

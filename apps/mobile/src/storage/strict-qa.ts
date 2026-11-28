@@ -28,6 +28,10 @@ import type { ByokSecureStoreAdapter } from './byok-store';
 export const DEFAULT_STRICT_QA_MAX_EXCERPTS = 24;
 /** Contract ceiling for `BookQaRequest.context_excerpts.maxItems`. */
 export const MAX_STRICT_QA_EXCERPTS = 40;
+/** Contract ceiling for a single excerpt's `text`. */
+export const MAX_STRICT_QA_EXCERPT_TEXT_CHARS = 8000;
+/** Contract ceiling for an excerpt's `chapter_title`. */
+export const MAX_STRICT_QA_CHAPTER_TITLE_CHARS = 300;
 
 export const STRICT_QA_NO_BYOK_MESSAGE_AR =
   'أضف مفتاح الذكاء الاصطناعي من الإعدادات عشان تقدر تسأل عن الكتاب أو تشرح الكلمات.';
@@ -40,8 +44,7 @@ export const STRICT_QA_BUDGET_MESSAGE_AR =
   'وصلت لحد الميزانية المسموح بيها للكتاب ده. تقدر تزوّدها من الإعدادات.';
 export const STRICT_QA_RATE_LIMIT_MESSAGE_AR =
   'السيرفر مشغول أو استهلاكك اليومي خلص. جرّب تاني بعد شوية.';
-export const STRICT_QA_AUTH_MESSAGE_AR =
-  'انتهت الجلسة. ارجع للمكتبة وافتح الكتاب تاني.';
+export const STRICT_QA_AUTH_MESSAGE_AR = 'اربط الجهاز بالخدمة الأول من إعدادات الـ AI';
 export const STRICT_QA_GENERIC_ERROR_MESSAGE_AR =
   'تعذّر الحصول على الإجابة دلوقتي. جرّب تاني بعد شوية.';
 
@@ -96,6 +99,48 @@ function sliceAtCharOffset(text: string, offset: number | undefined): string {
   return text.slice(0, Math.floor(offset));
 }
 
+function clampChars(text: string, max: number): string {
+  return text.length > max ? text.slice(0, max) : text;
+}
+
+/** A resolved strict-index cutoff: where readable text stops. */
+export type StrictQaCutoff = {
+  chapterId: string;
+  blockId: string;
+  charOffset: number;
+};
+
+/** The slice of a selection/highlight the explainer needs (`chapterId` + anchor + `length`). */
+export type SelectionCutoffSource = {
+  chapterId: string;
+  anchor: { blockId: string; charOffset: number };
+  length: number;
+};
+
+/**
+ * F49 (P2) — the explain cutoff is the **end** of the selection, inside the selection's own
+ * block: `anchor.charOffset + length`.
+ *
+ * Using the page anchor instead cuts the sentence off at the top of the page, so a word in the
+ * middle of the page's first block would be explained with no context at all (or with text that
+ * stops before the word). The end of the selection keeps the whole sentence that contains it,
+ * and still never reads past what the reader has actually selected/read.
+ */
+export function explainCutoffForSelection(
+  selection: SelectionCutoffSource | null | undefined,
+): StrictQaCutoff | null {
+  if (!selection) return null;
+  const { chapterId, anchor, length } = selection;
+  if (!chapterId || !anchor || !anchor.blockId) return null;
+  if (!Number.isFinite(anchor.charOffset) || !Number.isFinite(length)) return null;
+  if (anchor.charOffset < 0 || length < 0) return null;
+  return {
+    chapterId,
+    blockId: anchor.blockId,
+    charOffset: Math.floor(anchor.charOffset) + Math.floor(length),
+  };
+}
+
 /**
  * Build `context_excerpts` strictly up to the reader's current position.
  *
@@ -128,7 +173,11 @@ export function buildStrictQaExcerpts(input: BuildStrictQaExcerptsInput): BookQa
       for (const block of chapter.blocks) {
         const text = stripHtmlToText(block.html);
         if (text) {
-          collected.push({ block_id: block.id, chapter_title: chapter.title, text });
+          collected.push({
+            block_id: block.id,
+            chapter_title: clampChars(chapter.title, MAX_STRICT_QA_CHAPTER_TITLE_CHARS),
+            text: clampChars(text, MAX_STRICT_QA_EXCERPT_TEXT_CHARS),
+          });
         }
       }
       continue;
@@ -145,7 +194,11 @@ export function buildStrictQaExcerpts(input: BuildStrictQaExcerptsInput): BookQa
       const rawText = stripHtmlToText(block.html);
       const text = isCutoffBlock ? sliceAtCharOffset(rawText, upToCharOffset) : rawText;
       if (text) {
-        collected.push({ block_id: block.id, chapter_title: chapter.title, text });
+        collected.push({
+          block_id: block.id,
+          chapter_title: clampChars(chapter.title, MAX_STRICT_QA_CHAPTER_TITLE_CHARS),
+          text: clampChars(text, MAX_STRICT_QA_EXCERPT_TEXT_CHARS),
+        });
       }
     }
   }

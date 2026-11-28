@@ -388,26 +388,29 @@ export function BookQaSheet({
                   {answer.answer}
                 </Text>
 
-                {answer.citations.length > 0 ? (
-                  <View testID="book-qa-citations" style={styles.citations}>
-                    {answer.citations.map((citation, index) => (
-                      <View
-                        key={`${citation.block_id}-${index}`}
-                        testID={`book-qa-citation-${index}`}
-                        style={[styles.citation, { borderRightColor: palette.accent }]}
-                      >
-                        <Text
-                          style={[
-                            styles.citationQuote,
-                            { color: palette.text, fontFamily: TYPOGRAPHY.uiFont },
-                          ]}
+                {(() => {
+                  const citations = answer.citations ?? [];
+                  return citations.length > 0 ? (
+                    <View testID="book-qa-citations" style={styles.citations}>
+                      {citations.map((citation, index) => (
+                        <View
+                          key={`${citation.block_id}-${index}`}
+                          testID={`book-qa-citation-${index}`}
+                          style={[styles.citation, { borderRightColor: palette.accent }]}
                         >
-                          {truncateQuote(citation.quote)}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
+                          <Text
+                            style={[
+                              styles.citationQuote,
+                              { color: palette.text, fontFamily: TYPOGRAPHY.uiFont },
+                            ]}
+                          >
+                            {truncateQuote(citation.quote)}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null;
+                })()}
 
                 <View style={styles.costRow}>
                   <Text

@@ -105,6 +105,28 @@ describe('BookQaSheet — «اسأل عن الكتاب (بدون حرق)»', () 
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });
 
+  it('renders an answer whose response carried no citations without crashing', async () => {
+    // The endpoint's `citations` is optional in practice; a missing array must render as "no
+    // citations", never as a crash on `.length`.
+    const onAsk = jest.fn(
+      async (): Promise<BookQaAnswerView> =>
+        ({
+          status: 'ok',
+          answer: 'إجابة من غير اقتباسات.',
+          costUsd: 0.0004,
+        }) as BookQaAnswerView,
+    );
+    const { getByTestId, queryByTestId } = await renderSheet({ onAsk });
+
+    await fireEvent.changeText(getByTestId('book-qa-input'), 'سؤال');
+    await fireEvent.press(getByTestId('book-qa-ask-button'));
+
+    await waitFor(() =>
+      expect(getByTestId('book-qa-answer-text')).toHaveTextContent('إجابة من غير اقتباسات.'),
+    );
+    expect(queryByTestId('book-qa-citations')).toBeNull();
+  });
+
   it('shows the offline hint without pretending an answer exists', async () => {
     const { getByTestId, getByText } = await renderSheet({ offline: true });
 

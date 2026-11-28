@@ -45,6 +45,7 @@ import type { ByokInput } from '@/api/types';
 import {
   askStrictBookQuestion,
   createStoredByokResolver,
+  explainCutoffForSelection,
   hasStoredByokKey,
   STRICT_QA_EMPTY_CONTEXT_MESSAGE_AR,
   type AskStrictBookQuestionResult,
@@ -1999,14 +2000,10 @@ export function ReaderScreen({ qaClient, qaResolveByok, qaHasByokKey }: ReaderSc
       dictRequestRef.current = requestId;
 
       // Capture the strict cutoff now: the BYOK explain must never read past this point.
-      const cutoffAnchor = currentAnchorRef.current;
-      const cutoff = cutoffAnchor
-        ? {
-            chapterId: pageInfoRef.current.chapterId,
-            blockId: cutoffAnchor.blockId,
-            charOffset: cutoffAnchor.charOffset,
-          }
-        : null;
+      // F49 (P2): the cutoff is the **end of the selection** inside its own block — not the page
+      // anchor — so the sentence containing the word is part of the context sent to the model.
+      const selectionSource = activeSelection ?? editingHighlight;
+      const cutoff = explainCutoffForSelection(selectionSource);
       dictPhraseRef.current = sourceQuote.trim();
       dictCutoffRef.current = cutoff;
       dictAiRequestRef.current += 1;
