@@ -426,6 +426,7 @@ export function ReaderScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [webLoaded, setWebLoaded] = useState(false);
   const [engineReady, setEngineReady] = useState(false);
+  const [positionMeasured, setPositionMeasured] = useState(false);
   // F31 — التنعيم/دفء الشاشة pill readout while the edge strip is dragged, and the eye-rest banner.
   const [brightnessPill, setBrightnessPill] = useState<number | null>(null);
   const [eyeRestVisible, setEyeRestVisible] = useState(false);
@@ -693,6 +694,7 @@ export function ReaderScreen() {
     hasSentLoadRef.current = false;
     setWebLoaded(false);
     setEngineReady(false);
+    setPositionMeasured(false);
     setLoadError(null);
     setTocMeasured(false);
     setBook(null);
@@ -1238,6 +1240,7 @@ export function ReaderScreen() {
           setEditingHighlightState({ id: parsed.highlightId, rect: parsed.rect });
           break;
         case 'position': {
+          setPositionMeasured(true);
           // A swipe turns the page without a 'tap' message; a new page also retires the hint.
           const pageKey = `${parsed.chapterId}:${parsed.page}`;
           if (lastPageKeyRef.current !== null && lastPageKeyRef.current !== pageKey) {
@@ -1944,7 +1947,7 @@ export function ReaderScreen() {
     pageInfo.pageCount > 1 ? Math.max(0, Math.min(1, (pageInfo.page - 1) / (pageInfo.pageCount - 1))) : 0;
   // F25 — what is read vs what is left, as two physical paper stacks. Hidden until the engine has
   // measured the book: a saved page number is not progress yet.
-  const pageEdges = pageEdgeLayout(progressRatio, engineReady ? pageInfo.pageCount : 0, effectiveDir);
+  const pageEdges = pageEdgeLayout(progressRatio, engineReady && positionMeasured ? pageInfo.pageCount : 0, effectiveDir);
   const pctRead = progressToPercent(pageInfo.bookProgress);
 
   if (loadError) {

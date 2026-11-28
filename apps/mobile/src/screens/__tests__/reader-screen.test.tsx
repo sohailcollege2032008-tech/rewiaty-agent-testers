@@ -1793,6 +1793,8 @@ describe('ReaderScreen', () => {
     // Saved position: page 2 of 10 → 1/9 read. RTL: what is read accumulates on the physical right.
     const utils = await renderLoadedReader();
     await emitReady();
+    expect(utils.queryByTestId('reader-page-edge-read')).toBeNull();
+    await emitPosition(2, 10);
 
     expect(flatStyle(utils.getByTestId('reader-page-edge-read')).width).toBeCloseTo(
       2 + (4 * 1) / 9,
@@ -1830,6 +1832,7 @@ describe('ReaderScreen', () => {
     mockBookDir('ltr', 4, 10);
     const utils = await renderLoadedReader();
     await emitReady();
+    await emitPosition(4, 10);
 
     expect(flatStyle(utils.getByTestId('reader-page-edge-read')).width).toBeCloseTo(
       2 + (4 * 3) / 9,
@@ -1844,6 +1847,7 @@ describe('ReaderScreen', () => {
     mockBookDir('rtl', 1, 1);
     const utils = await renderLoadedReader();
     await emitReady();
+    await emitPosition(1, 1);
 
     expect(flatStyle(utils.getByTestId('reader-page-edge-read')).width).toBeCloseTo(2, 5);
     expect(flatStyle(utils.getByTestId('reader-page-edge-remaining')).width).toBeCloseTo(6, 5);

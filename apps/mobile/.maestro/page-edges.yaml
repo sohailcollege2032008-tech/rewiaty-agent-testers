@@ -87,4 +87,7 @@ appId: com.rewiaty.app
 - assertVisible:
     id: "reader-page-edge-remaining"
     text: "سمك المتبقي 6\\.0 بيكسل"
+- assertVisible:
+    id: "reader-page-counter"
+    text: "^صفحة 1 من .*"
 - takeScreenshot: "03-edges-reset"
