@@ -181,3 +181,18 @@ flows:
     target: release-apk
     run: "bash scripts/ci-flows.sh book-qa-strict-index"
     artifact: ".factory/evidence/latest/apk/app.apk"
+  # F38 / #92 — إشعارات Expo على release APK أوفلاين.
+  # الـ build بتاع testers مش فيه Expo project id ولا FCM credentials ولا Google Play Services،
+  # فمستحيل يتسجّل توكن Expo حقيقي. علشان كده الرحلة بتتبني بـ `EXPO_PUBLIC_PUSH_QA_SEAM=1`
+  # (compile-time opt-in): الحافة الوحيدة اللي بتتستب هي OS permissions/token والـ API transport،
+  # ومنطق `registerDevicePushToken` الحقيقي (validation + كتابة `push_token_id_v1` في KV) لسه شغال.
+  # الرحلة بتثبت: (1) التسجيل خلص من غير crash (`push-qa:registered`)، و(2) payload إشعار حقيقي
+  # ماشي على نفس دالة `routeFromPushNotificationData` بيفتح الكتاب التجريبي في القارئ.
+  # الـ env والتعديل المطلوب في ريبو testers موثقين في `docs/PUSH-RELEASE.md`. مفيش endpoint
+  # حقيقي ولا credential ولا إرسال Expo في الرحلة.
+  - id: push-registration-deeplink
+    who: "قارئ مستني إشعار «الفصل جاهز» وداس عليه"
+    steps: "يفتح التطبيق (release APK أوفلاين بُني بـ EXPO_PUBLIC_PUSH_QA_SEAM=1) ← تسجيل الإشعارات يخلص من غير crash ومؤشر QA يقول push-qa:registered ← ييجي intent/payload إشعار chapter_ready للكتاب التجريبي (book_sample) ← يعدّي على نفس دالة routing بتاعة الإشعار ← الـ QA يقول push-qa:route:/reader/book_898d8c1a8ed51866 ← القارئ بيفتح الكتاب التجريبي (reader-book-vessel) من غير reader-error-state"
+    target: release-apk
+    run: "bash scripts/ci-flows.sh push-registration-deeplink"
+    artifact: ".factory/evidence/latest/apk/app.apk"

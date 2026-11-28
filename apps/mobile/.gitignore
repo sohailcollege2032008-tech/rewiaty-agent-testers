@@ -33,6 +33,10 @@ yarn-error.*
 # local env files
 .env*.local
 
+# Firebase/FCM credentials (never commit; path is opt-in via app.config.js env)
+google-services.json
+GoogleService-Info.plist
+
 # typescript
 *.tsbuildinfo
 

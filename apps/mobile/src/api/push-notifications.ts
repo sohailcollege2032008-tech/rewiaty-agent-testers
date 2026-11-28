@@ -33,6 +33,15 @@ export const PUSH_READER_ROUTE = '/reader/[id]' as const;
 export const PUSH_MISSION_CONTROL_ROUTE = '/mission-control' as const;
 export const PUSH_UPLOAD_ROUTE = '/pdf-upload' as const;
 
+/**
+ * `registerDevicePushToken` reason for "no EAS project id in this build".
+ *
+ * This is the expected outcome of an offline/CI build: `getExpoPushTokenAsync` rejects with
+ * `ERR_NOTIFICATIONS_NO_EXPERIENCE_ID` without one, so we never call it. A real release build
+ * gets the id from the dynamic config (`extra.eas.projectId`).
+ */
+export const PUSH_REASON_MISSING_PROJECT_ID = 'missing_project_id' as const;
+
 /** Fixed Arabic copy — never assembled from server strings. */
 export const PUSH_NOTIFICATION_COPY_AR = {
   channelName: PUSH_CHANNEL_NAME_AR,
@@ -129,6 +138,58 @@ export function resetExpoNotificationsLoaderForTests(): void {
   cachedNotificationsModule = undefined;
 }
 
+/* ------------------------------------------------------- EAS project id */
+
+/**
+ * The Expo Services project id this build was configured for, or `null`.
+ *
+ * Expo's documented source of truth is `expo-constants`:
+ * `Constants.expoConfig.extra.eas.projectId ?? Constants.easConfig.projectId`. The module is
+ * required lazily (and defensively) so a missing `expo-constants` degrades to "no project id"
+ * instead of crashing registration, and so tests can run without the native module.
+ *
+ * Why this matters (F38): `getExpoPushTokenAsync` needs the id to attribute the token. Without
+ * it Expo rejects with `ERR_NOTIFICATIONS_NO_EXPERIENCE_ID`; calling it anyway would turn a
+ * clear "this build has no push project" into a confusing generic `token_error`.
+ */
+export function resolveExpoProjectId(): string | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const constantsModule = require('expo-constants') as
+      | {
+          default?: {
+            expoConfig?: { extra?: { eas?: { projectId?: unknown } } };
+            easConfig?: { projectId?: unknown };
+          };
+          expoConfig?: { extra?: { eas?: { projectId?: unknown } } };
+          easConfig?: { projectId?: unknown };
+        }
+      | undefined;
+    const constants = constantsModule?.default ?? constantsModule;
+    const fromExpoConfig = constants?.expoConfig?.extra?.eas?.projectId;
+    const fromEasConfig = constants?.easConfig?.projectId;
+    const value = typeof fromExpoConfig === 'string' ? fromExpoConfig : fromEasConfig;
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Test seam: replace/clear the project id resolution. */
+let cachedProjectIdOverride: { value: string | null } | null = null;
+
+export function setExpoProjectIdForTests(value: string | null): void {
+  cachedProjectIdOverride = { value };
+}
+
+export function resetExpoProjectIdForTests(): void {
+  cachedProjectIdOverride = null;
+}
+
+function effectiveExpoProjectId(): string | null {
+  return cachedProjectIdOverride ? cachedProjectIdOverride.value : resolveExpoProjectId();
+}
+
 /* ----------------------------------------------------------- token KV store */
 
 /** Persistent home of the current `token_id`. Injectable so tests stay off SQLite. */
@@ -214,6 +275,13 @@ function isNativePushPlatform(platform: string): platform is PushPlatform {
   return platform === 'android' || platform === 'ios';
 }
 
+/** A trimmed, non-empty project id or `null`. */
+function normalizeProjectId(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 function isPermissionGranted(permission: ExpoNotificationPermissionLike | null | undefined): boolean {
   if (!permission) return false;
   return permission.granted === true || permission.status === 'granted';
@@ -236,10 +304,13 @@ function defaultPermissions(
 
 function defaultGetToken(
   notifications: ExpoNotificationsLike | null,
+  projectId: string,
 ): ((context: { deviceId: string; platform: PushPlatform }) => Promise<string | null>) | null {
   if (!notifications?.getExpoPushTokenAsync) return null;
   return async () => {
-    const result = await notifications.getExpoPushTokenAsync!();
+    // The project id is required by Expo: without it the call rejects with
+    // `ERR_NOTIFICATIONS_NO_EXPERIENCE_ID` instead of returning a usable token.
+    const result = await notifications.getExpoPushTokenAsync!({ projectId });
     if (typeof result === 'string') return result;
     return typeof result?.data === 'string' ? result.data : null;
   };
@@ -254,9 +325,18 @@ export interface RegisterDevicePushTokenOptions {
   /** Test/native seam; defaults to the notifications module's own permission calls. */
   permissions?: PushPermissionsAdapter;
   /** Test seam; defaults to `getExpoPushTokenAsync` on the notifications module. */
-  getToken?: (context: { deviceId: string; platform: PushPlatform }) => Promise<string | null>;
+  getToken?: (context: {
+    deviceId: string;
+    platform: PushPlatform;
+    projectId?: string;
+  }) => Promise<string | null>;
   /** Test seam; defaults to the lazily-loaded `expo-notifications`. */
   notificationsModule?: ExpoNotificationsLike | null;
+  /**
+   * EAS project id override. Defaults to `expo-constants` (`extra.eas.projectId`, then
+   * `easConfig.projectId`). Only consulted when `getToken` is not injected.
+   */
+  projectId?: string | null;
   /** Test seam; defaults to the app `kv` table store. */
   store?: PushTokenStore;
   /**
@@ -288,8 +368,28 @@ export async function registerDevicePushToken(
     ...defaultPermissions(notifications),
     ...(options.permissions ?? {}),
   };
-  const getToken = options.getToken ?? defaultGetToken(notifications);
-  if (!getToken) return { status: 'unavailable', reason: 'notifications_unavailable' };
+
+  const projectId =
+    options.projectId !== undefined
+      ? normalizeProjectId(options.projectId)
+      : effectiveExpoProjectId();
+  const getToken =
+    options.getToken ??
+    (notifications?.getExpoPushTokenAsync && projectId
+      ? defaultGetToken(notifications, projectId)
+      : null);
+  if (!getToken) {
+    if (!notifications?.getExpoPushTokenAsync) {
+      return { status: 'unavailable', reason: 'notifications_unavailable' };
+    }
+    // Build has no EAS project id: there is no honest token to register. Reported as
+    // `unavailable` (a build configuration fact, not a user-facing failure).
+    return { status: 'unavailable', reason: PUSH_REASON_MISSING_PROJECT_ID };
+  }
+
+  // Android 13+ only shows the notification permission prompt after a channel exists, and the
+  // official flow creates the channel before fetching the token. Never fatal.
+  await ensureNotificationChannel(notifications);
 
   let permission: ExpoNotificationPermissionLike;
   try {
@@ -304,7 +404,11 @@ export async function registerDevicePushToken(
 
   let token: string | null;
   try {
-    token = await getToken({ deviceId: options.deviceId, platform: options.platform });
+    token = await getToken(
+      projectId
+        ? { deviceId: options.deviceId, platform: options.platform, projectId }
+        : { deviceId: options.deviceId, platform: options.platform },
+    );
   } catch {
     // Simulators and devices without FCM/APNs land here; that is not an app error.
     return { status: 'failed', reason: 'token_error' };
@@ -421,7 +525,7 @@ export function parsePushNotificationData(data: unknown): PushNotificationData |
 export type PushRouteTarget =
   | {
       pathname: typeof PUSH_READER_ROUTE;
-      params: { id: string; chapter?: string; chapterIndex?: string };
+      params: { id: string };
     }
   | { pathname: typeof PUSH_MISSION_CONTROL_ROUTE }
   | { pathname: typeof PUSH_UPLOAD_ROUTE };
@@ -450,16 +554,12 @@ export function routeFromPushNotificationData(
     // A ready chapter on a book that is not on this device: Mission Control is where the job and
     // its "open" action live, so the reader never opens empty.
     if (options.bookReady === false) return { pathname: PUSH_MISSION_CONTROL_ROUTE };
-    return {
-      pathname: PUSH_READER_ROUTE,
-      params: {
-        id: parsed.book_id,
-        ...(parsed.chapter_id ? { chapter: parsed.chapter_id } : {}),
-        ...(typeof parsed.chapter_index === 'number'
-          ? { chapterIndex: String(parsed.chapter_index) }
-          : {}),
-      },
-    };
+    // The reader route only consumes the book id. Chapter 1 is the first streamed chapter (the
+    // contract pins `chapter_index: 1`), and the book is unread, so opening it lands on that
+    // chapter — while a reader who already started keeps their saved position instead of being
+    // yanked back. The parsed chapter fields stay validated for routing decisions, not as URL
+    // params the reader ignores.
+    return { pathname: PUSH_READER_ROUTE, params: { id: parsed.book_id } };
   }
 
   // `job_completed`: open the finished book. If the book is gone entirely, the only useful
@@ -505,7 +605,9 @@ export async function ensureNotificationChannel(
     await notifications.setNotificationChannelAsync(PUSH_CHANNEL_ID, {
       name: PUSH_CHANNEL_NAME_AR,
       description: PUSH_CHANNEL_DESCRIPTION_AR,
-      importance: notifications.AndroidImportance?.DEFAULT ?? 3,
+      // HIGH = heads-up for "your chapter is ready"; the backend sends sound: "default".
+      importance:
+        notifications.AndroidImportance?.HIGH ?? notifications.AndroidImportance?.DEFAULT ?? 4,
     });
   } catch {
     // A missing channel only affects Android presentation, not the tap payload.
