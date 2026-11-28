@@ -27,6 +27,7 @@ export type RibbonCommit = 'add' | 'remove' | 'none';
  * the page and a non-finite translation (a dropped event) cannot poison the animated style.
  */
 export function clampRibbonOffset(translationY: number): number {
+  'worklet';
   if (!Number.isFinite(translationY)) return 0;
   return Math.max(-RIBBON_MAX_PUSH, Math.min(RIBBON_MAX_PULL, translationY));
 }
@@ -40,6 +41,7 @@ export function resolveRibbonCommit(input: {
   isBookmarked: boolean;
   canceled?: boolean;
 }): RibbonCommit {
+  'worklet';
   if (input.canceled) return 'none';
   if (!Number.isFinite(input.translationY)) return 'none';
   if (!input.isBookmarked && input.translationY >= RIBBON_PULL_THRESHOLD) return 'add';
@@ -55,5 +57,6 @@ export function ribbonCrossesThreshold(input: {
   translationY: number;
   isBookmarked: boolean;
 }): boolean {
+  'worklet';
   return resolveRibbonCommit(input) !== 'none';
 }
