@@ -158,3 +158,9 @@ flows:
     target: release-apk
     run: "bash scripts/ci-flows.sh dictionary-lookup"
     artifact: ".factory/evidence/latest/apk/app.apk"
+  - id: book-qa-strict-index
+    who: "قارئ عايز يسأل عن الرواية من غير حرق"
+    steps: "يفتح الرواية التجريبية ← يفتح الـ HUD ← «اسأل» ← شارة «النطاق المسموح: حتى … — بدون حرق للأحداث الجاية» باينة قبل أي سؤال ← يدوس «ملخص اللي قريته لحد هنا» ← تظهر إجابة مقتبسة، أو رسالة عربية ثابتة (مفتاح ناقص / أوفلاين / مفيش نص كفاية) من غير أي خطأ إنجليزي ← يقفل الشيت والصفحة زي ما هي"
+    target: release-apk
+    run: "bash scripts/ci-flows.sh book-qa-strict-index"
+    artifact: ".factory/evidence/latest/apk/app.apk"

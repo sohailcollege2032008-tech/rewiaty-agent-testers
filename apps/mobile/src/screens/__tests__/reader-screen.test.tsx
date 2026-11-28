@@ -1738,4 +1738,109 @@ describe('ReaderScreen', () => {
     expect(getHudHintText('rtl')).toContain('اسحب لليمين للصفحة الجاية');
     expect(getHudHintText('ltr')).toContain('اسحب لليسار للصفحة الجاية');
   });
+
+  it('F49: «اسأل» sends only strict-index excerpts up to the reader position (mocked client)', async () => {
+    const CUTOFF_TEXT = 'تاني فقرة قبل مكاني وبعدين حاجة جاية.';
+    (readBookBundle as jest.Mock).mockResolvedValue({
+      book: {
+        id: 'book_123',
+        meta: { title: 'أوراق البحر', author: 'مؤلف', lang: 'ar', dir: 'rtl' },
+        chapters: [
+          {
+            id: 'ch01',
+            title: 'الفصل الأول',
+            wordCount: 30,
+            hash: 'h1',
+            blocks: [
+              { id: 'ch01_p0001', kind: 'p', html: '<p>أول فقرة.</p>' },
+              { id: 'ch01_p0002', kind: 'p', html: `<p>${CUTOFF_TEXT}</p>` },
+              { id: 'ch01_p0003', kind: 'p', html: '<p>فقرة لسه مقريتهاش خالص.</p>' },
+            ],
+          },
+          {
+            id: 'ch02',
+            title: 'الفصل الثاني',
+            wordCount: 10,
+            hash: 'h2',
+            blocks: [{ id: 'ch02_p0001', kind: 'p', html: '<p>سبويلر الفصل التاني.</p>' }],
+          },
+        ],
+        footnotes: {},
+        wordCount: 40,
+      },
+      manifest: {
+        id: 'book_123',
+        meta: { title: 'أوراق البحر', author: 'مؤلف', lang: 'ar', dir: 'rtl' },
+        chapters: [],
+        wordCount: 40,
+        parserVersion: 1,
+      },
+      state: {
+        anchor: { blockId: 'ch01_p0002', charOffset: 12 },
+        progress: 0.5,
+        chapterId: 'ch01',
+        page: 2,
+        pageCount: 4,
+        updatedAt: Date.now(),
+      },
+    });
+
+    const askBookQuestion = jest.fn(async () => ({
+      book_id: 'book_123',
+      answer: 'إجابة من اللي قريته.',
+      cutoff_block_id: 'ch01_p0002',
+      citations: [{ block_id: 'ch01_p0001', quote: 'أول فقرة.' }],
+      cost_usd: 0.001,
+      spoiler_free: true as const,
+    }));
+
+    const utils = await render(
+      <ReaderScreen
+        qaClient={{ askBookQuestion }}
+        qaResolveByok={async () => ({
+          mode: 'ephemeral',
+          provider: 'openai',
+          api_key: 'test-byok-key-fixture',
+        })}
+        qaHasByokKey={async () => true}
+      />,
+    );
+    await waitFor(() => expect(utils.getByTestId('reader-webview')).toBeTruthy());
+    await act(async () => {
+      capturedOnLoadEnd?.();
+    });
+    await act(async () => {
+      emitWebMessage({ type: 'ready' });
+      emitWebMessage({ type: 'tap', zone: 'center' });
+    });
+
+    await fireEvent.press(utils.getByTestId('hud-qa-btn'));
+    await waitFor(() => expect(utils.getByTestId('book-qa-sheet')).toBeTruthy());
+
+    await fireEvent.changeText(utils.getByTestId('book-qa-input'), 'ملخص اللي قريته؟');
+    await fireEvent.press(utils.getByTestId('book-qa-ask-button'));
+
+    await waitFor(() => expect(askBookQuestion).toHaveBeenCalledTimes(1));
+    const [bookId, body] = askBookQuestion.mock.calls[0] as unknown as [string, {
+      up_to_chapter_id: string;
+      up_to_block_id: string;
+      up_to_char_offset?: number;
+      context_excerpts: Array<{ block_id: string; text: string }>;
+    }];
+    expect(bookId).toBe('book_123');
+    expect(body.up_to_chapter_id).toBe('ch01');
+    expect(body.up_to_block_id).toBe('ch01_p0002');
+    expect(body.up_to_char_offset).toBe(12);
+    expect(body.context_excerpts.map((excerpt) => excerpt.block_id)).toEqual([
+      'ch01_p0001',
+      'ch01_p0002',
+    ]);
+    expect(body.context_excerpts.at(-1)?.text).toBe(CUTOFF_TEXT.slice(0, 12));
+    // Hard guarantee: later blocks and later chapters never travel to the model.
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('فقرة لسه مقريتهاش');
+    expect(serialized).not.toContain('سبويلر');
+
+    await waitFor(() => expect(utils.getByTestId('book-qa-answer')).toBeTruthy());
+  });
 });
