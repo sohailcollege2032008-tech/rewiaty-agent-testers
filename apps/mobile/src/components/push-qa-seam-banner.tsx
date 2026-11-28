@@ -10,6 +10,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   getPushQaStatusSnapshot,
@@ -18,6 +19,7 @@ import {
 } from '@/config/push-qa-seam';
 
 export function PushQaSeamBanner() {
+  const insets = useSafeAreaInsets();
   const status = useSyncExternalStore(
     subscribePushQaStatus,
     getPushQaStatusSnapshot,
@@ -27,7 +29,12 @@ export function PushQaSeamBanner() {
   if (!PUSH_QA_SEAM_ENABLED) return null;
 
   return (
-    <View testID="qa-push-seam-banner" pointerEvents="none" style={styles.host}>
+    <View
+      testID="qa-push-seam-banner"
+      collapsable={false}
+      pointerEvents="none"
+      style={[styles.host, { top: Math.max(insets.top, 48) + 8 }]}
+    >
       <Text testID="qa-push-seam-status" style={styles.text}>
         push-qa:{status.registration}
       </Text>
@@ -43,12 +50,12 @@ export function PushQaSeamBanner() {
 const styles = StyleSheet.create({
   host: {
     position: 'absolute',
-    top: 0,
-    left: 0,
+    left: 12,
     paddingHorizontal: 6,
     paddingVertical: 2,
     backgroundColor: 'rgba(0, 0, 0, 0.55)',
-    borderBottomRightRadius: 6,
+    borderRadius: 6,
+    elevation: 20,
     zIndex: 1000,
   },
   text: {
