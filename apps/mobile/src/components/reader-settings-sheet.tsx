@@ -22,12 +22,23 @@ import { toArabicDigits } from '@/theme/themes/build-theme';
 import {
   DEFAULT_CUSTOM_COLORS,
   type IndentMode,
+  type ReadingFocusMode,
   type ReadingMode,
   type ReaderSettings,
   type TashkeelMode,
   type TextAlignMode,
   type ThemeId,
 } from '@/types/reader';
+
+/**
+ * F33 — what the engine reported about the reading focus. `currentIndex` is 1-based among the
+ * paragraphs the visible page gave the engine to choose from.
+ */
+export type ReadingFocusStatus = {
+  mode: ReadingFocusMode;
+  currentIndex: number | null;
+  blockCount: number;
+};
 
 export type ReaderSettingsSheetProps = {
   visible: boolean;
@@ -36,6 +47,8 @@ export type ReaderSettingsSheetProps = {
   onReset?: (tab: SettingsTabId) => void;
   /** F32: opens the custom-colours picker (the modal lives on the reader screen). */
   onOpenCustomColors?: () => void;
+  /** F33: the engine's live answer — which paragraph is on the reading line right now. */
+  readingFocusStatus?: ReadingFocusStatus | null;
   onClose: () => void;
 };
 
@@ -106,6 +119,13 @@ function themeLabel(themeId: ThemeId): string {
 const READING_MODE_OPTIONS: ReadonlyArray<{ value: ReadingMode; label: string }> = [
   { value: 'paginated', label: 'صفحات' },
   { value: 'scroll', label: 'تمرير' },
+];
+
+/** F33 — ثلاث حالات لتركيز القراية: إيقاف افتراضي، فقرة منوّرة، أو خط تتبّع. */
+const READING_FOCUS_OPTIONS: ReadonlyArray<{ value: ReadingFocusMode; label: string }> = [
+  { value: 'off', label: 'إيقاف' },
+  { value: 'paragraph', label: 'تركيز الفقرة' },
+  { value: 'ruler', label: 'مسطرة التتبع' },
 ];
 
 // Why (P2 #60): under React Native `I18nManager.forceRTL(true)`, `textAlign: 'right'` mirrors
@@ -212,6 +232,7 @@ function SettingsContent({
   onChange,
   onReset,
   onOpenCustomColors,
+  readingFocusStatus,
 }: {
   settings: ReaderSettings;
   palette: AppThemeTokens;
@@ -219,6 +240,7 @@ function SettingsContent({
   onChange: (partial: Partial<ReaderSettings>) => void;
   onReset?: (tab: SettingsTabId) => void;
   onOpenCustomColors?: () => void;
+  readingFocusStatus?: ReadingFocusStatus | null;
 }) {
   const insets = useSafeAreaInsets();
   const { fontScale } = useWindowDimensions();
@@ -640,6 +662,74 @@ function SettingsContent({
                 thumbColor={palette.surfaceElevated}
               />
             </View>
+          ) : null}
+
+          {/* F33 — «تركيز القراءة»: إيقاف / تركيز الفقرة / مسطرة التتبع. */}
+          <View style={stackControlRow ? styles.ctrlRowStacked : styles.ctrlRow}>
+            <Text
+              style={[styles.ctrlLabel, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}
+              numberOfLines={1}
+            >
+              تركيز القراءة
+            </Text>
+            <View
+              style={[
+                styles.segGroup,
+                stackControlRow && styles.segGroupStacked,
+                { borderColor: palette.border, backgroundColor: palette.surface },
+              ]}
+            >
+              {READING_FOCUS_OPTIONS.map((opt) => {
+                const active = (settings.readingFocus ?? 'off') === opt.value;
+                return (
+                  <Pressable
+                    key={opt.value}
+                    testID={`settings-reading-focus-${opt.value}`}
+                    onPress={() => onChange({ readingFocus: opt.value })}
+                    hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+                    style={({ pressed }) => [
+                      styles.segBtn,
+                      active && { backgroundColor: palette.ctaBg },
+                      pressed && styles.pressed,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.65}
+                      style={[
+                        styles.segBtnText,
+                        {
+                          color: active ? palette.ctaText : palette.muted,
+                          fontWeight: active ? '600' : '500',
+                          fontFamily: TYPOGRAPHY.uiFont,
+                        },
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          {/*
+            F33 — what the engine really focused, bridged from the WebView. Seeing «الفقرة المضيئة
+            ٢ من ١١» (and it moving on the next page) is the difference between a saved toggle and
+            an effect that is actually working.
+          */}
+          {(settings.readingFocus ?? 'off') !== 'off' && readingFocusStatus?.currentIndex ? (
+            <Text
+              testID="reading-focus-engine-status"
+              style={[styles.focusStatus, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}
+            >
+              {readingFocusStatus.mode === 'ruler'
+                ? `خط التتبع · الفقرة ${toArabicDigits(String(readingFocusStatus.currentIndex))} من ${toArabicDigits(String(readingFocusStatus.blockCount))}`
+                : `الفقرة المضيئة ${toArabicDigits(String(readingFocusStatus.currentIndex))} من ${toArabicDigits(String(readingFocusStatus.blockCount))}`}
+            </Text>
           ) : null}
 
           <View style={stackControlRow ? styles.ctrlRowStacked : styles.ctrlRow}>
@@ -1214,6 +1304,7 @@ export function ReaderSettingsSheet({
   onChange,
   onReset,
   onOpenCustomColors,
+  readingFocusStatus,
   onClose,
 }: ReaderSettingsSheetProps) {
   const sheetRef = useRef<BottomSheet>(null);
@@ -1284,6 +1375,7 @@ export function ReaderSettingsSheet({
             onChange={onChange}
             onReset={onReset}
             onOpenCustomColors={onOpenCustomColors}
+            readingFocusStatus={readingFocusStatus}
           />
         </View>
       </View>
@@ -1331,6 +1423,7 @@ export function ReaderSettingsSheet({
           onChange={onChange}
           onReset={onReset}
           onOpenCustomColors={onOpenCustomColors}
+          readingFocusStatus={readingFocusStatus}
         />
       </BottomSheet>
     </View>
@@ -1458,6 +1551,13 @@ const styles = StyleSheet.create({
     minWidth: 74,
     flexShrink: 1,
     textAlign: RTL_START_ALIGN,
+  },
+  /** F33 — what the engine is focusing right now, under the focus control. */
+  focusStatus: {
+    fontSize: 11.5,
+    textAlign: RTL_START_ALIGN,
+    marginTop: -4,
+    marginBottom: 6,
   },
   stepper: {
     flexDirection: 'row',

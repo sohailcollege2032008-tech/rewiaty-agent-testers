@@ -1,0 +1,141 @@
+appId: com.rewiaty.app
+---
+# F33 — تركيز القراية ومسطرة التتبع: قارئ عايز الصفحة توجّه عينه، فبيشغّل «تركيز الفقرة» فيبان
+# إن المحرّك فعلاً اختار فقرة على خط القراية، وبعدين «مسطرة التتبع» فيبان الخط، وبعدين «إيقاف»
+# فكل الأثر يختفي. الإثبات اللي بنشوفه هو سطر حالة المحرّك (اللي جاي من الـ WebView: «الفقرة
+# المضيئة ٢ من ١١»)، مش مجرد إن الزرار اتعلم عليه.
+- launchApp
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 20000
+- waitForAnimationToEnd
+# Open the bars only if they are closed (they open on their own with a hint on first launch).
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-settings-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-settings-button"
+    timeout: 5000
+- tapOn:
+    id: "reader-settings-button"
+- tapOn:
+    id: "settings-tab-layout"
+# ---- 1) تركيز الفقرة: المحرّك بيقول أي فقرة على خط القراية ----
+- scrollUntilVisible:
+    element:
+      id: "settings-reading-focus-paragraph"
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: "settings-reading-focus-paragraph"
+- extendedWaitUntil:
+    visible:
+      id: "reading-focus-engine-status"
+    timeout: 10000
+# The number is derived by the engine (paragraph index on the visible page), not stored by the app.
+- assertVisible:
+    text: "الفقرة المضيئة .* من .*"
+- takeScreenshot: "01-reading-focus-paragraph"
+# ---- 2) التثبيت: تقليب صفحة ثم فتح الإعدادات تاني — الحالة لسه بتوصل من المحرّك ----
+- tapOn:
+    point: "50%,15%"
+- waitForAnimationToEnd
+- swipe:
+    start: "20%,50%"
+    end: "80%,50%"
+    duration: 400
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-settings-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-settings-button"
+    timeout: 5000
+- assertVisible:
+    id: "reader-page-counter"
+    text: "^صفحة 2 من .*"
+- tapOn:
+    id: "reader-settings-button"
+- tapOn:
+    id: "settings-tab-layout"
+- scrollUntilVisible:
+    element:
+      id: "reading-focus-engine-status"
+    direction: DOWN
+    timeout: 10000
+- assertVisible:
+    text: "الفقرة المضيئة .* من .*"
+- takeScreenshot: "02-reading-focus-after-page-turn"
+# ---- 3) مسطرة التتبع: نفس الحالة بس بالنص بتاع المسطرة ----
+- tapOn:
+    id: "settings-reading-focus-ruler"
+- extendedWaitUntil:
+    visible:
+      text: "خط التتبع · الفقرة .* من .*"
+    timeout: 10000
+- assertVisible:
+    id: "reading-focus-engine-status"
+- takeScreenshot: "03-reading-focus-ruler"
+# Reopen cold with the non-default ruler mode to prove the setting was saved.
+- stopApp
+- launchApp:
+    clearState: false
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 30000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 30000
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-settings-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-settings-button"
+    timeout: 5000
+- tapOn:
+    id: "reader-settings-button"
+- tapOn:
+    id: "settings-tab-layout"
+- scrollUntilVisible:
+    element:
+      id: "settings-reading-focus-ruler"
+    direction: DOWN
+    timeout: 10000
+- assertVisible:
+    id: "settings-reading-focus-ruler"
+    selected: true
+- extendedWaitUntil:
+    visible:
+      text: "خط التتبع · الفقرة .* من .*"
+    timeout: 10000
+- takeScreenshot: "04-reading-focus-ruler-persisted"
+# Turning focus off clears the engine's reading guide.
+- tapOn:
+    id: "settings-reading-focus-off"
+- extendedWaitUntil:
+    notVisible:
+      id: "reading-focus-engine-status"
+    timeout: 5000
+- takeScreenshot: "05-reading-focus-off"
