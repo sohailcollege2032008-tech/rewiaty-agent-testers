@@ -2259,6 +2259,7 @@ export function ReaderScreen() {
           <BookmarkRibbon
             isBookmarked={isBookmarked}
             color={themeTokens.ribbon}
+            positionKey={JSON.stringify([bookId, pageInfo.page, currentAnchorRef.current])}
             onToggle={handleToggleBookmark}
             hitSlop={hudVisible ? { top: 0, bottom: 10, left: 10, right: 10 } : 10}
             style={[

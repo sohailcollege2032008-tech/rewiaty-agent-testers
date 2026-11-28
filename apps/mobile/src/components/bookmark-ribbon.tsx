@@ -1,5 +1,5 @@
-import { useCallback, useEffect } from 'react';
-import { Pressable, type StyleProp, type ViewStyle } from 'react-native';
+import { useCallback, useLayoutEffect, useRef } from 'react';
+import { Pressable, type GestureResponderEvent, type StyleProp, type ViewStyle } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
@@ -8,6 +8,7 @@ import Svg, { Path } from 'react-native-svg';
 
 import {
   RIBBON_TAP_SLOP,
+  type RibbonCommit,
   clampRibbonOffset,
   resolveRibbonCommit,
   ribbonCrossesThreshold,
@@ -21,6 +22,7 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 export type BookmarkRibbonProps = {
   /** True when the current position already carries a bookmark (the ribbon hangs extended). */
   isBookmarked: boolean;
+  positionKey?: string;
   /** Theme's crimson silk. */
   color: string;
   /** Saves or removes the bookmark at the position the reader is on (same callback as tap). */
@@ -40,6 +42,7 @@ export type BookmarkRibbonProps = {
  */
 export function BookmarkRibbon({
   isBookmarked,
+  positionKey = '',
   color,
   onToggle,
   style,
@@ -47,28 +50,48 @@ export function BookmarkRibbon({
 }: BookmarkRibbonProps) {
   const pull = useSharedValue(0);
   const armed = useSharedValue(false);
-  const bookmarked = useSharedValue(isBookmarked);
-  // The worklet reads the live saved state, not the prop captured when the gesture was built.
-  useEffect(() => {
-    bookmarked.set(isBookmarked);
-  }, [bookmarked, isBookmarked]);
+  const livePosition = useSharedValue({ positionKey, isBookmarked });
+  const dragPosition = useSharedValue({ positionKey, isBookmarked });
+  const latest = useRef({ positionKey, isBookmarked, onToggle });
+  const pressStart = useRef<{ x: number; y: number } | null>(null);
+  useLayoutEffect(() => {
+    latest.current = { positionKey, isBookmarked, onToggle };
+    livePosition.set({ positionKey, isBookmarked });
+  }, [livePosition, positionKey, isBookmarked, onToggle]);
 
   const playTick = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
   }, []);
 
-  const commit = useCallback(() => {
-    // The caller's toggle is position-based, so it cannot disagree with the saved state: the
-    // gesture only commits a direction that changes it. This is the same callback tap uses.
+  const commit = useCallback((action: RibbonCommit, startKey: string) => {
+    const current = latest.current;
+    if (current.positionKey !== startKey || action !== (current.isBookmarked ? 'remove' : 'add')) {
+      return;
+    }
+    current.onToggle();
+  }, []);
+
+  const handlePressIn = (event: GestureResponderEvent) => {
+    pressStart.current = { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY };
+  };
+  const handlePress = (event: GestureResponderEvent) => {
+    const start = pressStart.current;
+    pressStart.current = null;
+    const touch = event?.nativeEvent;
+    if (start && touch && Math.hypot(touch.pageX - start.x, touch.pageY - start.y) > RIBBON_TAP_SLOP) {
+      return;
+    }
     onToggle();
-  }, [onToggle]);
+  };
 
   const pan = usePanGesture({
     testID: 'reader-bookmark-ribbon-gesture',
     // A 10pt vertical nudge activates the fabric; the Pressable still owns a clean tap.
     activeOffsetY: [-10, 10],
+    failOffsetX: [-10, 10],
     onBegin: () => {
       'worklet';
+      dragPosition.set(livePosition.get());
       armed.set(false);
     },
     onActivate: (event) => {
@@ -84,7 +107,7 @@ export function BookmarkRibbon({
       // direction actually means something for the current state.
       const crossed = ribbonCrossesThreshold({
         translationY: offset,
-        isBookmarked: bookmarked.get(),
+        isBookmarked: dragPosition.get().isBookmarked,
       });
       if (!armed.get() && crossed) {
         armed.set(true);
@@ -95,11 +118,11 @@ export function BookmarkRibbon({
       'worklet';
       const decision = resolveRibbonCommit({
         translationY: event.translationY,
-        isBookmarked: bookmarked.get(),
+        isBookmarked: dragPosition.get().isBookmarked,
         canceled: event.canceled,
       });
       if (decision !== 'none') {
-        scheduleOnRN(commit);
+        scheduleOnRN(commit, decision, dragPosition.get().positionKey);
       }
     },
     onFinalize: () => {
@@ -116,7 +139,8 @@ export function BookmarkRibbon({
     <GestureDetector gesture={pan}>
       <AnimatedPressable
         testID="reader-bookmark-ribbon"
-        onPress={onToggle}
+        onPressIn={handlePressIn}
+        onPress={handlePress}
         // Moving past a tap's tolerance cancels the press, so a short drag never toggles by
         // accident — the fabric only commits on its own threshold.
         pressRetentionOffset={RIBBON_TAP_SLOP}
