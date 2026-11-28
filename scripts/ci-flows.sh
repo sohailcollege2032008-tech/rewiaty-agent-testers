@@ -37,6 +37,21 @@ if [ "${#VALID_FLOWS[@]}" -eq 0 ]; then
   echo "ERROR: no flow ids found in $FLOWS_YAML (expected '- id: <flow-id>' entries under 'flows:')." >&2
   exit 1
 fi
+# Why: a journey that needs its OWN build (push-registration-deeplink needs EXPO_PUBLIC_PUSH_QA_SEAM=1,
+# which the testers workflow only turns on when that flow runs alone) can never pass inside an `all`
+# sweep, whose APK is the one we ship and must not carry the QA seam. So `all` skips these ids; run
+# each one alone (`bash scripts/ci-flows.sh <id>`) as its own gate.
+SEPARATE_BUILD_FLOWS=("push-registration-deeplink")
+ALL_FLOWS=()
+for _f in "${VALID_FLOWS[@]}"; do
+  _skip=0
+  for _s in "${SEPARATE_BUILD_FLOWS[@]}"; do [ "$_f" = "$_s" ] && _skip=1; done
+  [ "$_skip" = 0 ] && ALL_FLOWS+=("$_f")
+done
+if [ "$FLOW_TARGET" = "--list-all-flows" ]; then
+  printf '%s\n' "${ALL_FLOWS[@]}"
+  exit 0
+fi
 # Plumbing surface for the list-builder test (scripts/__tests__/ci-flows-list.sh) and for eyeballing
 # the sweep: print the derived ids and stop before any git/push/CI work.
 if [ "$FLOW_TARGET" = "--list-flows" ]; then
@@ -127,7 +142,7 @@ echo "==> Dispatching $WORKFLOW_NAME on $TESTERS_REPO..."
 # footnote-popover/rotate-position/keep-awake/long-book-open live on another branch). The list that defines a
 # green verdict is this script's VALID_FLOWS, so "all" dispatches exactly those ids.
 if [ "$FLOW_TARGET" = "all" ]; then
-  DISPATCH_FLOWS="$(IFS=,; echo "${VALID_FLOWS[*]}")"
+  DISPATCH_FLOWS="$(IFS=,; echo "${ALL_FLOWS[*]}")"
 else
   DISPATCH_FLOWS="$FLOW_TARGET"
 fi
@@ -187,7 +202,7 @@ SUMMARY_PATH="$EVIDENCE_DIR/summary.md"
 TARGET_RC=0
 BLOCKED_LIST="${BLOCKED_FLOWS[*]}"
 MEASURE_LIST="${MEASURE_ONLY_FLOWS[*]}"
-FLOWS_LIST="${VALID_FLOWS[*]}"
+FLOWS_LIST="${ALL_FLOWS[*]}"
 MISSING_LIST="${MISSING_JOURNEYS[*]:-}"
 python3 - "$EVIDENCE_DIR" "$SUMMARY_PATH" "$RUN_ID" "$RUN_URL" "$SHA256" "$ARM64_SIZE" "$ARM64_SHA256" "$SHA12" "$FLOW_TARGET" "$WATCH_RC" "$BLOCKED_LIST" "$MEASURE_LIST" "$MEASURE_ONLY_ASSERT_TIMEOUT" "$FLOWS_LIST" "$MISSING_LIST" <<'PY' || TARGET_RC=$?
 import json

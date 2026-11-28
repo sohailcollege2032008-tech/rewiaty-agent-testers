@@ -77,6 +77,19 @@ case "$REAL_IDS" in
   *) pass "real ids carry no whitespace or quotes" ;;
 esac
 
+# `all` skips journeys that need their own build (the push QA seam APK); `--list-flows` keeps them.
+ALL_IDS="$(bash "$SCRIPT" --list-all-flows)"
+case "$REAL_IDS" in
+  *push-registration-deeplink*) pass "--list-flows keeps push-registration-deeplink" ;;
+  *) fail "--list-flows keeps push-registration-deeplink" ;;
+esac
+case "$ALL_IDS" in
+  *push-registration-deeplink*) fail "--list-all-flows skips push-registration-deeplink" ;;
+  *) pass "--list-all-flows skips push-registration-deeplink" ;;
+esac
+ALL_COUNT="$(printf '%s\n' "$ALL_IDS" | grep -c .)"
+assert_eq "all = every id minus the 1 separate-build journey" "$((REAL_COUNT - 1))" "$ALL_COUNT"
+
 # An unknown id is rejected by name, and the error points at the file that defines the list.
 bash "$SCRIPT" definitely-not-a-flow >"$TMP_DIR/out" 2>"$TMP_DIR/err"
 RC=$?
