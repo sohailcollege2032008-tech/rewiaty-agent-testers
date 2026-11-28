@@ -11,6 +11,7 @@ import {
   PUSH_MISSION_CONTROL_ROUTE,
   PUSH_NOTIFICATION_COPY_AR,
   PUSH_READER_ROUTE,
+  PUSH_REASON_MISSING_PROJECT_ID,
   PUSH_TOKEN_ID_KV_KEY,
   PUSH_UPLOAD_ROUTE,
   parsePushNotificationData,
@@ -228,6 +229,110 @@ describe('registerDevicePushToken', () => {
   });
 });
 
+describe('Expo project id and Android channel (real release path)', () => {
+  function makeNativeModule() {
+    const order: string[] = [];
+    const module: ExpoNotificationsLike & { order: string[] } = {
+      order,
+      getPermissionsAsync: jest.fn(async () => {
+        order.push('permission');
+        return { status: 'granted', granted: true };
+      }),
+      requestPermissionsAsync: jest.fn(async () => ({ status: 'granted', granted: true })),
+      setNotificationChannelAsync: jest.fn(async () => {
+        order.push('channel');
+        return undefined;
+      }),
+      getExpoPushTokenAsync: jest.fn(async (options?: { projectId?: string }) => {
+        order.push(`token:${options?.projectId ?? ''}`);
+        return { data: 'ExponentPushToken[real]' };
+      }),
+      AndroidImportance: { DEFAULT: 3, HIGH: 4 },
+    };
+    return module;
+  }
+
+  it('fetches the token with the configured project id (never without one)', async () => {
+    const notifications = makeNativeModule();
+    const apiClient = makeApiClient();
+
+    const result = await registerDevicePushToken({
+      apiClient: apiClient as unknown as PushTokenApiClient,
+      deviceId: DEVICE_ID,
+      platform: PLATFORM,
+      projectId: '  11111111-2222-3333-4444-555555555555  ',
+      notificationsModule: notifications,
+      store: makeStore(),
+    });
+
+    expect(result).toEqual({
+      status: 'registered',
+      tokenId: 'pt_new',
+      token: 'ExponentPushToken[real]',
+    });
+    expect(notifications.getExpoPushTokenAsync).toHaveBeenCalledWith({
+      projectId: '11111111-2222-3333-4444-555555555555',
+    });
+  });
+
+  it('creates the Android channel BEFORE asking permission and fetching the token', async () => {
+    const notifications = makeNativeModule();
+
+    await registerDevicePushToken({
+      apiClient: makeApiClient() as unknown as PushTokenApiClient,
+      deviceId: DEVICE_ID,
+      platform: PLATFORM,
+      projectId: '11111111-2222-3333-4444-555555555555',
+      notificationsModule: notifications,
+      store: makeStore(),
+    });
+
+    expect(notifications.order).toEqual([
+      'channel',
+      'permission',
+      'token:11111111-2222-3333-4444-555555555555',
+    ]);
+  });
+
+  it('stays unavailable (and silent) when the build has no project id', async () => {
+    const notifications = makeNativeModule();
+    const apiClient = makeApiClient();
+
+    const result = await registerDevicePushToken({
+      apiClient: apiClient as unknown as PushTokenApiClient,
+      deviceId: DEVICE_ID,
+      platform: PLATFORM,
+      projectId: null,
+      notificationsModule: notifications,
+      store: makeStore(),
+    });
+
+    expect(result).toEqual({
+      status: 'unavailable',
+      reason: PUSH_REASON_MISSING_PROJECT_ID,
+    });
+    // No prompt, no channel, no token call, no server row — this build cannot push at all.
+    expect(notifications.getPermissionsAsync).not.toHaveBeenCalled();
+    expect(notifications.requestPermissionsAsync).not.toHaveBeenCalled();
+    expect(notifications.setNotificationChannelAsync).not.toHaveBeenCalled();
+    expect(notifications.getExpoPushTokenAsync).not.toHaveBeenCalled();
+    expect(apiClient.registerPushToken).not.toHaveBeenCalled();
+  });
+
+  it('still reports notifications_unavailable when the native module has no token API', async () => {
+    const result = await registerDevicePushToken({
+      apiClient: makeApiClient() as unknown as PushTokenApiClient,
+      deviceId: DEVICE_ID,
+      platform: PLATFORM,
+      projectId: '11111111-2222-3333-4444-555555555555',
+      notificationsModule: { getPermissionsAsync: async () => ({ status: 'granted' }) },
+      store: makeStore(),
+    });
+
+    expect(result).toEqual({ status: 'unavailable', reason: 'notifications_unavailable' });
+  });
+});
+
 describe('ensurePushRegisteredIfGranted', () => {
   it('never prompts: denied permission stays silent with no API call', async () => {
     const apiClient = makeApiClient();
@@ -309,10 +414,10 @@ describe('routeFromPushNotificationData', () => {
     job_id: 'job_1',
   };
 
-  it('routes chapter_ready to the reader with the chapter hint', () => {
+  it('routes chapter_ready to the reader for that book (reader restores its own position)', () => {
     expect(routeFromPushNotificationData(chapterPayload)).toEqual({
       pathname: PUSH_READER_ROUTE,
-      params: { id: 'book_1', chapter: 'ch01', chapterIndex: '1' },
+      params: { id: 'book_1' },
     });
   });
 
@@ -321,6 +426,24 @@ describe('routeFromPushNotificationData', () => {
       pathname: PUSH_READER_ROUTE,
       params: { id: 'book_1' },
     });
+  });
+
+  it('routes a chapter_ready with no chapter fields (older backend) to the same book', () => {
+    expect(
+      routeFromPushNotificationData({ event: 'chapter_ready', book_id: 'book_1', job_id: 'job_1' }),
+    ).toEqual({ pathname: PUSH_READER_ROUTE, params: { id: 'book_1' } });
+  });
+
+  it('ignores stray chapter fields on job_completed', () => {
+    expect(
+      routeFromPushNotificationData({
+        event: 'job_completed',
+        book_id: 'book_1',
+        job_id: 'job_1',
+        chapter_id: 'ch01',
+        chapter_index: 1,
+      }),
+    ).toEqual({ pathname: PUSH_READER_ROUTE, params: { id: 'book_1' } });
   });
 
   it('falls back to Mission Control when the book is not imported locally', () => {
@@ -419,7 +542,7 @@ describe('installPushNotificationHandling', () => {
     );
     expect(navigate).toHaveBeenCalledWith({
       pathname: PUSH_READER_ROUTE,
-      params: { id: 'book_1', chapter: 'ch01' },
+      params: { id: 'book_1' },
     });
 
     navigate.mockClear();
