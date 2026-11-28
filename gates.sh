@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "==> 0/7 Script tests (device-flow list from .factory/flows.yaml)"
+echo "==> 0/7 Script tests (device-flow list + push release preflight)"
 bash scripts/__tests__/ci-flows-list.sh
+bash scripts/__tests__/push-preflight.sh
 
 echo "==> 1/7 Typecheck"
 npm run typecheck

@@ -110,6 +110,12 @@
       "expo-sqlite",
       "expo-asset",
       [
+        "expo-notifications",
+        {
+          "defaultChannel": "book-conversion"
+        }
+      ],
+      [
         "expo-localization",
         {
           "supportsRTL": true,
