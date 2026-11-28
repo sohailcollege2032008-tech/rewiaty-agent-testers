@@ -29,13 +29,28 @@ import { BookmarkRibbon } from '@/components/bookmark-ribbon';
 import { CustomColorsModal } from '@/components/custom-colors-modal';
 import { HighlightNoteModal } from '@/components/highlight-note-modal';
 import { HighlightToolbar } from '@/components/highlight-toolbar';
-import { DictionarySheet } from '@/components/dictionary-sheet';
+import { BookQaSheet, type BookQaAnswerView } from '@/components/book-qa-sheet';
+import {
+  DictionarySheet,
+  type DictionaryAiExplainState,
+} from '@/components/dictionary-sheet';
 import { JumpBackPill } from '@/components/jump-back-pill';
 import { LightingOverlay } from '@/components/lighting-overlay';
 import { ReaderHud } from '@/components/reader-hud';
 import { ReaderSettingsSheet, type ReadingFocusStatus } from '@/components/reader-settings-sheet';
 import { TocModal } from '@/components/toc-modal';
 import { WelcomeBackCard } from '@/components/welcome-back-card';
+import { getAuthenticatedApiClient } from '@/api';
+import type { ByokInput } from '@/api/types';
+import {
+  askStrictBookQuestion,
+  createStoredByokResolver,
+  explainCutoffForSelection,
+  hasStoredByokKey,
+  STRICT_QA_EMPTY_CONTEXT_MESSAGE_AR,
+  type AskStrictBookQuestionResult,
+  type StrictQaApiClient,
+} from '@/storage/strict-qa';
 import {
   DICTIONARY_ATTRIBUTION,
   DICTIONARY_UNAVAILABLE_REASON,
@@ -152,6 +167,50 @@ export function readerErrorMessage(err: unknown): string {
   if (message && ARABIC_RE.test(message)) return message;
   if (message) console.warn('[reader] open failed:', message);
   return READER_OPEN_FAILED_MESSAGE;
+}
+
+/**
+ * Cloud origin used by the reader's AI actions (strict-index Q&A and the BYOK word explain).
+ * An empty value is the supported offline build: the reader shows a calm Arabic notice instead
+ * of failing on the first tap.
+ */
+export function getReaderApiBaseUrl(
+  raw: string | undefined = process.env.EXPO_PUBLIC_API_BASE_URL,
+): string {
+  return typeof raw === 'string' ? raw.trim() : '';
+}
+
+/** Last-resort client used only after an offline check has already answered; never called. */
+const OFFLINE_QA_CLIENT: StrictQaApiClient = {
+  askBookQuestion: async () => {
+    throw new Error('offline');
+  },
+};
+
+function toBookQaAnswerView(result: AskStrictBookQuestionResult): BookQaAnswerView {
+  if (result.status === 'ok') {
+    return {
+      status: 'ok',
+      answer: result.response.answer,
+      citations: result.response.citations,
+      costUsd: result.response.cost_usd,
+    };
+  }
+  return { status: result.status, messageAr: result.messageAr };
+}
+
+function toDictionaryAiExplainState(
+  result: AskStrictBookQuestionResult,
+): DictionaryAiExplainState {
+  if (result.status === 'ok') {
+    return {
+      status: 'ok',
+      explanation: result.response.answer,
+      citations: result.response.citations,
+      costUsd: result.response.cost_usd,
+    };
+  }
+  return { status: result.status, messageAr: result.messageAr };
 }
 
 /** Arabic diacritics + tatweel, stripped before a dictionary lookup. */
@@ -329,7 +388,17 @@ function savedReaderOrigin(
   };
 }
 
-export function ReaderScreen() {
+/**
+ * Test seams for the F49 AI surfaces. Production leaves them undefined and the reader builds the
+ * authenticated client / secure-storage resolver itself.
+ */
+export type ReaderScreenProps = {
+  qaClient?: StrictQaApiClient;
+  qaResolveByok?: () => Promise<ByokInput | null>;
+  qaHasByokKey?: () => Promise<boolean>;
+};
+
+export function ReaderScreen({ qaClient, qaResolveByok, qaHasByokKey }: ReaderScreenProps = {}) {
   useKeepAwake();
 
   const router = useRouter();
@@ -415,6 +484,19 @@ export function ReaderScreen() {
   const [dictResult, setDictResult] = useState<DictionaryLookupResult | null>(null);
   /** Monotonic token: a lookup that resolves after a newer one (or after unmount) is discarded. */
   const dictRequestRef = useRef(0);
+  /**
+   * F49 BYOK word/phrase explain. Captured at dictionary-open time so a later selection change
+   * cannot move the explanation past the strict cutoff it was asked from.
+   */
+  const [dictAi, setDictAi] = useState<DictionaryAiExplainState>({ status: 'idle' });
+  const dictAiRequestRef = useRef(0);
+  const dictPhraseRef = useRef('');
+  const dictCutoffRef = useRef<{ chapterId: string; blockId: string; charOffset: number } | null>(
+    null,
+  );
+  /** F49 strict-index Q&A sheet (spoiler-free). */
+  const [qaVisible, setQaVisible] = useState(false);
+  const [qaByokConfigured, setQaByokConfigured] = useState<boolean | null>(null);
   const noteModalOpenRef = useRef(false);
   noteModalOpenRef.current = noteModalTarget !== null;
   const [vesselSize, setVesselSize] = useState<{ width: number; height: number }>(() => {
@@ -1814,53 +1896,179 @@ export function ReaderScreen() {
   }, [activeSelection, editingHighlight, postToEngine]);
 
   /**
-   * F49: look up the selected word (or the quoted text of the highlight being edited)
-   * in the bundled offline dictionary. The sheet opens immediately and fills in.
+   * F49 — the client used by both AI surfaces; `null` is the supported offline build.
    */
-  const handlePressToolbarDictionary = useCallback(() => {
-    const sourceQuote = activeSelection?.quote ?? editingHighlight?.quote ?? '';
-    const word = extractLookupWord(sourceQuote);
-    const requestId = dictRequestRef.current + 1;
-    dictRequestRef.current = requestId;
+  const resolveReaderQaClient = useCallback((): StrictQaApiClient | null => {
+    if (qaClient) return qaClient;
+    const baseUrl = getReaderApiBaseUrl();
+    if (!baseUrl) return null;
+    return getAuthenticatedApiClient(baseUrl);
+  }, [qaClient]);
 
-    setActiveSelection(null);
-    setEditingHighlightState(null);
-    postToEngine({ type: 'clear-selection' });
-    setDictWord(word);
-    setDictResult(null);
-    setDictVisible(true);
+  const readerQaOnline = Boolean(qaClient) || Boolean(getReaderApiBaseUrl());
 
-    if (!word) {
-      // Nothing Arabic to look up: say so instead of showing a "looking…" state forever.
-      setDictLoading(false);
-      setDictResult({
-        status: 'not_found',
-        query: sourceQuote.trim(),
-        normalized: '',
-        attribution: DICTIONARY_ATTRIBUTION,
-      });
-      return;
-    }
-
-    setDictLoading(true);
-    void (async () => {
-      let result: DictionaryLookupResult;
-      try {
-        const db = await openBundledDictionaryDb();
-        result = await lookupDictionaryWord(word, db);
-      } catch {
-        result = {
-          status: 'unavailable',
-          query: word,
-          reasonAr: DICTIONARY_UNAVAILABLE_REASON,
-          attribution: DICTIONARY_ATTRIBUTION,
+  const handleAskBookQuestion = useCallback(
+    async (question: string): Promise<BookQaAnswerView> => {
+      const currentBook = bookRef.current;
+      if (!currentBook) {
+        return {
+          status: 'error',
+          messageAr: 'تعذّر الوصول للكتاب دلوقتي. جرّب تفتحه تاني.',
         };
       }
-      if (dictRequestRef.current !== requestId) return;
-      setDictResult(result);
-      setDictLoading(false);
-    })();
-  }, [activeSelection, editingHighlight, postToEngine]);
+      const anchor = currentAnchorRef.current;
+      const client = resolveReaderQaClient();
+      const result = await askStrictBookQuestion({
+        book: currentBook,
+        bookId: currentBook.id,
+        question,
+        upToChapterId: pageInfoRef.current.chapterId,
+        upToBlockId: anchor?.blockId ?? '',
+        ...(anchor ? { upToCharOffset: anchor.charOffset } : {}),
+        bookTitle: currentBook.meta.title,
+        apiClient: client ?? OFFLINE_QA_CLIENT,
+        resolveByok: qaResolveByok ?? createStoredByokResolver(),
+        isOffline: client === null,
+      });
+      return toBookQaAnswerView(result);
+    },
+    [qaResolveByok, resolveReaderQaClient],
+  );
+
+  const handleOpenQa = useCallback(() => {
+    setQaVisible(true);
+    const probe = qaHasByokKey ?? (() => hasStoredByokKey());
+    void probe()
+      .then((value) => setQaByokConfigured(value))
+      .catch(() => setQaByokConfigured(false));
+  }, [qaHasByokKey]);
+
+  const handleOpenAiSettings = useCallback(() => {
+    router.push('/ai-settings');
+  }, [router]);
+
+  /**
+   * F49 — explain one word/phrase with the strict cutoff captured for it.
+   *
+   * Never reads past `cutoff`: the prompt only ever contains the phrase the reader selected and
+   * the model is asked to explain it from the text up to the reader's position.
+   */
+  const explainPhrase = useCallback(
+    (phrase: string, cutoff: { chapterId: string; blockId: string; charOffset: number } | null) => {
+      const currentBook = bookRef.current;
+      const requestId = dictAiRequestRef.current + 1;
+      dictAiRequestRef.current = requestId;
+
+      if (!currentBook || !cutoff || !phrase) {
+        setDictAi({ status: 'empty_context', messageAr: STRICT_QA_EMPTY_CONTEXT_MESSAGE_AR });
+        return;
+      }
+
+      setDictAi({ status: 'loading' });
+      const client = resolveReaderQaClient();
+      // Keep the prompt inside the contract's 2000-char `question` cap even for a long selection.
+      const boundedPhrase = phrase.slice(0, 240);
+      void (async () => {
+        const result = await askStrictBookQuestion({
+          book: currentBook,
+          bookId: currentBook.id,
+          question: `اشرح معنى أو سياق العبارة دي في الأحداث اللي قريتها لحد دلوقتي: «${boundedPhrase}»`,
+          upToChapterId: cutoff.chapterId,
+          upToBlockId: cutoff.blockId,
+          upToCharOffset: cutoff.charOffset,
+          bookTitle: currentBook.meta.title,
+          apiClient: client ?? OFFLINE_QA_CLIENT,
+          resolveByok: qaResolveByok ?? createStoredByokResolver(),
+          isOffline: client === null,
+        });
+        if (dictAiRequestRef.current !== requestId) return;
+        setDictAi(toDictionaryAiExplainState(result));
+      })();
+    },
+    [qaResolveByok, resolveReaderQaClient],
+  );
+
+  /**
+   * F49: open the dictionary for the selected word (or the quoted text of the highlight being
+   * edited) and, when `explain` is true, immediately ask the BYOK explainer in the same sheet.
+   */
+  const openDictionaryForSelection = useCallback(
+    (explain: boolean) => {
+      const sourceQuote = activeSelection?.quote ?? editingHighlight?.quote ?? '';
+      const word = extractLookupWord(sourceQuote);
+      const requestId = dictRequestRef.current + 1;
+      dictRequestRef.current = requestId;
+
+      // Capture the strict cutoff now: the BYOK explain must never read past this point.
+      // F49 (P2): the cutoff is the **end of the selection** inside its own block — not the page
+      // anchor — so the sentence containing the word is part of the context sent to the model.
+      const selectionSource = activeSelection ?? editingHighlight;
+      const cutoff = explainCutoffForSelection(selectionSource);
+      dictPhraseRef.current = sourceQuote.trim();
+      dictCutoffRef.current = cutoff;
+      dictAiRequestRef.current += 1;
+      setDictAi({ status: 'idle' });
+
+      setActiveSelection(null);
+      setEditingHighlightState(null);
+      postToEngine({ type: 'clear-selection' });
+      setDictWord(word);
+      setDictResult(null);
+      setDictVisible(true);
+
+      if (explain) explainPhrase(sourceQuote.trim(), cutoff);
+
+      if (!word) {
+        // Nothing Arabic to look up: say so instead of showing a "looking…" state forever.
+        setDictLoading(false);
+        setDictResult({
+          status: 'not_found',
+          query: sourceQuote.trim(),
+          normalized: '',
+          attribution: DICTIONARY_ATTRIBUTION,
+        });
+        return;
+      }
+
+      setDictLoading(true);
+      void (async () => {
+        let result: DictionaryLookupResult;
+        try {
+          const db = await openBundledDictionaryDb();
+          result = await lookupDictionaryWord(word, db);
+        } catch {
+          result = {
+            status: 'unavailable',
+            query: word,
+            reasonAr: DICTIONARY_UNAVAILABLE_REASON,
+            attribution: DICTIONARY_ATTRIBUTION,
+          };
+        }
+        if (dictRequestRef.current !== requestId) return;
+        setDictResult(result);
+        setDictLoading(false);
+      })();
+    },
+    [activeSelection, editingHighlight, explainPhrase, postToEngine],
+  );
+
+  /** Toolbar «المعجم»: open the dictionary for the selection. */
+  const handlePressToolbarDictionary = useCallback(
+    () => openDictionaryForSelection(false),
+    [openDictionaryForSelection],
+  );
+
+  /** Toolbar «اشرح»: open the dictionary and explain the selection with the strict cutoff. */
+  const handlePressToolbarAiExplain = useCallback(
+    () => openDictionaryForSelection(true),
+    [openDictionaryForSelection],
+  );
+
+  /** Dictionary-sheet «اشرح»: explain the phrase captured when the sheet was opened. */
+  const handlePressAiExplain = useCallback(
+    () => explainPhrase(dictPhraseRef.current, dictCutoffRef.current),
+    [explainPhrase],
+  );
 
   const handlePressToolbarDelete = useCallback(() => {
     if (!editingHighlightState) return;
@@ -2401,6 +2609,7 @@ export function ReaderScreen() {
                 setTocVisible(true);
               }}
               onOpenSettings={handleOpenSettings}
+              onOpenQa={handleOpenQa}
               onSelectTheme={(theme) => handleSettingsChange({ theme })}
               onSeekPage={handleSeekPage}
               onBarsLayout={setMeasuredHudHeights}
@@ -2420,6 +2629,7 @@ export function ReaderScreen() {
               onSelectColor={handleSelectHighlightColor}
               onPressNote={handlePressToolbarNote}
               onPressDictionary={handlePressToolbarDictionary}
+              onPressAiExplain={handlePressToolbarAiExplain}
               onPressDelete={editingHighlight ? handlePressToolbarDelete : undefined}
             />
 
@@ -2445,11 +2655,27 @@ export function ReaderScreen() {
               result={dictResult}
               loading={dictLoading}
               theme={settings.theme}
+              aiExplain={dictAi}
+              onPressAiExplain={handlePressAiExplain}
+              onOpenAiSettings={handleOpenAiSettings}
               onClose={() => {
                 dictRequestRef.current += 1;
+                dictAiRequestRef.current += 1;
                 setDictLoading(false);
+                setDictAi({ status: 'idle' });
                 setDictVisible(false);
               }}
+            />
+
+            <BookQaSheet
+              visible={qaVisible}
+              chapterTitle={activeChapterTitle}
+              theme={settings.theme}
+              byokConfigured={qaByokConfigured ?? true}
+              offline={!readerQaOnline}
+              onAsk={handleAskBookQuestion}
+              onClose={() => setQaVisible(false)}
+              onOpenSettings={handleOpenAiSettings}
             />
 
             <TocModal

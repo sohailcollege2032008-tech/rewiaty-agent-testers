@@ -223,8 +223,13 @@ describe('ReaderScreen F49 dictionary integration', () => {
     colorSchemeSpy.mockRestore();
   });
 
-  async function renderReader() {
-    const utils = await render(<ReaderScreen />);
+  async function renderReader(props: { qaClient?: unknown; qaResolveByok?: () => Promise<unknown> } = {}) {
+    const utils = await render(
+      <ReaderScreen
+        qaClient={props.qaClient as never}
+        qaResolveByok={props.qaResolveByok as never}
+      />,
+    );
     await waitFor(() => expect(utils.getByTestId('reader-webview')).toBeTruthy());
     await act(async () => {
       capturedOnLoadEnd?.();
@@ -326,6 +331,69 @@ describe('ReaderScreen F49 dictionary integration', () => {
     expect(utils.getByText(DICTIONARY_ATTRIBUTION.noticeAr)).toBeTruthy();
     expect(utils.getByText(/CC BY-SA 4\.0/)).toBeTruthy();
     expect(utils.getByText(/ar\.wiktionary\.org/)).toBeTruthy();
+  });
+
+  it('explains the selected word with the cutoff at the end of the selection', async () => {
+    const blockText = 'كَانَتْ نُورُ تَعْرِفُ الْبَحْرَ قَبْلَ أَنْ تَعْرِفَ اسْمَهُ.';
+    const selectedPhrase = 'تَعْرِفُ الْبَحْرَ';
+    const selectionStart = blockText.indexOf(selectedPhrase);
+    const selectionEnd = selectionStart + selectedPhrase.length;
+
+    const askBookQuestion = jest.fn(async () => ({
+      book_id: 'book_dict',
+      answer: 'شرح الكلمة من اللي قريته.',
+      cutoff_block_id: 'ch01_p0001',
+      citations: [],
+      cost_usd: 0.0005,
+      spoiler_free: true,
+    }));
+    const utils = await renderReader({
+      qaClient: { askBookQuestion },
+      qaResolveByok: async () => ({
+        mode: 'ephemeral',
+        provider: 'openai',
+        api_key: 'test-byok-key-fixture',
+        model: 'gpt-4.1',
+      }),
+    });
+    await act(async () => {
+      emit({
+        type: 'selection',
+        selection: {
+          anchor: { blockId: 'ch01_p0001', charOffset: selectionStart },
+          length: selectedPhrase.length,
+          quote: selectedPhrase,
+          contextBefore: 'كَانَتْ نُورُ ',
+          contextAfter: ' قَبْلَ أَنْ',
+          chapterId: 'ch01',
+          rect: { left: 100, top: 240, right: 260, bottom: 270, width: 160, height: 30 },
+        },
+      });
+    });
+    await fireEvent.press(utils.getByTestId('highlight-ai-explain-button'));
+
+    await waitFor(() => expect(askBookQuestion).toHaveBeenCalledTimes(1));
+    const body = (
+      askBookQuestion.mock.calls[0] as unknown as [
+        string,
+        {
+          up_to_chapter_id: string;
+          up_to_block_id: string;
+          up_to_char_offset: number;
+          context_excerpts: Array<{ block_id: string; text: string }>;
+        },
+      ]
+    )[1];
+
+    // The cutoff is the end of the selection, inside its own block — using the page anchor
+    // would have sent offset 0 (no context at all) or stopped before the selected word.
+    expect(body.up_to_chapter_id).toBe('ch01');
+    expect(body.up_to_block_id).toBe('ch01_p0001');
+    expect(body.up_to_char_offset).toBe(selectionEnd);
+    const excerpt = body.context_excerpts.find((item) => item.block_id === 'ch01_p0001');
+    expect(excerpt?.text).toBe(blockText.slice(0, selectionEnd));
+    expect(excerpt?.text).toContain(selectedPhrase);
+    expect(excerpt?.text).not.toContain('قَبْلَ');
   });
 
   it('closes the toolbar selection when the dictionary opens', async () => {
