@@ -96,13 +96,29 @@ appId: com.rewiaty.app
       id: "reading-focus-engine-status"
     timeout: 5000
 - takeScreenshot: "04-reading-focus-off"
-# The chosen state is persisted through a fresh open of the reader (off stays off).
-- tapOn:
-    point: "50%,15%"
-- waitForAnimationToEnd
-- tapOn:
-    point: "50%,50%"
-- waitForAnimationToEnd
+# Reopen the reader cold so the last assertion uses persisted settings.
+- stopApp
+- launchApp:
+    clearState: false
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 30000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 30000
+- runFlow:
+    when:
+      notVisible:
+        id: "reader-settings-button"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+- extendedWaitUntil:
+    visible:
+      id: "reader-settings-button"
+    timeout: 5000
 - tapOn:
     id: "reader-settings-button"
 - tapOn:
@@ -114,6 +130,7 @@ appId: com.rewiaty.app
     timeout: 10000
 - assertVisible:
     id: "settings-reading-focus-off"
+    selected: true
 - assertNotVisible:
     id: "reading-focus-engine-status"
 - takeScreenshot: "05-reading-focus-off-persisted"
