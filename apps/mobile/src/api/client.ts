@@ -4,6 +4,8 @@ import type {
   BookArtDirection,
   BookArtDirectionInput,
   BookMdUrlResponse,
+  BookQaRequest,
+  BookQaResponse,
   BudgetConfig,
   BundleManifestResponse,
   ChapterBundleResponse,
@@ -553,6 +555,23 @@ export class RewiatyApiClient {
     return this.request<BookArtDirection>(
       `/v1/books/${encodeURIComponent(bookId)}/art-direction`,
       { method: 'PUT', body },
+    );
+  }
+
+  /* ----------------------------------------------- strict-index Q&A (F49) */
+
+  /**
+   * Ask a spoiler-free question bounded by the reader's current position.
+   *
+   * The request's `context_excerpts` are built by the app strictly up to the cutoff; the
+   * `byok` key is write-only, so it is registered with the error scrubber before the call and
+   * can never survive in a thrown `ApiError`.
+   */
+  askBookQuestion(bookId: string, body: BookQaRequest): Promise<BookQaResponse> {
+    this.rememberByok(body.byok);
+    return this.request<BookQaResponse>(
+      `/v1/books/${encodeURIComponent(bookId)}/qa`,
+      { method: 'POST', body },
     );
   }
 

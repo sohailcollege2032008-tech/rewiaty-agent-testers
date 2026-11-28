@@ -565,6 +565,63 @@ export interface BookArtDirection {
   updated_at: string;
 }
 
+/* ------------------------------------------- strict-index Q&A (F49) */
+
+/**
+ * One client-supplied context excerpt for the spoiler-free Q&A endpoint.
+ *
+ * Its `block_id` must sit at or before the request's `up_to_block_id`: the server rejects
+ * anything past the strict-index cutoff rather than silently dropping it.
+ */
+export interface BookQaExcerpt {
+  /** Block id in reading order, e.g. `"ch02_p0012"`. */
+  block_id: string;
+  chapter_title?: string;
+  text: string;
+}
+
+/**
+ * Spoiler-free Q&A request bounded by the reader's current position (F49).
+ *
+ * Only content up to **and including** `up_to_block_id` may enter the model prompt. The
+ * reader app builds `context_excerpts` strictly from the book up to that cutoff so the answer
+ * can never describe, hint at or reveal later plot.
+ */
+export interface BookQaRequest {
+  question: string;
+  up_to_chapter_id: string;
+  up_to_block_id: string;
+  /**
+   * Exclusive 0-based character prefix cutoff inside `up_to_block_id` (e.g. `120` keeps only
+   * `text[:120]`). Applied to the cutoff block in both server-loaded bundles and client
+   * `context_excerpts`.
+   */
+  up_to_char_offset?: number;
+  book_title?: string;
+  context_excerpts?: BookQaExcerpt[];
+  byok: ByokInput;
+  budget_cap_usd?: number;
+}
+
+/** A cited block; `block_id` is always at or before the enforced cutoff. */
+export interface BookQaCitation {
+  block_id: string;
+  quote: string;
+}
+
+/**
+ * Spoiler-free answer. `spoiler_free` is always `true`; `cutoff_block_id` echoes the enforced
+ * boundary. Never contains an `api_key` or any provider secret.
+ */
+export interface BookQaResponse {
+  book_id: string;
+  answer: string;
+  cutoff_block_id: string;
+  citations: BookQaCitation[];
+  cost_usd: number;
+  spoiler_free: true;
+}
+
 /* ------------------------------------------------------------------ errors */
 
 export interface ErrorDetail {

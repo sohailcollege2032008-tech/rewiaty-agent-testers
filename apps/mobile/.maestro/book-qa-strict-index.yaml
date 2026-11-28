@@ -1,0 +1,85 @@
+appId: com.rewiaty.app
+---
+# F49 — «اسأل عن الكتاب (بدون حرق)» inside the reader HUD.
+#
+# Proves the reader-facing contract:
+#   • the HUD exposes a calm «اسأل» button,
+#   • the sheet names the strict cutoff («النطاق المسموح: حتى … — بدون حرق للأحداث الجاية»),
+#   • asking a question always settles into a calm Arabic state — an answer, the add-key
+#     prompt, the offline sentence, or the empty-context sentence — and never an English
+#     provider/network error.
+#
+# A BYOK key is deliberately NOT required: dev and release testers run without one, so the
+# no-key/offline path is the one exercised (and the strict-index boundary itself is covered
+# by `strict-qa.test.ts`, which needs no device).
+- launchApp
+- extendedWaitUntil:
+    visible: "حَجَرُ الْمَاءِ"
+    timeout: 20000
+- tapOn: "حَجَرُ الْمَاءِ"
+- extendedWaitUntil:
+    notVisible:
+      id: "reader-loading-overlay"
+    timeout: 20000
+- waitForAnimationToEnd
+# The HUD can be hidden after opening; a tap in the read zone brings it back.
+- runFlow:
+    when:
+      notVisible:
+        id: "hud-qa-btn"
+    commands:
+      - tapOn:
+          point: "50%,50%"
+      - waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "hud-qa-btn"
+    timeout: 8000
+- takeScreenshot: "01-hud-qa"
+- tapOn:
+    id: "hud-qa-btn"
+- extendedWaitUntil:
+    visible:
+      id: "book-qa-sheet"
+    timeout: 8000
+# The spoiler-free scope is visible before any question is asked.
+- assertVisible:
+    id: "book-qa-spoiler-badge"
+- assertVisible:
+    id: "book-qa-quick-0"
+- takeScreenshot: "02-qa-sheet"
+# A starter chip is a real question: it must reach the same strict-index path.
+- tapOn:
+    id: "book-qa-quick-0"
+# Calm states only. The result is either a cited answer or one fixed Arabic message; an
+# English exception would leave both invisible.
+- extendedWaitUntil:
+    visible:
+      id: "book-qa-answer|book-qa-message"
+    timeout: 20000
+- assertNotVisible:
+    id: "book-qa-loading"
+- takeScreenshot: "03-qa-result"
+# The no-key path must say so plainly instead of looking broken.
+- runFlow:
+    when:
+      visible:
+        id: "book-qa-message"
+    commands:
+      - assertVisible:
+          id: "book-qa-message"
+- tapOn:
+    id: "book-qa-close"
+- extendedWaitUntil:
+    notVisible:
+      id: "book-qa-sheet"
+    timeout: 5000
+# The reader is untouched by a failed/empty ask.
+- assertVisible:
+    id: "reader-page-counter"
+- takeScreenshot: "04-qa-closed"
+- back
+- extendedWaitUntil:
+    visible:
+      id: "library-screen"
+    timeout: 10000

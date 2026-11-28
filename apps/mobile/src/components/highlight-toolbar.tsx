@@ -26,6 +26,8 @@ export type HighlightToolbarProps = {
   onPressNote: () => void;
   /** F49: long-press dictionary lookup for the selected quote. */
   onPressDictionary?: () => void;
+  /** F49: BYOK word/phrase explanation, bounded by the reader's strict cutoff. */
+  onPressAiExplain?: () => void;
   onPressDelete?: () => void;
 };
 
@@ -43,6 +45,8 @@ const SWATCH_GAP = 8;
 const SWATCH_DOT = 28;
 /** Width the «المعجم» button adds before `onLayout` measures the real pill. */
 const DICTIONARY_BUTTON_WIDTH = 56;
+/** Width the compact «اشرح» button adds before `onLayout` measures the real pill. */
+const AI_EXPLAIN_BUTTON_WIDTH = 58;
 /**
  * Natural content width before `onLayout` has measured the pill. Only used for the first
  * frame's `left`; the real width takes over immediately after (Issue #59 QA r1: a fixed
@@ -66,6 +70,7 @@ export function HighlightToolbar({
   onSelectColor,
   onPressNote,
   onPressDictionary,
+  onPressAiExplain,
   onPressDelete,
 }: HighlightToolbarProps) {
   // Hooks must run before the early return; a hidden toolbar simply keeps its last measurement.
@@ -77,7 +82,8 @@ export function HighlightToolbar({
   const maxToolbarWidth = Math.max(0, containerWidth - TOOLBAR_GUTTER * 2);
   const widthEstimate =
     (isEditing ? ESTIMATED_WIDTH_EDIT : ESTIMATED_WIDTH_VIEW) +
-    (onPressDictionary ? DICTIONARY_BUTTON_WIDTH : 0);
+    (onPressDictionary ? DICTIONARY_BUTTON_WIDTH : 0) +
+    (onPressAiExplain ? AI_EXPLAIN_BUTTON_WIDTH : 0);
   const toolbarWidth = Math.min(
     measured.width > 0 ? measured.width : widthEstimate,
     maxToolbarWidth,
@@ -223,6 +229,27 @@ export function HighlightToolbar({
             </Pressable>
           ) : null}
 
+          {onPressAiExplain ? (
+            <Pressable
+              testID="highlight-ai-explain-button"
+              onPress={onPressAiExplain}
+              style={({ pressed }) => [
+                styles.aiBtn,
+                { backgroundColor: palette.chipBg, borderColor: palette.border },
+                pressed && styles.pressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="اشرح السياق بالذكاء الاصطناعي"
+            >
+              <Text
+                style={[styles.aiText, { color: palette.accent, fontFamily: TYPOGRAPHY.uiFont }]}
+                numberOfLines={1}
+              >
+                اشرح
+              </Text>
+            </Pressable>
+          ) : null}
+
           {isEditing && onPressDelete ? (
             <Pressable
               testID="highlight-delete-button"
@@ -322,6 +349,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dictionaryText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  aiBtn: {
+    minWidth: CONTROL_SIZE,
+    minHeight: CONTROL_SIZE,
+    paddingHorizontal: 8,
+    borderRadius: RADIUS.pill,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiText: {
     fontSize: 12.5,
     fontWeight: '700',
   },

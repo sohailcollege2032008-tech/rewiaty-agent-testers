@@ -57,6 +57,8 @@ export type ReaderHudProps = {
   onBack: () => void;
   onOpenToc: () => void;
   onOpenSettings: () => void;
+  /** F49 — open the spoiler-free «اسأل عن الكتاب» sheet. Hidden when not provided. */
+  onOpenQa?: () => void;
   onSelectTheme?: (theme: ThemeId) => void;
   onSeekPage: (page: number) => void;
   onBarsLayout?: (heights: { headerHeight: number; footerHeight: number }) => void;
@@ -85,6 +87,7 @@ export function ReaderHud({
   onBack,
   onOpenToc,
   onOpenSettings,
+  onOpenQa,
   onSelectTheme,
   onSeekPage,
   onBarsLayout,
@@ -234,6 +237,48 @@ export function ReaderHud({
         </View>
 
         <View style={styles.actionsRow}>
+          {onOpenQa ? (
+            <Pressable
+              testID="hud-qa-btn"
+              onPress={() => {
+                setThemeMenuOpen(false);
+                onOpenQa();
+              }}
+              hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+              style={({ pressed }) => [
+                styles.qaBtn,
+                {
+                  backgroundColor: palette.chipBg,
+                  borderColor: palette.border,
+                },
+                pressed && { backgroundColor: palette.accentSoft },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="اسأل عن الكتاب بدون حرق"
+            >
+              <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                <Path
+                  d="M4 5h16v11H9l-5 4V5z"
+                  stroke={palette.muted}
+                  strokeWidth={1.8}
+                  strokeLinejoin="round"
+                />
+                <Path
+                  d="M9.5 9.2a2.6 2.6 0 115 1c0 1.2-2.5 1.3-2.5 2.6"
+                  stroke={palette.muted}
+                  strokeWidth={1.6}
+                  strokeLinecap="round"
+                />
+              </Svg>
+              <Text
+                style={[styles.qaBtnText, { color: palette.text, fontFamily: TYPOGRAPHY.uiFont }]}
+                numberOfLines={1}
+              >
+                اسأل
+              </Text>
+            </Pressable>
+          ) : null}
+
           <Pressable
             testID="reader-toc-button"
             onPress={() => {
@@ -528,6 +573,21 @@ const styles = StyleSheet.create({
   iconBtnTablet: {
     paddingHorizontal: 11,
     borderRadius: 7,
+  },
+  qaBtn: {
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    borderRadius: 6,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+  },
+  qaBtnText: {
+    fontSize: 12.5,
+    fontWeight: '600',
   },
   btnText: {
     fontSize: 13,

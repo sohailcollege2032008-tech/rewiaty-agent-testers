@@ -1,6 +1,7 @@
 import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import type { BookQaCitation } from '@/api/types';
 import { toArabicDigits } from '@/storage/reading-stats';
 import {
   buildWiktionaryEntryUrl,
@@ -12,6 +13,17 @@ import { RADIUS, TYPOGRAPHY } from '@/theme/layout';
 import { getAppThemeTokens } from '@/theme/reader-theme';
 import type { ThemeId } from '@/types/reader';
 
+/** F49 — the BYOK word/phrase explanation shown inside the dictionary sheet. */
+export type DictionaryAiExplainState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'ok'; explanation: string; citations?: BookQaCitation[]; costUsd?: number }
+  | { status: 'no_byok' | 'offline' | 'empty_context' | 'error'; messageAr: string };
+
+export const DICTIONARY_AI_EXPLAIN_LABEL_AR = 'اشرح السياق بالذكاء الاصطناعي';
+export const DICTIONARY_AI_THINKING_AR = 'بنجهّز الشرح من اللي قريته…';
+export const DICTIONARY_AI_SETTINGS_LABEL_AR = 'أضف مفتاح الذكاء الاصطناعي من الإعدادات';
+
 export type DictionarySheetProps = {
   visible: boolean;
   word: string;
@@ -19,6 +31,10 @@ export type DictionarySheetProps = {
   loading?: boolean;
   theme?: ThemeId | null;
   onClose: () => void;
+  /** F49 — when provided, the sheet offers the BYOK explanation action. */
+  onPressAiExplain?: () => void;
+  aiExplain?: DictionaryAiExplainState;
+  onOpenAiSettings?: () => void;
 };
 
 function openExternalUrl(url: string): void {
@@ -35,6 +51,11 @@ function findFirstWithRoot(entries: readonly DictionaryEntry[]): string | null {
   return entries.find((entry) => entry.root)?.root ?? null;
 }
 
+function formatAiCost(costUsd: number | undefined): string | null {
+  if (typeof costUsd !== 'number' || !Number.isFinite(costUsd) || costUsd <= 0) return null;
+  return `التكلفة $${costUsd.toFixed(4)}`;
+}
+
 export function DictionarySheet({
   visible,
   word,
@@ -42,6 +63,9 @@ export function DictionarySheet({
   loading = false,
   theme,
   onClose,
+  onPressAiExplain,
+  aiExplain = { status: 'idle' },
+  onOpenAiSettings,
 }: DictionarySheetProps) {
   const insets = useSafeAreaInsets();
   const palette = getAppThemeTokens(theme);
@@ -130,6 +154,134 @@ export function DictionarySheet({
                     <Text style={[styles.pillText, { color: palette.text, fontFamily: TYPOGRAPHY.uiFont }]}>
                       {`الجذر: ${root}`}
                     </Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+
+            {onPressAiExplain ? (
+              <View testID="dictionary-ai-section" style={styles.aiSection}>
+                {aiExplain.status !== 'ok' ? (
+                  <Pressable
+                    testID="dictionary-sheet-ai-explain"
+                    onPress={onPressAiExplain}
+                    disabled={aiExplain.status === 'loading'}
+                    style={({ pressed }) => [
+                      styles.aiExplainBtn,
+                      { backgroundColor: palette.chipBg, borderColor: palette.border },
+                      pressed && styles.aiExplainPressed,
+                      aiExplain.status === 'loading' && styles.aiExplainDisabled,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={DICTIONARY_AI_EXPLAIN_LABEL_AR}
+                  >
+                    <Text
+                      style={[
+                        styles.aiExplainText,
+                        { color: palette.accent, fontFamily: TYPOGRAPHY.uiFont },
+                      ]}
+                    >
+                      {DICTIONARY_AI_EXPLAIN_LABEL_AR}
+                    </Text>
+                  </Pressable>
+                ) : null}
+
+                {aiExplain.status === 'loading' ? (
+                  <Text
+                    testID="dictionary-ai-loading"
+                    style={[styles.aiStateText, { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont }]}
+                  >
+                    {DICTIONARY_AI_THINKING_AR}
+                  </Text>
+                ) : null}
+
+                {aiExplain.status === 'ok' ? (
+                  <View
+                    testID="dictionary-ai-answer"
+                    style={[
+                      styles.aiAnswerCard,
+                      { backgroundColor: palette.surface, borderColor: palette.border },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.aiAnswerText,
+                        { color: palette.text, fontFamily: TYPOGRAPHY.uiFont },
+                      ]}
+                    >
+                      {aiExplain.explanation}
+                    </Text>
+                    {aiExplain.citations && aiExplain.citations.length > 0 ? (
+                      <View testID="dictionary-ai-citations" style={styles.aiCitations}>
+                        {aiExplain.citations.map((citation, index) => (
+                          <View
+                            key={`${citation.block_id}-${index}`}
+                            style={[styles.aiCitation, { borderRightColor: palette.accent }]}
+                          >
+                            <Text
+                              style={[
+                                styles.aiCitationText,
+                                { color: palette.muted, fontFamily: TYPOGRAPHY.uiFont },
+                              ]}
+                            >
+                              {citation.quote}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
+                    {formatAiCost(aiExplain.costUsd) ? (
+                      <Text
+                        testID="dictionary-ai-cost"
+                        style={[
+                          styles.aiCost,
+                          { color: palette.accent, backgroundColor: palette.accentSoft },
+                        ]}
+                      >
+                        {formatAiCost(aiExplain.costUsd)}
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
+
+                {aiExplain.status !== 'ok' && aiExplain.status !== 'loading' && aiExplain.status !== 'idle' ? (
+                  <View
+                    testID="dictionary-ai-message"
+                    style={[
+                      styles.aiMessageBox,
+                      { backgroundColor: palette.chipBg, borderColor: palette.border },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.aiStateText,
+                        { color: palette.text, fontFamily: TYPOGRAPHY.uiFont },
+                      ]}
+                    >
+                      {aiExplain.messageAr}
+                    </Text>
+                    {aiExplain.status === 'no_byok' && onOpenAiSettings ? (
+                      <Pressable
+                        testID="dictionary-ai-settings"
+                        onPress={onOpenAiSettings}
+                        style={({ pressed }) => [
+                          styles.aiSettingsBtn,
+                          { borderColor: palette.accent },
+                          pressed && styles.aiExplainPressed,
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityLabel={DICTIONARY_AI_SETTINGS_LABEL_AR}
+                      >
+                        <Text
+                          style={[
+                            styles.aiSettingsText,
+                            { color: palette.accent, fontFamily: TYPOGRAPHY.uiFont },
+                          ]}
+                        >
+                          {DICTIONARY_AI_SETTINGS_LABEL_AR}
+                        </Text>
+                      </Pressable>
+                    ) : null}
                   </View>
                 ) : null}
               </View>
@@ -362,6 +514,84 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: RADIUS.button,
     overflow: 'hidden',
+  },
+  aiSection: {
+    gap: 8,
+  },
+  aiExplainBtn: {
+    alignSelf: 'flex-start',
+    borderRadius: RADIUS.pill,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  aiExplainText: {
+    fontSize: 12.5,
+    lineHeight: 19,
+    fontWeight: '700',
+  },
+  aiExplainPressed: {
+    opacity: 0.78,
+  },
+  aiExplainDisabled: {
+    opacity: 0.55,
+  },
+  aiStateText: {
+    fontSize: 13,
+    lineHeight: 21,
+    textAlign: 'right',
+  },
+  aiAnswerCard: {
+    borderRadius: RADIUS.card,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  aiAnswerText: {
+    fontSize: 14.5,
+    lineHeight: 25,
+    textAlign: 'right',
+  },
+  aiCitations: {
+    gap: 6,
+  },
+  aiCitation: {
+    borderRightWidth: 3,
+    paddingRight: 8,
+  },
+  aiCitationText: {
+    fontSize: 12,
+    lineHeight: 19,
+    textAlign: 'right',
+  },
+  aiCost: {
+    alignSelf: 'flex-start',
+    fontSize: 11.5,
+    lineHeight: 17,
+    fontWeight: '600',
+    borderRadius: RADIUS.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    overflow: 'hidden',
+  },
+  aiMessageBox: {
+    borderRadius: RADIUS.card,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  aiSettingsBtn: {
+    alignSelf: 'flex-start',
+    borderRadius: RADIUS.button,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  aiSettingsText: {
+    fontSize: 12.5,
+    fontWeight: '700',
   },
   stateBox: {
     paddingVertical: 14,
