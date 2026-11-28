@@ -59,6 +59,8 @@ export const PUSH_QA_TOKEN_ID = 'qa-push-token';
 export const PUSH_QA_TAP_PARAM = 'qa_push';
 /** Alias the journey uses for the bundled sample book (its runtime id is content-derived). */
 export const PUSH_QA_SAMPLE_BOOK_ID = 'book_sample';
+/** Shape-valid stand-in used only to carry the alias through the production payload parser. */
+const PUSH_QA_BOOK_ID_STAND_IN = 'book_0000000000000000';
 
 /* --------------------------------------------------------------------- status store */
 
@@ -185,13 +187,21 @@ export function parsePushQaTapUrl(url: string | null | undefined): PushNotificat
   if (params.get(PUSH_QA_TAP_PARAM) !== '1') return null;
 
   const chapterIndexRaw = params.get('chapter_index');
-  return parsePushNotificationData({
+  // The journey alias is not a real id, so the strict book-id rule in the production parser
+  // would drop it. Validate the rest of the payload against a shape-valid stand-in, then hand the
+  // alias back so `resolvePushQaBookId` maps it to the bundled book's real content-derived id.
+  const rawBookId = params.get('book_id');
+  const bookIdForValidation =
+    rawBookId === PUSH_QA_SAMPLE_BOOK_ID ? PUSH_QA_BOOK_ID_STAND_IN : rawBookId;
+  const parsed = parsePushNotificationData({
     event: params.get('event'),
-    book_id: params.get('book_id'),
+    book_id: bookIdForValidation,
     job_id: params.get('job_id'),
     chapter_id: params.get('chapter_id'),
     chapter_index: chapterIndexRaw === undefined ? undefined : Number(chapterIndexRaw),
   });
+  if (!parsed || rawBookId === undefined) return null;
+  return rawBookId === parsed.book_id ? parsed : { ...parsed, book_id: rawBookId };
 }
 
 function safeDecode(value: string): string {

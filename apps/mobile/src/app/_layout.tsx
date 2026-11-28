@@ -102,7 +102,7 @@ export default function RootLayout() {
     };
 
     const subscription = Linking.addEventListener('url', (event) => {
-      void handleUrl(event.url);
+      void handleUrl(event.url).catch(() => {});
     });
     void Linking.getInitialURL()
       .then(handleUrl)

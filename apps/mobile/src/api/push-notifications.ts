@@ -42,19 +42,20 @@ export const PUSH_UPLOAD_ROUTE = '/pdf-upload' as const;
  */
 export const PUSH_REASON_MISSING_PROJECT_ID = 'missing_project_id' as const;
 
-/** Fixed Arabic copy — never assembled from server strings. */
-export const PUSH_NOTIFICATION_COPY_AR = {
-  channelName: PUSH_CHANNEL_NAME_AR,
-  channelDescription: PUSH_CHANNEL_DESCRIPTION_AR,
-  chapterReady: {
-    title: 'فصل جديد جاهز',
-    body: 'فصلك الجديد جاهز للقراية — افتحه وابدأ.',
-  },
-  jobCompleted: {
-    title: 'الكتاب خلص',
-    body: 'تحويل الكتاب خلص بالكامل. افتحه وابدا اقرا.',
-  },
-} as const;
+/* ------------------------------------------------------------------ constants */
+
+/**
+ * Shape of every book id this app creates.
+ *
+ * Derived (not guessed) from `packages/book-format/src/hash.ts` + `src/storage/book-id.ts`:
+ * `computeBookId` returns `` `book_${hashString(seed)}` `` and `hashString` is two 32-bit lanes
+ * printed as 8 hex chars each — so exactly `book_` followed by 16 lowercase hex characters.
+ * A notification can only ever be about a book the reader can open, so anything else is junk.
+ */
+export const PUSH_BOOK_ID_PATTERN = /^book_[0-9a-f]{16}$/;
+
+/** Hard ceiling on a book id before it is even pattern-matched (also blocks buffer bloat). */
+export const PUSH_BOOK_ID_MAX_LENGTH = 128;
 
 /* ------------------------------------------------- notifications module seam */
 
@@ -400,7 +401,16 @@ export async function registerDevicePushToken(
   } catch {
     return { status: 'failed', reason: 'permission_error' };
   }
-  if (!isPermissionGranted(permission)) return { status: 'denied' };
+  if (!isPermissionGranted(permission)) {
+    // Permission is (or became) denied: a stored server row can never produce a visible
+    // notification on this device, so stop the backend from sending to it and forget the id.
+    // `unregisterDevicePushToken` is already best-effort and never throws.
+    await unregisterDevicePushToken({
+      apiClient: options.apiClient,
+      store: options.store,
+    });
+    return { status: 'denied' };
+  }
 
   let token: string | null;
   try {
@@ -497,11 +507,24 @@ export async function unregisterDevicePushToken(options: {
 
 /* ------------------------------------------------------------ payload routing */
 
+/** True only for an id this app's own storage layer could have produced. */
+export function isValidPushBookId(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  if (value.length === 0 || value.length > PUSH_BOOK_ID_MAX_LENGTH) return false;
+  // Path traversal / separators / whitespace can never be part of a generated id, and this
+  // rejects them explicitly before the shape check (defence in depth for a value that later
+  // reaches a route param and a file path).
+  if (/[/\\]/.test(value)) return false;
+  if (value.includes('..')) return false;
+  if (/\s/.test(value)) return false;
+  return PUSH_BOOK_ID_PATTERN.test(value);
+}
+
 export function parsePushNotificationData(data: unknown): PushNotificationData | null {
   if (!data || typeof data !== 'object') return null;
   const raw = data as Record<string, unknown>;
   if (raw.event !== 'chapter_ready' && raw.event !== 'job_completed') return null;
-  if (typeof raw.book_id !== 'string' || raw.book_id.trim().length === 0) return null;
+  if (!isValidPushBookId(raw.book_id)) return null;
   if (typeof raw.job_id !== 'string' || raw.job_id.trim().length === 0) return null;
 
   const parsed: PushNotificationData = {
@@ -575,6 +598,60 @@ export function routeFromPushNotificationData(
 
 const handledResponseIds = new Set<string>();
 
+/**
+ * A book id the notification talks about: whether the tapped book is actually in the local
+ * library. `getBookRecord` is the app's own storage read, so `null` really means "this device
+ * cannot open it" (the reader would otherwise land on its error state).
+ */
+export interface PushBookLookup {
+  getBookRecord(bookId: string): Promise<{ id: string } | null>;
+}
+
+let defaultBookLookup: PushBookLookup | null = null;
+
+/**
+ * Default lookup over the app's `books` table.
+ *
+ * Required lazily for the same reason as the token store: importing `expo-sqlite` at module load
+ * would break Web/Jest, and a broken database must not make a notification tap throw.
+ */
+export function loadDefaultPushBookLookup(): PushBookLookup {
+  if (defaultBookLookup) return defaultBookLookup;
+  defaultBookLookup = {
+    async getBookRecord(bookId) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const database = require('../storage/database') as {
+        getBookRecord: (id: string) => Promise<unknown | null>;
+      };
+      const record = await database.getBookRecord(bookId);
+      return record ? { id: bookId } : null;
+    },
+  };
+  return defaultBookLookup;
+}
+
+/**
+ * Convert "is this book here?" into router options.
+ *
+ * - present → the reader may open it (`bookReady`/`bookExists` true);
+ * - missing → `bookReady: false` only: `bookExists` stays unknown on purpose, because the book
+ *   may still live on the server and Mission Control is the surface that can import or restart
+ *   the job. Passing `false` there would send the user to a fresh upload instead;
+ * - lookup failure → no options at all, so a flaky DB never misroutes a tap.
+ */
+async function resolveLocalBookRouteOptions(
+  lookup: PushBookLookup,
+  bookId: string,
+): Promise<PushRouteOptions> {
+  let record: { id: string } | null;
+  try {
+    record = await lookup.getBookRecord(bookId);
+  } catch {
+    return {};
+  }
+  return record ? { bookReady: true, bookExists: true } : { bookReady: false };
+}
+
 /** Foreground presentation: show the notification instead of swallowing it. */
 export function applyForegroundNotificationHandler(
   notifications: ExpoNotificationsLike | null = loadExpoNotifications(),
@@ -615,14 +692,21 @@ export async function ensureNotificationChannel(
 }
 
 export interface InstallPushNotificationHandlingOptions {
-  navigate: (target: PushRouteTarget) => void;
+  /** May be async; the handler awaits it so a tap's navigation completes in order. */
+  navigate: (target: PushRouteTarget) => void | Promise<void>;
   notificationsModule?: ExpoNotificationsLike | null;
+  /** Explicit overrides (used by tests); the local book lookup always wins for ready/exists. */
   routeOptions?: PushRouteOptions;
+  /** Test seam; defaults to the app's own `books` table. */
+  bookLookup?: PushBookLookup;
 }
 
 /**
  * Wire the app lifecycle: present notifications in the foreground, create the Android channel
  * and navigate when the user taps one (including a tap that cold-started the app).
+ *
+ * The tap path reads the local library record **before** routing, so a notification for a book
+ * this device does not have lands on Mission Control instead of an empty reader error screen.
  *
  * Returns an unsubscribe function; a no-op when `expo-notifications` is unavailable.
  */
@@ -638,22 +722,33 @@ export function installPushNotificationHandling(
   applyForegroundNotificationHandler(notifications);
   void ensureNotificationChannel(notifications);
 
-  const handleResponse = (response: ExpoNotificationResponseLike | null | undefined): void => {
+  const handleResponse = async (
+    response: ExpoNotificationResponseLike | null | undefined,
+  ): Promise<void> => {
     const identifier = response?.notification?.request?.identifier;
     if (identifier) {
       if (handledResponseIds.has(identifier)) return;
       handledResponseIds.add(identifier);
     }
-    const target = routeFromPushNotificationData(
+    const parsed = parsePushNotificationData(
       response?.notification?.request?.content?.data,
-      options.routeOptions,
     );
-    if (target) options.navigate(target);
+    if (!parsed) return;
+
+    const lookup = options.bookLookup ?? loadDefaultPushBookLookup();
+    const localOptions = await resolveLocalBookRouteOptions(lookup, parsed.book_id);
+    const target = routeFromPushNotificationData(parsed, {
+      ...options.routeOptions,
+      ...localOptions,
+    });
+    if (target) await options.navigate(target);
   };
 
   let subscription: ExpoNotificationSubscriptionLike | undefined;
   try {
-    subscription = notifications.addNotificationResponseReceivedListener?.(handleResponse);
+    subscription = notifications.addNotificationResponseReceivedListener?.((response) => {
+      void handleResponse(response).catch(() => undefined);
+    });
   } catch {
     subscription = undefined;
   }
@@ -664,7 +759,8 @@ export function installPushNotificationHandling(
     void Promise.resolve()
       .then(() => notifications.getLastNotificationResponseAsync!())
       .then((response) => {
-        if (response) handleResponse(response);
+        if (response) return handleResponse(response);
+        return undefined;
       })
       .catch(() => undefined);
   }

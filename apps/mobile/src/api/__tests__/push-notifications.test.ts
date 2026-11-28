@@ -9,7 +9,6 @@ import {
   installPushNotificationHandling,
   PUSH_CHANNEL_NAME_AR,
   PUSH_MISSION_CONTROL_ROUTE,
-  PUSH_NOTIFICATION_COPY_AR,
   PUSH_READER_ROUTE,
   PUSH_REASON_MISSING_PROJECT_ID,
   PUSH_TOKEN_ID_KV_KEY,
@@ -20,10 +19,12 @@ import {
   unregisterDevicePushToken,
   type ExpoNotificationResponseLike,
   type ExpoNotificationsLike,
+  type PushBookLookup,
   type PushTokenApiClient,
   type PushTokenStore,
 } from '@/api/push-notifications';
 import type { PushNotificationData, PushTokenRequest } from '@/api/types';
+import { waitFor } from '@testing-library/react-native';
 
 function makeApiClient() {
   const registerPushToken = jest.fn(
@@ -61,7 +62,10 @@ function makeStore(initial: string | null = null): PushTokenStore & {
   };
 }
 
-function permissions(initial: 'granted' | 'undetermined', afterRequest: 'granted' | 'denied') {
+function permissions(
+  initial: 'granted' | 'undetermined' | 'denied',
+  afterRequest: 'granted' | 'denied',
+) {
   return {
     get: jest.fn(async () => ({ status: initial, granted: initial === 'granted' })),
     request: jest.fn(async () => ({
@@ -73,6 +77,10 @@ function permissions(initial: 'granted' | 'undetermined', afterRequest: 'granted
 
 const DEVICE_ID = 'dev_1';
 const PLATFORM = 'android' as const;
+/** A real-shaped book id: `book_` + the 16 lowercase hex chars `computeBookId` returns. */
+const BOOK_ID = 'book_0123456789abcdef';
+/** Second real-shaped id, used to prove routing is per id and not hardcoded. */
+const OTHER_BOOK_ID = 'book_fedcba9876543210';
 
 describe('registerDevicePushToken', () => {
   it('registers with the Expo provider and persists token_id when permission is granted', async () => {
@@ -146,6 +154,31 @@ describe('registerDevicePushToken', () => {
     expect(getToken).not.toHaveBeenCalled();
     expect(apiClient.registerPushToken).not.toHaveBeenCalled();
     expect(store.setTokenId).not.toHaveBeenCalled();
+    // Nothing stored means nothing to unsubscribe from.
+    expect(apiClient.deletePushToken).not.toHaveBeenCalled();
+  });
+
+  it('unsubscribes the stored server token when permission is (or becomes) denied', async () => {
+    const apiClient = makeApiClient();
+    const store = makeStore('pt_old');
+
+    const result = await registerDevicePushToken({
+      apiClient: apiClient as unknown as PushTokenApiClient,
+      deviceId: DEVICE_ID,
+      platform: PLATFORM,
+      permissions: permissions('denied', 'denied'),
+      getToken: async () => 'ExponentPushToken[abc]',
+      notificationsModule: null,
+      store,
+    });
+
+    expect(result).toEqual({ status: 'denied' });
+    // A token row for a device that can never display a notification is dead weight: delete it
+    // and forget the id so the next launch cannot believe it is still subscribed.
+    expect(apiClient.deletePushToken).toHaveBeenCalledWith('pt_old');
+    expect(store.clearTokenId).toHaveBeenCalled();
+    expect(store.setTokenId).not.toHaveBeenCalled();
+    expect(store.current()).toBeNull();
   });
 
   it('never throws when the permission adapter itself fails', async () => {
@@ -402,7 +435,7 @@ describe('unregisterDevicePushToken', () => {
 describe('routeFromPushNotificationData', () => {
   const chapterPayload: PushNotificationData = {
     event: 'chapter_ready',
-    book_id: 'book_1',
+    book_id: BOOK_ID,
     job_id: 'job_1',
     chapter_id: 'ch01',
     chapter_index: 1,
@@ -410,40 +443,40 @@ describe('routeFromPushNotificationData', () => {
 
   const jobPayload: PushNotificationData = {
     event: 'job_completed',
-    book_id: 'book_1',
+    book_id: BOOK_ID,
     job_id: 'job_1',
   };
 
   it('routes chapter_ready to the reader for that book (reader restores its own position)', () => {
     expect(routeFromPushNotificationData(chapterPayload)).toEqual({
       pathname: PUSH_READER_ROUTE,
-      params: { id: 'book_1' },
+      params: { id: BOOK_ID },
     });
   });
 
   it('routes job_completed to the finished book', () => {
     expect(routeFromPushNotificationData(jobPayload)).toEqual({
       pathname: PUSH_READER_ROUTE,
-      params: { id: 'book_1' },
+      params: { id: BOOK_ID },
     });
   });
 
   it('routes a chapter_ready with no chapter fields (older backend) to the same book', () => {
     expect(
-      routeFromPushNotificationData({ event: 'chapter_ready', book_id: 'book_1', job_id: 'job_1' }),
-    ).toEqual({ pathname: PUSH_READER_ROUTE, params: { id: 'book_1' } });
+      routeFromPushNotificationData({ event: 'chapter_ready', book_id: BOOK_ID, job_id: 'job_1' }),
+    ).toEqual({ pathname: PUSH_READER_ROUTE, params: { id: BOOK_ID } });
   });
 
   it('ignores stray chapter fields on job_completed', () => {
     expect(
       routeFromPushNotificationData({
         event: 'job_completed',
-        book_id: 'book_1',
+        book_id: BOOK_ID,
         job_id: 'job_1',
         chapter_id: 'ch01',
         chapter_index: 1,
       }),
-    ).toEqual({ pathname: PUSH_READER_ROUTE, params: { id: 'book_1' } });
+    ).toEqual({ pathname: PUSH_READER_ROUTE, params: { id: BOOK_ID } });
   });
 
   it('falls back to Mission Control when the book is not imported locally', () => {
@@ -475,25 +508,86 @@ describe('routeFromPushNotificationData', () => {
   });
 });
 
+describe('parsePushNotificationData — book_id must be a real book id', () => {
+  // `computeBookId` (src/storage/book-id.ts) returns `book_` + two 32-bit lanes as 16 lowercase
+  // hex chars, so anything else is not a book this app could ever open.
+  it('accepts the exact shape the storage layer generates', () => {
+    expect(
+      parsePushNotificationData({ event: 'job_completed', book_id: BOOK_ID, job_id: 'job_1' }),
+    ).toEqual({ event: 'job_completed', book_id: BOOK_ID, job_id: 'job_1' });
+    expect(parsePushNotificationData({ event: 'job_completed', book_id: OTHER_BOOK_ID, job_id: 'j' }))
+      .toEqual({ event: 'job_completed', book_id: OTHER_BOOK_ID, job_id: 'j' });
+  });
+
+  it('rejects every id that is not `book_` + 16 lowercase hex chars', () => {
+    const junk = [
+      'book_1',
+      'book_',
+      'book_0123456789abcde', // 15 chars
+      'book_0123456789abcdef0', // 17 chars
+      'book_0123456789ABCDEF', // uppercase
+      'book_0123456789abcdeg', // non-hex char
+      '0023456789abcdef0',
+      'Book_0123456789abcdef',
+      ' book_0123456789abcdef',
+      'book_0123456789abcdef ',
+      'book_0123456789abcde\u0000',
+      'book_sample',
+      'book_../0123456789abcd',
+      'book_0123/456789abcdef',
+      'book_0123\\456789abcdef',
+      'book_0123456789abcdef/../../etc/passwd',
+      `book_${'0'.repeat(200)}`,
+    ];
+    for (const bookId of junk) {
+      expect(
+        parsePushNotificationData({ event: 'chapter_ready', book_id: bookId, job_id: 'job_1' }),
+      ).toBeNull();
+    }
+  });
+
+  it('rejects path traversal, separators, whitespace and over-long ids explicitly', () => {
+    for (const bookId of [
+      '../book_0123456789abcdef',
+      'book_0123456789abcdef\\..',
+      'book_0123456789 abcdef',
+      'book_0123456789\tabcdef',
+      `book_${'a'.repeat(128)}`,
+    ]) {
+      expect(
+        routeFromPushNotificationData({ event: 'job_completed', book_id: bookId, job_id: 'j' }),
+      ).toBeNull();
+    }
+  });
+
+  it('rejects a non-string book_id', () => {
+    for (const bookId of [42, null, undefined, {}, ['book_0123456789abcdef']]) {
+      expect(
+        parsePushNotificationData({ event: 'chapter_ready', book_id: bookId, job_id: 'job_1' }),
+      ).toBeNull();
+    }
+  });
+});
+
 describe('parsePushNotificationData', () => {
   it('keeps only valid optional fields', () => {
     expect(
       parsePushNotificationData({
         event: 'chapter_ready',
-        book_id: 'book_1',
+        book_id: BOOK_ID,
         job_id: 'job_1',
         chapter_id: '  ',
         chapter_index: 0,
       }),
-    ).toEqual({ event: 'chapter_ready', book_id: 'book_1', job_id: 'job_1' });
+    ).toEqual({ event: 'chapter_ready', book_id: BOOK_ID, job_id: 'job_1' });
     expect(
       parsePushNotificationData({
         event: 'chapter_ready',
-        book_id: 'book_1',
+        book_id: BOOK_ID,
         job_id: 'job_1',
         chapter_index: -1,
       }),
-    ).toEqual({ event: 'chapter_ready', book_id: 'book_1', job_id: 'job_1' });
+    ).toEqual({ event: 'chapter_ready', book_id: BOOK_ID, job_id: 'job_1' });
   });
 });
 
@@ -521,13 +615,15 @@ describe('installPushNotificationHandling', () => {
     };
   }
 
-  it('navigates on a chapter_ready tap and ignores unrelated payloads', () => {
+  it('navigates on a chapter_ready tap and ignores unrelated payloads', async () => {
     const notifications = makeNotifications();
     const navigate = jest.fn();
+    const bookLookup: PushBookLookup = { getBookRecord: jest.fn(async () => ({ id: BOOK_ID })) };
 
     const unsubscribe = installPushNotificationHandling({
       notificationsModule: notifications,
       navigate,
+      bookLookup,
     });
 
     expect(notifications.setNotificationHandler).toHaveBeenCalled();
@@ -537,17 +633,118 @@ describe('installPushNotificationHandling', () => {
     );
 
     notifications.emit(
-      { event: 'chapter_ready', book_id: 'book_1', job_id: 'job_1', chapter_id: 'ch01' },
+      { event: 'chapter_ready', book_id: BOOK_ID, job_id: 'job_1', chapter_id: 'ch01' },
       'response-1',
     );
-    expect(navigate).toHaveBeenCalledWith({
-      pathname: PUSH_READER_ROUTE,
-      params: { id: 'book_1' },
-    });
+    await waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith({
+        pathname: PUSH_READER_ROUTE,
+        params: { id: BOOK_ID },
+      }),
+    );
 
     navigate.mockClear();
     notifications.emit({ event: 'something_else' }, 'response-2');
+    // Give the async path a turn; a rejected payload must never navigate.
+    await Promise.resolve();
     expect(navigate).not.toHaveBeenCalled();
+
+    unsubscribe();
+  });
+
+  it('sends a tap for a book that is not on this device to Mission Control (never the reader)', async () => {
+    const notifications = makeNotifications();
+    const navigate = jest.fn();
+    const bookLookup: PushBookLookup = { getBookRecord: jest.fn(async () => null) };
+
+    const unsubscribe = installPushNotificationHandling({
+      notificationsModule: notifications,
+      navigate,
+      bookLookup,
+    });
+
+    notifications.emit(
+      { event: 'chapter_ready', book_id: BOOK_ID, job_id: 'job_1', chapter_id: 'ch01' },
+      'missing-1',
+    );
+
+    // The wiring is async: the local record is read before routing.
+    await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1));
+    expect(bookLookup.getBookRecord).toHaveBeenCalledWith(BOOK_ID);
+    expect(navigate).toHaveBeenCalledWith({ pathname: PUSH_MISSION_CONTROL_ROUTE });
+
+    unsubscribe();
+  });
+
+  it('routes job_completed for a book missing locally to Mission Control, not the empty reader', async () => {
+    const notifications = makeNotifications();
+    const navigate = jest.fn();
+    const bookLookup: PushBookLookup = { getBookRecord: jest.fn(async () => null) };
+
+    const unsubscribe = installPushNotificationHandling({
+      notificationsModule: notifications,
+      navigate,
+      bookLookup,
+    });
+
+    notifications.emit({ event: 'job_completed', book_id: OTHER_BOOK_ID, job_id: 'job_9' }, 'done-1');
+
+    await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1));
+    expect(navigate).toHaveBeenCalledWith({ pathname: PUSH_MISSION_CONTROL_ROUTE });
+
+    unsubscribe();
+  });
+
+  it('opens the reader for a book that IS in the local library', async () => {
+    const notifications = makeNotifications();
+    const navigate = jest.fn(async () => undefined);
+    const bookLookup: PushBookLookup = { getBookRecord: jest.fn(async () => ({ id: OTHER_BOOK_ID })) };
+
+    const unsubscribe = installPushNotificationHandling({
+      notificationsModule: notifications,
+      navigate,
+      bookLookup,
+    });
+
+    notifications.emit(
+      { event: 'chapter_ready', book_id: OTHER_BOOK_ID, job_id: 'job_2', chapter_index: 1 },
+      'present-1',
+    );
+
+    await waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith({
+        pathname: PUSH_READER_ROUTE,
+        params: { id: OTHER_BOOK_ID },
+      }),
+    );
+
+    unsubscribe();
+  });
+
+  it('leaves routing untouched (no false "missing") when the local lookup itself fails', async () => {
+    const notifications = makeNotifications();
+    const navigate = jest.fn();
+    const bookLookup: PushBookLookup = {
+      getBookRecord: jest.fn(async () => {
+        throw new Error('sqlite unavailable');
+      }),
+    };
+
+    const unsubscribe = installPushNotificationHandling({
+      notificationsModule: notifications,
+      navigate,
+      bookLookup,
+    });
+
+    notifications.emit(
+      { event: 'chapter_ready', book_id: BOOK_ID, job_id: 'job_3', chapter_index: 1 },
+      'unknown-1',
+    );
+
+    // Unknown local state keeps the previous behaviour: the reader restores its own position.
+    await waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith({ pathname: PUSH_READER_ROUTE, params: { id: BOOK_ID } }),
+    );
 
     unsubscribe();
   });
@@ -568,6 +765,5 @@ describe('Arabic channel copy', () => {
   it('uses the fixed Arabic channel name and KV key', () => {
     expect(PUSH_TOKEN_ID_KV_KEY).toBe('push_token_id_v1');
     expect(PUSH_CHANNEL_NAME_AR).toBe('تحويل الكتب');
-    expect(PUSH_NOTIFICATION_COPY_AR.channelName).toBe('تحويل الكتب');
   });
 });
